@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(gorbe)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # 1. GLFW hozzáadása
 # Kikapcsoljuk a felesleges dolgokat a GLFW-ben, hogy gyorsabb legyen a build

@@ -11,11 +11,12 @@ enum PosState {base, toCurve, toDist, fromDisttoCurve};
 
 struct Point {
     glm::vec3 pos;
-    glm::vec3 vel;
-    glm::vec3 grad;
-    float d;
+    float d = 1.0f;
+    glm::vec3 vel{0};
+
+    glm::vec3 grad{0};
     float f;
-    PosState state;
+    PosState state = base;
 };
 
 

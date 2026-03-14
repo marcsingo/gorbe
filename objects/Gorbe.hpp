@@ -14,6 +14,7 @@
 #include "../model/Shader.hpp"
 #include "../model/Window.hpp"
 #include "Point.hpp"
+#include "../matek/Egyenlet.hpp"
 #include <random>
 #include <cmath>
 
@@ -29,38 +30,40 @@ inline std::ostream& operator<<(std::ostream& os, glm::vec3& v) {
 
 class Gorbe : public Model {
 
-    Egyenlet f;
-    Egyenlet fdx;
-    Egyenlet fdy;
-    Egyenlet fdz;
+    Implicit f;
 
-    glm::vec3 grad(glm::vec3 p) {
-        return glm::vec3{
-            fdx->at(p),
-            fdy->at(p),
-            fdz->at(p)
-        };
-    }
+    // glm::vec3 grad(glm::vec3 p) {
+    //     return glm::vec3{
+    //         fdx->at(p),
+    //         fdy->at(p),
+    //         fdz->at(p)
+    //     };
+    // }
+    //
+    // float sgn(float val) {
+    //     if (val > 0) return 1;
+    //     if (val < 0) return -1;
+    //     return 0;
+    // }
+    //
+    // glm::vec3 F(float f_p, glm::vec3 p) {
+    //     return  -sgn(f_p) * grad(p);
+    // }
+    //
+    // float distance_to_surface(glm::vec3& p) {
+    //     return f->at(p) / glm::length(grad(p));
+    // }
+    //
+    // bool is_nulla(float value) {
+    //     if (std::abs(value) < 0.001f) {
+    //         return true;
+    //     }
+    //     return false;
+    // }
 
-    float sgn(float val) {
-        if (val > 0) return 1;
-        if (val < 0) return -1;
-        return 0;
-    }
-
-    glm::vec3 F(float f_p, glm::vec3 p) {
-        return  -sgn(f_p) * grad(p);
-    }
-
-    float distance_to_surface(glm::vec3& p) {
-        return f->at(p) / glm::length(grad(p));
-    }
-
-    bool is_nulla(float value) {
-        if (std::abs(value) < 0.001f) {
-            return true;
-        }
-        return false;
+    void calculate_point_datas(Point& p) {
+        p.grad = f.grad(p.pos);
+        p.f = f(p.pos);
     }
 
     // <-- (p1)      (p2)
@@ -79,9 +82,6 @@ protected:
         distForce.draw(camera);
         distDir.draw(camera);
     }
-
-    // std::vector<float> ds;
-    // std::vector<glm::vec3> normals;
 
     std::vector<Point> points;
 
@@ -107,20 +107,19 @@ public:
         //f = (y ^2_k) - (x ^3_k) + x;
         //f = (x ^ 2_k) + (y ^ 2_k) - 25;
         //f = x - y;
-        fdx = f->derrive('x')->simplify();
-        fdy = f->derrive('y')->simplify();
-        fdz = f->derrive('z')->simplify();
-
-        f->print(std::cout); std::cout << std::endl;
-        fdx->print(std::cout); std::cout << std::endl;
-        fdy->print(std::cout); std::cout << std::endl;
-        fdz->print(std::cout); std::cout << std::endl;
+        // fdx = f->derrive('x')->simplify();
+        // fdy = f->derrive('y')->simplify();
+        // fdz = f->derrive('z')->simplify();
+        //
+        // f->print(std::cout); std::cout << std::endl;
+        // fdx->print(std::cout); std::cout << std::endl;
+        // fdy->print(std::cout); std::cout << std::endl;
+        // fdz->print(std::cout); std::cout << std::endl;
 
         float step = 1.0f;
 
         int numPoints = static_cast<int>(std::pow((3.5f * size) / step, 2));
 
-        // 2. Modern C++ véletlenszám-generátor inicializálása
         std::random_device rd;
         std::mt19937 gen(rd()); // Mersenne Twister motor
         std::uniform_real_distribution<float> dist(-size, size); // Egyenletes eloszlás
@@ -131,11 +130,7 @@ public:
             float y = dist(gen);
 
             points.push_back(Point{
-                glm::vec3{x, y, 0.0f},
-                glm::vec3{0.0f, 0.0f, 0.0f},
-                glm::vec3(0, 0, 0),
-                1.0f,
-                base
+                .pos = glm::vec3{x, y, 0.0f}
             });
         }
 
@@ -185,7 +180,7 @@ public:
             } else if (key == GLFW_KEY_T && action == GLFW_PRESS) {
                 std::vector<Point> newPoints;
                 for (auto& p : points) {
-                    if (std::abs(distance_to_surface(p.pos)) < 0.01f) newPoints.push_back(p);
+                    if (std::abs(f.distance_to(p.pos)) < 0.01f) newPoints.push_back(p);
                 }
                 points = newPoints;
             } else if (key == GLFW_KEY_O && action == GLFW_PRESS) {
@@ -222,25 +217,24 @@ public:
             }
             float gamma = 0.8f;
             if (p.state == toCurve || p.state == fromDisttoCurve) {
-                float current_h = f->at(p.pos);
-                p.grad = grad(p.pos);
-                p.f = current_h;
+
+                calculate_point_datas(p);
 
 
-                glm::vec3 F_unc = F(current_h, p.pos);
+                glm::vec3 F_unc = f.F(p);
 
                 p.vel = p.vel + p.d * (F_unc - gamma * p.vel);
                 auto seged = p.pos + dt*p.vel;
 
                  // Vizualizáció
 
-                float next_h = f->at(seged);
-                if (current_h * next_h < 0.0f) {
+                float next_h = f(seged);
+                if (p.f * next_h < 0.0f) {
                     p.d *= 0.5f;
                     p.vel = {0, 0, 0};
                 }
 
-                if (std::abs(next_h) >= 0.00000000001f) {
+                if (!f.is_on(p)) {
                     p.pos = seged;
                 }
 
