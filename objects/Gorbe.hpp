@@ -32,45 +32,24 @@ class Gorbe : public Model {
 
     Implicit f;
 
-    // glm::vec3 grad(glm::vec3 p) {
-    //     return glm::vec3{
-    //         fdx->at(p),
-    //         fdy->at(p),
-    //         fdz->at(p)
-    //     };
-    // }
-    //
-    // float sgn(float val) {
-    //     if (val > 0) return 1;
-    //     if (val < 0) return -1;
-    //     return 0;
-    // }
-    //
-    // glm::vec3 F(float f_p, glm::vec3 p) {
-    //     return  -sgn(f_p) * grad(p);
-    // }
-    //
-    // float distance_to_surface(glm::vec3& p) {
-    //     return f->at(p) / glm::length(grad(p));
-    // }
-    //
-    // bool is_nulla(float value) {
-    //     if (std::abs(value) < 0.001f) {
-    //         return true;
-    //     }
-    //     return false;
-    // }
 
     void calculate_point_datas(Point& p) {
         p.grad = f.grad(p.pos);
         p.f = f(p.pos);
+        p.F = f.F(p);
+        p.m = 1.0f ;/// std::abs(f.K(p.pos));
     }
 
     // <-- (p1)      (p2)
-    glm::vec3 distance_force(glm::vec3& p1, glm::vec3& p2) {
-        glm::vec3 d = p1 - p2;
-        float r = glm::length(d);
-        return glm::normalize(d) / r / r;
+    glm::vec3 distance_force(Point const & p1, Point const & p2) {
+        glm::vec3 d = p1.pos - p2.pos;
+        float r = glm::length(d) + 1.0f;
+
+        // Védelem az egybeeső pontoknál (nullával osztás elkerülése)
+        // if (r < 0.001f) return glm::vec3{0.0f};
+
+        // p1.m * p2.m a helyes szorzat!
+        return  p1.m * p2.m * glm::normalize(d) / r / r;
     }
 
 protected:
@@ -79,24 +58,29 @@ protected:
         this->set_uniform("color", glm::vec3{0, 0, 0});
         glDrawArrays(GL_POINTS, 0, vertices.size());
         normals.draw(camera);
-        distForce.draw(camera);
-        distDir.draw(camera);
+        taszitoForce.draw(camera);
+        tomeg.draw(camera);
+        vonzoEro.draw(camera);
     }
 
     std::vector<Point> points;
 
     Vector normals;
-    Vector distForce;
-    Vector distDir;
+    Vector taszitoForce;
+    Vector tomeg;
+    Vector vonzoEro;
 
     enum State {nulla, start, dist, korrigal};
     State state = nulla;
+
+    float delta = 0.001f;
 public:
     Gorbe(float size) :
         Model(),
         normals{{1, 0, 0}},
-        distForce({0, 1, 0}),
-        distDir({0, 0, 1})
+        taszitoForce({0, 1, 0}),
+        tomeg({0, 0, 1}),
+        vonzoEro{{0.5f, 0.5f, 0}}
     {
         ///
         ///
@@ -105,20 +89,15 @@ public:
         f = ((((y / s) ^2_k) + ((x/s) ^ 2_k)-1) ^3_k) - ((x / s) ^2_k)*((y/s) ^3_k);
         //f = (x ^2_k) + (y ^2_k) + x*y -((x*y) ^2_k) /2 - 0.25f;
         //f = (y ^2_k) - (x ^3_k) + x;
-        //f = (x ^ 2_k) + (y ^ 2_k) - 25;
+        // f = (x ^ 2_k) + (y ^ 2_k) - 25;
         //f = x - y;
-        // fdx = f->derrive('x')->simplify();
-        // fdy = f->derrive('y')->simplify();
-        // fdz = f->derrive('z')->simplify();
-        //
-        // f->print(std::cout); std::cout << std::endl;
-        // fdx->print(std::cout); std::cout << std::endl;
-        // fdy->print(std::cout); std::cout << std::endl;
-        // fdz->print(std::cout); std::cout << std::endl;
-
+         // f = (x ^ 2_k) / 9 + (y ^ 2_k) / 5 - 1;
+        //f = (x ^3_k) - (y^3_k) - 3*x*y;
+        //f = (((x ^2_k) + (y ^2_k)) ^ 2_k) - 2*((x ^2_k) - (y ^2_k));
+        // f = sin((x^2_k)) - cos((x^2_k)) - 1;
         float step = 1.0f;
 
-        int numPoints = static_cast<int>(std::pow((3.5f * size) / step, 2));
+        int numPoints = static_cast<int>(std::pow((2.0f * size) / step, 2));
 
         std::random_device rd;
         std::mt19937 gen(rd()); // Mersenne Twister motor
@@ -147,8 +126,13 @@ public:
 
             this->vertices.clear();
             normals.reset();
-            distForce.reset();
-            distDir.reset();
+            taszitoForce.reset();
+            tomeg.reset();
+            vonzoEro.reset();
+
+            for (auto& p : points) {
+                calculate_point_datas(p);
+            }
 
             for (auto& p : points) {
 
@@ -156,10 +140,12 @@ public:
 
             }
 
+            // delta *= 0.99f;
             update_buffers();
             normals.update();
-            distForce.update();
-            distDir.update();
+            taszitoForce.update();
+            tomeg.update();
+            vonzoEro.update();
         });
 
         Window::add_key_event([this](int key, int scancode, int action, int mode) {
@@ -193,49 +179,81 @@ public:
 
     }
 
+    // void point_moving(Point& p, float t, float dt) {
+    //     vertices.push_back(p.pos);
+    //     vonzoEro.add_vector(p.pos, p.vonzo_vel);
+    //     taszitoForce.add_vector(p.pos, p.taszito_vel);
+    //     tomeg.add_vector(p.pos, glm::normalize(p.grad)*(p.m));
+    //     if (p.state == base) return;
+    //     static float const gamma = 0.3f;
+    //
+    //     float distance = f.distance_to(p);
+    //     if (distance > delta) {
+    //         p.taszito_vel = {0, 0, 0};
+    //         p.vonzo_vel += p.d * (p.F - gamma*p.vonzo_vel);
+    //         auto seged = p.pos + p.vonzo_vel*dt;
+    //         if (f(seged)*p.f < 0.0f) {
+    //             p.d *= 0.5f;
+    //             p.vonzo_vel = glm::vec3{0};
+    //             p.taszito_vel = glm::vec3{0};
+    //         }
+    //     } else {
+    //         auto taszito_ero = glm::vec3{0};
+    //         for (auto& p2 : points) {
+    //             if (p.pos != p2.pos)
+    //                 taszito_ero += distance_force(p, p2);
+    //         }
+    //
+    //         taszito_ero = taszito_ero - (glm::dot(taszito_ero, p.grad)/glm::dot(p.grad, p.grad)*p.grad);
+    //         p.taszito_vel += (taszito_ero / p.m ) * dt;
+    //         p.pos = p.pos + taszito_ero/p.m*dt;
+    //         p.vonzo_vel = {0, 0, 0};
+    //     }
+    //     // if (glm::length(p.taszito_vel + p.vonzo_vel) >= delta)
+    //         p.pos = p.pos + (p.vonzo_vel) * dt;
+    //
+    // }
+    //
     void point_moving(Point& p, float t, float dt) {
         if (p.state != base) {
             if (p.state == toDist) {
+                if (f.distance_to(p.pos) > 0.0001f) {
+                    p.state = fromDisttoCurve;
+                    p.vonzo_vel = {0, 0, 0};
+                } else {
 
-                glm::vec3 sum{0};
-                for (auto& p2 : points) {
-                    if (p.pos != p2.pos && p2.state == toDist) {
-
-                        sum += distance_force(p.pos, p2.pos);
+                    glm::vec3 sum{0};
+                    for (auto& p2 : points) {
+                        if (p.pos != p2.pos && p2.state == toDist) {
+                            sum += distance_force(p, p2);
+                        }
                     }
+                    auto move_force = sum - (glm::dot(p.grad, sum) / glm::dot(p.grad, p.grad)*p.grad);
+                    // distForce.add_vector(p.pos, sum);
+                    // distDir.add_vector(p.pos, move_force);
+                    p.pos += (move_force / p.m * dt);
+                    p.state = fromDisttoCurve;
                 }
-                //p.v = p.v + sum * 0.5f * dt;
-                auto t_v = glm::normalize(sum);
-                auto g_v = glm::normalize(p.grad);
-                auto move = t_v - (glm::dot(g_v,t_v)*g_v);
-                distForce.add_vector(p.pos, glm::normalize(sum)*0.2f);
-                distDir.add_vector(p.pos, glm::normalize(
-                    move
-                )*0.2f);
-                p.pos = p.pos + move*dt;
-                p.state = fromDisttoCurve;
             }
             float gamma = 0.8f;
             if (p.state == toCurve || p.state == fromDisttoCurve) {
 
-                calculate_point_datas(p);
 
 
-                glm::vec3 F_unc = f.F(p);
 
-                p.vel = p.vel + p.d * (F_unc - gamma * p.vel);
-                auto seged = p.pos + dt*p.vel;
+                p.vonzo_vel = p.vonzo_vel + p.d * (p.F - gamma * p.vonzo_vel);
+                auto seged = p.pos + dt*p.vonzo_vel;
 
                  // Vizualizáció
 
                 float next_h = f(seged);
                 if (p.f * next_h < 0.0f) {
                     p.d *= 0.5f;
-                    p.vel = {0, 0, 0};
+                    p.vonzo_vel = {0, 0, 0};
                 }
 
-                if (!f.is_on(p)) {
-                    p.pos = seged;
+                if (f.distance_to(p.pos) >= 0.0001f) {
+                    p.vonzo_vel = p.vonzo_vel + p.d * (p.F - gamma * p.vonzo_vel);
                 }
 
                 if (p.state == fromDisttoCurve) {
@@ -244,8 +262,9 @@ public:
             }
         normals.add_vector(p.pos, glm::normalize(p.grad) * 0.2f);
         }
+        p.pos = p.pos + p.vonzo_vel*dt;
         vertices.push_back(p.pos);
-
+        // ms.add_vector(p.pos, glm::normalize(glm::vec3{1, 1, 0})*p.m);
     }
 
 
