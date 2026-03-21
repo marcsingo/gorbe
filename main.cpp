@@ -11,24 +11,24 @@
 #include "objects/Vector.hpp"
 
 int main() {
-    // 1. Ablak létrehozása (a korábban írt Init namespace-ből)
     Utils::init_glfw();
     Window::init(800, 800, "OpenGl Hello World");
 
-    float cws = 5.0f;
+    // 1. DEPTH TEST bekapcsolása a 3D-hez!
+    glEnable(GL_DEPTH_TEST);
 
-    Camera2D camera(glm::vec4(0.0f, 0.0f, 800.0f, 800.0f));
-    camera.walls = glm::vec4(-cws, cws, -cws, cws); // Bal, Jobb, Alsó, Felső
+    // 2. 3D-s kamera inicializálása
+    Camera3D camera(glm::vec4(0.0f, 0.0f, 800.0f, 800.0f), glm::vec3(0.0f, 0.0f, 5.0f));
 
-    Gorbe gorbe{cws};
-    // Normals ns;
-    // --- FŐ RENDERELŐ CIKLUS ---
+    Gorbe gorbe{5.0f};
+
     while (!Window::window_schould_close()) {
-        glClearColor(1, 1, 1, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+        // 3. Ne felejtsd el törölni a GL_DEPTH_BUFFER_BIT-et is a cikluson belül!
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         gorbe.draw(camera);
-        // ns.set_points(gorbe.get_vertices(), gorbe.get_normals());
-        // ns.draw(camera);
         Window::event_handling();
     }
 

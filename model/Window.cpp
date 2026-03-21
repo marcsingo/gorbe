@@ -35,7 +35,7 @@ void Window::add_key_event(KeyEvent&& f) {
 
 void Window::mouse_pos_callback(GLFWwindow *window, double x, double y) {
     for (auto &f : mouse_pos_events) {
-        f({x, y});
+        f(x, y);
     }
 }
 
@@ -45,7 +45,7 @@ void Window::add_mouse_pos_event(MousePosEvent&& f) {
 
 void Window::mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
     for (auto& f: mouse_button_events) {
-        f({button, action, mods});
+        f(button, action, mods);
     }
 }
 
@@ -69,6 +69,8 @@ void Window::event_handling() {
     glfwSwapBuffers(window);
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
+    if (dt != 0.0f)
     for (auto &f : time_passed_events) {
         f(t, dt);
     }

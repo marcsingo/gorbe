@@ -6,20 +6,28 @@
 #define GORBE_POINT_HPP
 
 #include <glad/glad.h>
+#include <map>
 
 enum PosState {base, toCurve, toDist, fromDisttoCurve};
 
 struct Point {
-    glm::vec3 taszito_vel{0};
-    glm::vec3 vonzo_vel{0};
 
-    glm::vec3 pos;
-    float d = 1.0f;
-    glm::vec3 F{0};
-    glm::vec3 grad{0};
-    float f;
+    //fizika:
+    glm::vec3 p;
+    std::map<std::string, glm::vec3> forces;
+    glm::vec3 v{0, 0, 0};
+    float nu = 0.5f; // lassítási tényező
     float m;
+
+    // függvény adatok:
+    glm::vec3 F{0};
+    glm::vec3 g{0};
+    float delta = 1.0f;
+    float gamma = 0.3f;
+    float f;
     float K;
+
+    //állapot:
     PosState state = base;
 };
 

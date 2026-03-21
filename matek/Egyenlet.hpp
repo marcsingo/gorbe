@@ -121,7 +121,7 @@ public:
     }
     float distance_to(Point const & p) const {
         ellenorzes();
-        return std::abs(p.f / glm::length(p.grad));
+        return std::abs(p.f / glm::length(p.g));
     }
     float sgn(glm::vec3 const & p) const {
         ellenorzes();
@@ -135,7 +135,7 @@ public:
         float s = 0;
         if (p.f < 0) s = -1.0f;
         else if (p.f > 0) s = 1.0f;
-        return p.grad * s * (-1.0f);
+        return p.g * s * (-1.0f);
     }
 };
 

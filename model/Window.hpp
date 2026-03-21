@@ -32,8 +32,8 @@ struct TimePassedEventInformation {
 };
 
 typedef std::function<void(int, int, int, int)> KeyEvent;
-typedef std::function<void(MousePosEventInformation)> MousePosEvent;
-typedef std::function<void(MouseButtonEventInformation)> MouseButtonEvent;
+typedef std::function<void(double, double)> MousePosEvent;
+typedef std::function<void(int, int, int)> MouseButtonEvent;
 typedef std::function<void(double, double)> MouseScrollEvent;
 typedef std::function<void(double, double)> TimePassedEvent;
 
@@ -71,6 +71,10 @@ public:
     static void add_mouse_button_event(MouseButtonEvent&& f);
     static void add_mouse_scroll_event(MouseScrollEvent&& f);
     static void add_time_passed_event(TimePassedEvent&& f);
+
+    static void disable_cursor() {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    }
 
     static bool window_schould_close() {
         return glfwWindowShouldClose(window);
