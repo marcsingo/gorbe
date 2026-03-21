@@ -12,9 +12,10 @@
 #include "Window.hpp"
 
 class Camera {
+protected:
     glm::vec4 viewport;
 
-protected:
+
     virtual glm::mat4 get_projection() const = 0;
     virtual glm::mat4 get_view() const = 0;;
 public:
@@ -50,6 +51,43 @@ public:
         });
     }
 
+};
+
+class Camera3D : public Camera {
+private:
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+    glm::vec3 right;
+    glm::vec3 world_up;
+
+    // Euler-szögek a nézet irányításához
+    float yaw;
+    float pitch;
+
+    // Kamera beállítások
+    float movement_speed;
+    float mouse_sensitivity;
+    float fov;
+
+    // Egér állapot
+    float last_x;
+    float last_y;
+    bool first_mouse;
+
+    void update_camera_vectors();
+
+protected:
+    glm::mat4 get_projection() const override;
+    glm::mat4 get_view() const override;
+
+public:
+    Camera3D(glm::vec4 viewport, glm::vec3 start_position = glm::vec3(0.0f, 0.0f, 3.0f));
+
+    // Publikus metódusok az események manuális hívásához, ha nem a konstruktorban kötjük be
+    void process_keyboard(int key);
+    void process_mouse_movement(float xpos, float ypos);
+    void process_mouse_scroll(float yoffset);
 };
 
 
