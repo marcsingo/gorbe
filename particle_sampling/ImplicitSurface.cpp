@@ -2,7 +2,7 @@
 #include "../model/Model.hpp"
 #include "../matek/Kif.hpp"
 
-using namespace Matek::Valtozok;
+using namespace Matek::Analizis;
 
 struct Const {
     float delta_t = 0.03f;
@@ -38,12 +38,12 @@ public:
     ImplicitSurface() {
 
         float p = 2.0f;
-        surface.F = x + &p;
+        surface.F = (x ^ 3.0f) + 4.0_k * (&p);
 
         for (int i = 0; i < 10; i++) {
             p++;
-            std::cout << surface.F.at({0, 1, 1}) <<std::endl;
-            std::cout << surface.F.derrive(&p).at({1, 1, 1});
+            std::cout << surface.F.at({0, 1, 1}) << " ";
+            std::cout << surface.F.derrive(&p).at({1, 1, 1}) << "\n";
         }
     }
 

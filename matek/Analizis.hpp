@@ -732,105 +732,105 @@ namespace Matek {
 
         };
 
-        inline std::shared_ptr<Kifejezes const> ctg(std::shared_ptr<Kifejezes const> kif) {
-            return std::make_shared<Ctg>(std::move(kif));
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator^(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
-            return std::make_shared<Hatvany>(a, b);
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator""_k(unsigned long long value) {
-            return std::make_shared<Konstans>(static_cast<float>(value));
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator""_k(long double value) {
-            return std::make_shared<Konstans>(static_cast<float>(value));
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator""_v(const char var) {
-            return std::make_shared<Valtozo>(var);
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator+(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
-            return std::make_shared<Osszeg>(a, b);
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator-(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
-            return std::make_shared<Kulonbseg>(a, b);
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator*(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
-            return std::make_shared<Szorzat>(a, b);
-        }
-
-        inline std::shared_ptr<Kifejezes const> operator/(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
-            return std::make_shared<Hanyados>(a, b);
-        }
-
-        inline std::shared_ptr<Kifejezes const> konst(float v)
-        {
-            return std::make_shared<Konstans>(v);
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator+(const std::shared_ptr<Kifejezes const>& a, float b)
-        {
-            return a + konst(b);
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator-(const std::shared_ptr<Kifejezes const>& a, float b)
-        {
-            return a - konst(b);
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator*(const std::shared_ptr<Kifejezes const>& a, float b)
-        {
-            return a * konst(b);
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator/(const std::shared_ptr<Kifejezes const>& a, float b)
-        {
-            return a / konst(b);
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator+(float a, const std::shared_ptr<Kifejezes const>& b)
-        {
-            return konst(a) + b;
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator-(float a, const std::shared_ptr<Kifejezes const>& b)
-        {
-            return konst(a) - b;
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator*(float a, const std::shared_ptr<Kifejezes const>& b)
-        {
-            return konst(a) * b;
-        }
-
-        inline std::shared_ptr<Kifejezes const>
-        operator/(float a, const std::shared_ptr<Kifejezes const>& b)
-        {
-            return konst(a) / b;
-        }
+        // inline std::shared_ptr<Kifejezes const> ctg(std::shared_ptr<Kifejezes const> kif) {
+        //     return std::make_shared<Ctg>(std::move(kif));
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator^(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
+        //     return std::make_shared<Hatvany>(a, b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator""_k(unsigned long long value) {
+        //     return std::make_shared<Konstans>(static_cast<float>(value));
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator""_k(long double value) {
+        //     return std::make_shared<Konstans>(static_cast<float>(value));
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator""_v(const char var) {
+        //     return std::make_shared<Valtozo>(var);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator+(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
+        //     return std::make_shared<Osszeg>(a, b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator-(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
+        //     return std::make_shared<Kulonbseg>(a, b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator*(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
+        //     return std::make_shared<Szorzat>(a, b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> operator/(std::shared_ptr<Kifejezes const> const & a, std::shared_ptr<Kifejezes const> const & b) {
+        //     return std::make_shared<Hanyados>(a, b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const> konst(float v)
+        // {
+        //     return std::make_shared<Konstans>(v);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator+(const std::shared_ptr<Kifejezes const>& a, float b)
+        // {
+        //     return a + konst(b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator-(const std::shared_ptr<Kifejezes const>& a, float b)
+        // {
+        //     return a - konst(b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator*(const std::shared_ptr<Kifejezes const>& a, float b)
+        // {
+        //     return a * konst(b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator/(const std::shared_ptr<Kifejezes const>& a, float b)
+        // {
+        //     return a / konst(b);
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator+(float a, const std::shared_ptr<Kifejezes const>& b)
+        // {
+        //     return konst(a) + b;
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator-(float a, const std::shared_ptr<Kifejezes const>& b)
+        // {
+        //     return konst(a) - b;
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator*(float a, const std::shared_ptr<Kifejezes const>& b)
+        // {
+        //     return konst(a) * b;
+        // }
+        //
+        // inline std::shared_ptr<Kifejezes const>
+        // operator/(float a, const std::shared_ptr<Kifejezes const>& b)
+        // {
+        //     return konst(a) / b;
+        // }
 
 
     }
 
-    namespace Valtozok {
-        using namespace Matek::Analizis;
-        typedef std::shared_ptr<Kifejezes const> Egyenlet;
-        inline std::shared_ptr<Kifejezes const> const x = 'x'_v;
-        inline std::shared_ptr<Kifejezes const> const y = 'y'_v;
-        inline std::shared_ptr<Kifejezes const> const z = 'z'_v;
-    }
+    // namespace Valtozok {
+    //     using namespace Matek::Analizis;
+    //     typedef std::shared_ptr<Kifejezes const> Egyenlet;
+    //     inline std::shared_ptr<Kifejezes const> const x = 'x'_v;
+    //     inline std::shared_ptr<Kifejezes const> const y = 'y'_v;
+    //     inline std::shared_ptr<Kifejezes const> const z = 'z'_v;
+    // }
 }
 
 #endif //MATEK_FUGGVENY_HPP

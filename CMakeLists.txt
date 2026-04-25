@@ -33,10 +33,10 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         model/Window.hpp
         model/Shader.cpp
         model/Shader.hpp
-#        objects/Gorbe.hpp
-#        objects/Vector.hpp
-#        objects/Point.hpp
-#        matek/Egyenlet.hpp
+        objects/Gorbe.hpp
+        objects/Vector.hpp
+        objects/Point.hpp
+        matek/Egyenlet.hpp
         particle_sampling/ImplicitSurface.cpp
         particle_sampling/Surface.cpp
         matek/Kif.hpp)

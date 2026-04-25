@@ -21,7 +21,8 @@ int main() {
     // 2. 3D-s kamera inicializálása
     Camera3D camera(glm::vec4(0.0f, 0.0f, 800.0f, 800.0f), glm::vec3(0.0f, 0.0f, 5.0f));
 
-    Gorbe gorbe{5.0f};
+    // Gorbe gorbe{5.0f};
+    ImplicitSurface is;
 
     while (!Window::window_schould_close()) {
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -29,7 +30,7 @@ int main() {
         // 3. Ne felejtsd el törölni a GL_DEPTH_BUFFER_BIT-et is a cikluson belül!
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        gorbe.draw(camera);
+        // gorbe.draw(camera);
         Window::event_handling();
     }
 

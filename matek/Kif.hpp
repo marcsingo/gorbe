@@ -43,6 +43,10 @@ namespace Matek {
                 return Kif(ptr->derrive(var));
             }
 
+            Kif derrive(Kif const & var) const {
+                return Kif(ptr->derrive(var.get()));
+            }
+
             // 4. Egyszerűsítés delegálása
             Kif simplify() const {
                 return Kif(ptr->simplify());
@@ -54,6 +58,10 @@ namespace Matek {
                 return os;
             }
         };
+
+        inline Kif const x = Kif(std::make_shared<Valtozo const>('x'));
+        inline Kif const y = Kif(std::make_shared<Valtozo const>('y'));
+        inline Kif const z = Kif(std::make_shared<Valtozo const>('z'));
 
         // 2. Innentől minden operátort CSAK EGYSZER kell megírni!
         inline Kif operator+(const Kif& a, const Kif& b) {
@@ -74,6 +82,18 @@ namespace Matek {
 
         inline Kif operator^(const Kif& a, const Kif& b) {
             return Kif(std::make_shared<Hatvany>(a.get(), b.get()));
+        }
+
+        inline Kif operator""_k(unsigned long long value) {
+            return Kif(static_cast<float>(value));
+        }
+
+        inline Kif operator""_k(long double value) {
+            return Kif(static_cast<float>(value));
+        }
+
+        inline Kif operator""_v(const char var) {
+            return Kif(var);
         }
 
         // Függvények is sokkal tisztábbak
