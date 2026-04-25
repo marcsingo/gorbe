@@ -33,15 +33,15 @@ public:
     //left, right, bottom, top
     glm::vec4 walls;
     Camera2D(glm::vec4 viewport) : Camera(viewport), offset(0), walls(0) {
-        Window::add_mouse_scroll_event([this](auto x, auto y) {
-            walls *= 1.0f - (0.1f * y);
+        Window::add_mouse_scroll_event([this](auto p) {
+            walls *= 1.0f - (0.1f * p.offsetY);
         });
 
-        Window::add_key_event([this](int key, int scancode, int action, int mode) {
+        Window::add_key_event([this](auto p) {
             // Reagálunk a lenyomásra és a folyamatos nyomva tartásra is
-            if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+            if (p.action == GLFW_PRESS || p.action == GLFW_REPEAT) {
                 float speed = 0.2f;
-                switch (key) {
+                switch (p.key) {
                     case GLFW_KEY_W: offset.y += speed; break; // Fel
                     case GLFW_KEY_S: offset.y -= speed; break; // Le
                     case GLFW_KEY_A: offset.x -= speed; break; // Balra

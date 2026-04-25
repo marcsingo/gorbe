@@ -28,6 +28,9 @@ template<size_t L>
 struct Surface {
     Kif F;
     std::function<glm::vec<L, float>(float)> q;
+
+    std::vector<Particle> floaters;
+    std::vector<Particle> controls;
 };
 
 class ImplicitSurface : public Model {
@@ -45,6 +48,8 @@ public:
             std::cout << surface.F.at({0, 1, 1}) << " ";
             std::cout << surface.F.derrive(&p).at({1, 1, 1}) << "\n";
         }
+
+
     }
 
 protected:

@@ -25,7 +25,7 @@ void Window::destroy_window() {
 
 void Window::key_callback(GLFWwindow *window, int key, int scancode, int action, int mode) {
     for (auto &f : key_events) {
-        f(key, scancode, action, mode);
+        f({key, scancode, action, mode});
     }
 }
 
@@ -35,7 +35,7 @@ void Window::add_key_event(KeyEvent&& f) {
 
 void Window::mouse_pos_callback(GLFWwindow *window, double x, double y) {
     for (auto &f : mouse_pos_events) {
-        f(x, y);
+        f({x, y});
     }
 }
 
@@ -45,7 +45,7 @@ void Window::add_mouse_pos_event(MousePosEvent&& f) {
 
 void Window::mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
     for (auto& f: mouse_button_events) {
-        f(button, action, mods);
+        f({button, action, mods});
     }
 }
 
@@ -55,7 +55,7 @@ void Window::add_mouse_button_event(MouseButtonEvent&& f) {
 
 void Window::mouse_scroll_callback(GLFWwindow *window, double x, double y) {
     for (auto& f : mouse_scroll_events) {
-        f(x, y);
+        f({x, y});
     }
 }
 
@@ -72,7 +72,7 @@ void Window::event_handling() {
 
     if (dt != 0.0f)
     for (auto &f : time_passed_events) {
-        f(t, dt);
+        f({t, dt});
     }
     glfwPollEvents();
 

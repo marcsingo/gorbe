@@ -35,20 +35,20 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position)
     update_camera_vectors();
 
     // 1. Egér mozgás (Nézelődés)
-    Window::add_mouse_pos_event([this](double xpos, double ypos) {
-        this->process_mouse_movement(static_cast<float>(xpos), static_cast<float>(ypos));
+    Window::add_mouse_pos_event([this](auto p) {
+        this->process_mouse_movement(static_cast<float>(p.x), static_cast<float>(p.y));
     });
 
     // 2. Görgő (FOV / Zoom)
-    Window::add_mouse_scroll_event([this](double xoffset, double yoffset) {
-        this->process_mouse_scroll(static_cast<float>(yoffset));
+    Window::add_mouse_scroll_event([this](auto p) {
+        this->process_mouse_scroll(static_cast<float>(p.offsetY));
     });
 
     // 3. Billentyűzet (Mozgás)
-    Window::add_key_event([this](int key, int scancode, int action, int mode) {
+    Window::add_key_event([this](auto p) {
         // A GLFW_REPEAT az operációs rendszer ismétlési sebességétől függ
-        if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-            this->process_keyboard(key);
+        if (p.action == GLFW_PRESS || p.action == GLFW_REPEAT) {
+            this->process_keyboard(p.key);
         }
     });
 

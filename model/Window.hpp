@@ -31,11 +31,11 @@ struct TimePassedEventInformation {
     double t, dt;
 };
 
-typedef std::function<void(int, int, int, int)> KeyEvent;
-typedef std::function<void(double, double)> MousePosEvent;
-typedef std::function<void(int, int, int)> MouseButtonEvent;
-typedef std::function<void(double, double)> MouseScrollEvent;
-typedef std::function<void(double, double)> TimePassedEvent;
+typedef std::function<void(KeyEventInformation)> KeyEvent;
+typedef std::function<void(MousePosEventInformation)> MousePosEvent;
+typedef std::function<void(MouseButtonEventInformation)> MouseButtonEvent;
+typedef std::function<void(MouseScrollEventInformation)> MouseScrollEvent;
+typedef std::function<void(TimePassedEventInformation)> TimePassedEvent;
 
 class Window {
 
