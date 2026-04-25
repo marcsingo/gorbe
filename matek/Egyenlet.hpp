@@ -8,6 +8,7 @@
 #include "Analizis.hpp"
 #include <glad/glad.h>
 
+
 using namespace Matek::Analizis;
 using namespace Matek::Valtozok;
 

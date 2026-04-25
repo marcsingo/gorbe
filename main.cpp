@@ -9,6 +9,7 @@
 #include "model/Window.hpp"
 #include "objects/Gorbe.hpp"
 #include "objects/Vector.hpp"
+#include "particle_sampling/ImplicitSurface.cpp"
 
 int main() {
     Utils::init_glfw();

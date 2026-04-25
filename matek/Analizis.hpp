@@ -19,6 +19,8 @@ namespace Matek {
             virtual float at(glm::vec3 const v) const = 0;
             float operator()(glm::vec3 const v) const { return at(v); }
             virtual std::shared_ptr<Kifejezes const> derrive(char var) const = 0;
+            virtual std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const = 0;
+            virtual std::shared_ptr<Kifejezes const> derrive(float const * var) const = 0;
             virtual void print(std::ostream& os) const = 0;
             virtual std::shared_ptr<Kifejezes const> simplify() const = 0;
             // virtual std::shared_ptr<Kifejezes> clone() const = 0;
@@ -39,6 +41,14 @@ namespace Matek {
             float get_value() const { return value; }
 
             std::shared_ptr<Kifejezes const> derrive(char var) const override {
+                return std::make_shared<Konstans>(0);
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+                return std::make_shared<Konstans>(0);
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
                 return std::make_shared<Konstans>(0);
             }
 
@@ -91,9 +101,7 @@ namespace Matek {
                 return get_bal()->at(v) + get_jobb()->at(v);
             }
 
-            // std::shared_ptr<Kifejezes> clone() const override {
-            //     return std::make_shared<Osszeg>(get_bal(), get_jobb().clone());
-            // }
+
 
             std::shared_ptr<Kifejezes const> simplify() const override {
                 std::shared_ptr<Kifejezes const> bal = get_bal()->simplify();
@@ -112,6 +120,20 @@ namespace Matek {
             }
 
             std::shared_ptr<Kifejezes const> derrive(char var) const override {
+                return std::make_shared<Osszeg>(
+                    get_bal()->derrive(var),
+                    get_jobb()->derrive(var)
+                    );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Osszeg>(
+                    get_bal()->derrive(var),
+                    get_jobb()->derrive(var)
+                    );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
                 return std::make_shared<Osszeg>(
                     get_bal()->derrive(var),
                     get_jobb()->derrive(var)
@@ -151,6 +173,20 @@ namespace Matek {
                         get_jobb()->derrive(var)
                 );
             }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Kulonbseg>(
+                        get_bal()->derrive(var),
+                        get_jobb()->derrive(var)
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+                return std::make_shared<Kulonbseg>(
+                        get_bal()->derrive(var),
+                        get_jobb()->derrive(var)
+                );
+            }
         protected:
             char const get_operator() const override {
                 return '-';
@@ -185,6 +221,20 @@ namespace Matek {
             }
 
             std::shared_ptr<Kifejezes const> derrive(char var) const override {
+                return std::make_shared<Osszeg>(
+                        std::make_shared<Szorzat>(get_bal()->derrive(var), get_jobb()),
+                        std::make_shared<Szorzat>(get_bal(), get_jobb()->derrive(var))
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Osszeg>(
+                        std::make_shared<Szorzat>(get_bal()->derrive(var), get_jobb()),
+                        std::make_shared<Szorzat>(get_bal(), get_jobb()->derrive(var))
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
                 return std::make_shared<Osszeg>(
                         std::make_shared<Szorzat>(get_bal()->derrive(var), get_jobb()),
                         std::make_shared<Szorzat>(get_bal(), get_jobb()->derrive(var))
@@ -231,6 +281,26 @@ namespace Matek {
                 );
             }
 
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Hanyados>(
+                    std::make_shared<Kulonbseg>(
+                        std::make_shared<Szorzat>(get_bal()->derrive(var), get_jobb()),
+                        std::make_shared<Szorzat>(get_bal(), get_jobb()->derrive(var))
+                    ),
+                    std::make_shared<Szorzat>(get_jobb(), get_jobb())
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+                return std::make_shared<Hanyados>(
+                    std::make_shared<Kulonbseg>(
+                        std::make_shared<Szorzat>(get_bal()->derrive(var), get_jobb()),
+                        std::make_shared<Szorzat>(get_bal(), get_jobb()->derrive(var))
+                    ),
+                    std::make_shared<Szorzat>(get_jobb(), get_jobb())
+                );
+            }
+
         protected:
             char const get_operator() const override {
                 return '/';
@@ -255,6 +325,15 @@ namespace Matek {
 
             std::shared_ptr<Kifejezes const> derrive(char var) const override {
                 return std::make_shared<Konstans>(this->var == var ? 1 : 0);
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Konstans>(0);
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+                if (this == var.get()) return std::make_shared<Konstans const>(1);
+                return std::make_shared<Konstans>(0);
             }
 
             void print(std::ostream &os) const override {
@@ -288,6 +367,20 @@ namespace Matek {
             }
 
             std::shared_ptr<Kifejezes const> derrive(char var) const override {
+                return std::make_shared<Szorzat>(
+                    get_fd(),
+                    kif->derrive(var)
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Szorzat>(
+                    get_fd(),
+                    kif->derrive(var)
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
                 return std::make_shared<Szorzat>(
                     get_fd(),
                     kif->derrive(var)
@@ -479,6 +572,44 @@ namespace Matek {
                 );
             }
 
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+                return std::make_shared<Szorzat>(
+                    std::make_shared<Hatvany>(get_bal(), get_jobb()),
+                    std::make_shared<Osszeg>(
+                        std::make_shared<Szorzat>(
+                            get_jobb()->derrive(var),
+                             std::make_shared<Ln>(get_bal())
+                        ),
+                        std::make_shared< Szorzat> (
+                            get_jobb(),
+                            std::make_shared<Hanyados>(
+                                get_bal()->derrive(var),
+                                get_bal()
+                            )
+                        )
+                    )
+                );
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                return std::make_shared<Szorzat>(
+                    std::make_shared<Hatvany>(get_bal(), get_jobb()),
+                    std::make_shared<Osszeg>(
+                        std::make_shared<Szorzat>(
+                            get_jobb()->derrive(var),
+                             std::make_shared<Ln>(get_bal())
+                        ),
+                        std::make_shared< Szorzat> (
+                            get_jobb(),
+                            std::make_shared<Hanyados>(
+                                get_bal()->derrive(var),
+                                get_bal()
+                            )
+                        )
+                    )
+                );
+            }
+
             std::shared_ptr<Kifejezes const> simplify() const override {
                 auto bal = get_bal()->simplify();
                 auto jobb = get_jobb()->simplify();
@@ -555,6 +686,50 @@ namespace Matek {
                 auto k = kif->simplify();
                 return std::make_shared<Ctg>(k);
             }
+        };
+
+        struct Parameter : public Kifejezes {
+            private:
+            char const id;
+            float const * ertek_ref;
+
+            public:
+            Parameter(float const * ref, char const id = 'p')
+                : id(id), ertek_ref(std::move(ref)) {
+                if (!ertek_ref) {
+                    // Biztonsági ellenőrzés
+                    throw std::invalid_argument("A parameter referenciaja nem lehet null!");
+                }
+            }
+
+             float at(glm::vec3 const v) const override {
+                return *ertek_ref;
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(char var) const override {
+                return std::make_shared<Konstans>(this->id == var ? 1.0f : 0.0f);
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+                if (ertek_ref == var) return std::make_shared<Konstans>(1);
+                return std::make_shared<Konstans>(0);
+            }
+
+            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+                if (this == var.get()) return std::make_shared<Konstans>(1);
+                return std::make_shared<Konstans>(0);
+            }
+
+            void print(std::ostream &os) const override {
+                // Érdemes vizuálisan megkülönböztetni a normál változóktól
+                os << "p_" << id;
+            }
+
+            std::shared_ptr<Kifejezes const> simplify() const override {
+                return std::make_shared<Parameter>(ertek_ref, id);
+            }
+
+
         };
 
         inline std::shared_ptr<Kifejezes const> ctg(std::shared_ptr<Kifejezes const> kif) {
