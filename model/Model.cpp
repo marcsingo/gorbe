@@ -18,7 +18,7 @@ Model::~Model() {
     glDeleteBuffers(1, &VBO);
 }
 
-void Model::update_buffers() {
+void Model::update_buffers() const {
     if (vertices.empty()) return;
 
     glBindVertexArray(VAO);
@@ -55,9 +55,9 @@ glm::mat4 Model::get_model_matrix() const {
 }
 
 // Figyelem: A 'const' jelölést eltávolítottuk, hogy egyezzen a Model.hpp deklarációval!
-void Model::draw(const Camera& camera) const {
-    if (shaderProgram == 0 || vertices.empty()) return;
-
+void Model::draw(const Camera& camera)  {
+    if (this->update_buffers_on_draw) update_buffers();
+    if (shaderProgram == 0 ) return;
     // 1. Állapotok beállítása (Shader + Mátrixok)
     glUseProgram(shaderProgram);
 
@@ -73,6 +73,7 @@ void Model::draw(const Camera& camera) const {
     // 2. Geometria aktiválása
     glBindVertexArray(VAO);
 
+    // if (update_buffers_on_draw) update_buffers();
     // 3. A tényleges kirajzolás delegálása a leszármazottnak!
     this->render(camera);
 

@@ -8,6 +8,32 @@ glm::mat4 Camera::get_matrix() const {
     return this->get_projection() * this->get_view();
 }
 
+glm::vec3 Camera::get_mouse_pos_in_world() const {
+    // 1. Ablak méreteinek lekérése (a Window osztályból)
+    int width = Window::get_width();
+    int height = Window::get_height();
+
+    // 2. Normalizált Eszközkoordináták (NDC) kiszámítása [-1.0, 1.0] tartományra
+    // Figyelem: Az Y-tengelyt invertáljuk, mert a GLFW 0-ja fent van, az OpenGL 0-ja lent!
+    auto minfo = Window::get_mouse_info();
+    float x_ndc = (2.0f * static_cast<float>(minfo.x)) / width - 1.0f;
+    float y_ndc = 1.0f - (2.0f * static_cast<float>(minfo.y)) / height;
+
+    // 3. Inverz kamera mátrix
+    glm::mat4 inverse_mat = glm::inverse(this->get_matrix());
+
+    // 4. Visszavetítés a világba (Z = 0.0f a 2D síkhoz)
+    glm::vec4 world_pos = inverse_mat * glm::vec4(x_ndc, y_ndc, 0.0f, 1.0f);
+
+    // 5. Homogén osztás (Bár 2D ortografikus vetítésnél a 'w' általában 1 marad,
+    // a 3D-s perspektivikus kamerádnál ez az osztás kötelező lesz!)
+    if (world_pos.w != 0.0f) {
+        world_pos /= world_pos.w;
+    }
+
+    return glm::vec3(world_pos.x, world_pos.y, world_pos.z);
+}
+
 #include "Camera.hpp"
 #include <gtc/matrix_transform.hpp> // Ez kell a glm::translate és glm::ortho függvényekhez
 

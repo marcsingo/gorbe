@@ -11,7 +11,9 @@ private:
     GLuint VAO, VBO;
     GLuint shaderProgram;
 
+
 protected:
+    bool update_buffers_on_draw = true;
     // Ebben tároljuk a csúcspontokat. A leszármazottak tudják módosítani.
     std::vector<glm::vec3> vertices;
 
@@ -24,10 +26,10 @@ protected:
     GLint get_uniform_location(const std::string& name) const;
 
     // Ezt kötelező megírni minden leszármazottnak! (Ettől absztrakt az osztály)
-    virtual void render(Camera const &camera) const = 0;
+    virtual void render(Camera const &camera) = 0;
 
     // Ezt a függvényt hívja a leszármazott, ha feltöltötte vagy módosította a vektort
-    void update_buffers();
+    void update_buffers() const;
 
 public:
     Model();
@@ -46,7 +48,7 @@ public:
     glm::mat4 get_model_matrix() const;
 
     // A fő rajzoló függvény (Template Method)
-    void draw(const Camera& camera) const;
+    void draw(const Camera& camera);
 
     void set_uniform(const std::string& name, int value) const;
     void set_uniform(const std::string& name, float value) const;

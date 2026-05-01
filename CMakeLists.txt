@@ -38,8 +38,10 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         objects/Point.hpp
         matek/Egyenlet.hpp
         particle_sampling/ImplicitSurface.cpp
-        particle_sampling/Surface.cpp
-        matek/Kif.hpp)
+        particle_sampling/Surface.hpp
+        matek/Kif.hpp
+        model/Include.hpp
+        particle_sampling/Particle.hpp)
 
 # 4. Az executable létrehozása
 add_executable(gorbe ${SOURCE_FILES}

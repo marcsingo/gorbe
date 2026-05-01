@@ -6,6 +6,9 @@ uniform vec3 color;
 out vec3 o_color;
 
 
+float f(float x, float y, float z);
+vec3 fd(float x, float y, float z);
+
 void main() {
 
 

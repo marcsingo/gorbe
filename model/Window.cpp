@@ -85,6 +85,13 @@ void Window::add_time_passed_event(TimePassedEvent &&f) {
     time_passed_events.push_back(std::move(f));
 }
 
+MousePosEventInformation Window::get_mouse_info() {
+    double x, y;
+    glfwGetCursorPos(window, &x, &y);
+
+    return {x, y};
+}
+
 
 
 

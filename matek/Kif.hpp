@@ -32,19 +32,19 @@ namespace Matek {
 
             // 3. Deriválás delegálása (Visszatérési érték automatikusan Kif-be csomagolva!)
             [[nodiscard]] Kif derrive(char var) const {
-                return Kif(ptr->derrive(var));
+                return Kif(ptr->derrive(var)).simplify();
             }
 
             Kif derrive(float const * var) const {
-                return Kif(ptr->derrive(var));
+                return Kif(ptr->derrive(var)).simplify();
             }
 
             Kif derrive(std::shared_ptr<Kifejezes const> var) const {
-                return Kif(ptr->derrive(var));
+                return Kif(ptr->derrive(var)).simplify();
             }
 
             Kif derrive(Kif const & var) const {
-                return Kif(ptr->derrive(var.get()));
+                return Kif(ptr->derrive(var.get())).simplify();
             }
 
             // 4. Egyszerűsítés delegálása

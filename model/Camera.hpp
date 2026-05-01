@@ -21,7 +21,9 @@ protected:
 public:
     Camera(glm::vec4 viewport) : viewport(viewport) {}
     glm::mat4 get_matrix() const;
+    glm::vec3 get_mouse_pos_in_world() const;
     virtual ~Camera() = default;
+
 };
 
 class Camera2D : public Camera {
@@ -32,7 +34,8 @@ public:
     glm::vec2 offset;
     //left, right, bottom, top
     glm::vec4 walls;
-    Camera2D(glm::vec4 viewport) : Camera(viewport), offset(0), walls(0) {
+    Camera2D(glm::vec4 viewport = glm::vec4{-10.0f, 10.0f, -10.0f, 10.0f})
+    : Camera(viewport), offset(0), walls{glm::vec4{-10.0f, 10.0f, -10.0f, 10.0f}} {
         Window::add_mouse_scroll_event([this](auto p) {
             walls *= 1.0f - (0.1f * p.offsetY);
         });

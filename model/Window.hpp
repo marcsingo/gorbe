@@ -9,6 +9,8 @@
 #include <functional>
 
 #include <glad/glad.h>
+
+#include "vec2.hpp"
 #include "GLFW/glfw3.h"
 
 struct KeyEventInformation {
@@ -17,6 +19,7 @@ struct KeyEventInformation {
 
 struct MousePosEventInformation {
     double x, y;
+    glm::vec2 operator()() const { return {x, y};}
 };
 
 struct MouseButtonEventInformation {
@@ -71,6 +74,8 @@ public:
     static void add_mouse_button_event(MouseButtonEvent&& f);
     static void add_mouse_scroll_event(MouseScrollEvent&& f);
     static void add_time_passed_event(TimePassedEvent&& f);
+
+    static MousePosEventInformation get_mouse_info();
 
     static void disable_cursor() {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
