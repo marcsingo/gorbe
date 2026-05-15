@@ -7,6 +7,7 @@
 #include "../model/Include.hpp"
 #include "Surface.hpp"
 #include <algorithm>
+#include <vector>
 
 template<size_t L>
 struct Particle {
@@ -84,49 +85,115 @@ struct ControlPoints final : public Particles<L> {
 private:
     Particle<L>* selected = nullptr;
     bool shift_is_on = false;
+    Surface<L>* surface = nullptr;
+    float phi = 15.0f;
+
+    // Gauss-elimináció részleges főelem-kereséssel: M*x = b
+    static std::vector<float> solve_linear(std::vector<std::vector<float>> M,
+                                           std::vector<float> b) {
+        int n = (int)b.size();
+        for (int col = 0; col < n; ++col) {
+            int pivot = col;
+            for (int row = col + 1; row < n; ++row)
+                if (std::abs(M[row][col]) > std::abs(M[pivot][col]))
+                    pivot = row;
+            std::swap(M[col], M[pivot]);
+            std::swap(b[col], b[pivot]);
+            if (std::abs(M[col][col]) < 1e-10f) continue;
+            for (int row = col + 1; row < n; ++row) {
+                float f = M[row][col] / M[col][col];
+                for (int k = col; k < n; ++k)
+                    M[row][k] -= f * M[col][k];
+                b[row] -= f * b[col];
+            }
+        }
+        std::vector<float> x(n, 0.0f);
+        for (int i = n - 1; i >= 0; --i) {
+            if (std::abs(M[i][i]) < 1e-10f) continue;
+            float sum = b[i];
+            for (int j = i + 1; j < n; ++j)
+                sum -= M[i][j] * x[j];
+            x[i] = sum / M[i][i];
+        }
+        return x;
+    }
+
 public:
+    void set_surface(Surface<L>* s) { surface = s; }
+
     ControlPoints(int size, const glm::vec3 &color, Camera const &camera)
         : Particles<L>(size, color, camera) {
+
         Window::add_mouse_button_event([this, &camera](auto p) {
-                if (p.action == GLFW_PRESS && p.button == GLFW_MOUSE_BUTTON_LEFT) {
-                    if (shift_is_on ) {
-                        this->particles.push_back(Particle<L>{camera.get_mouse_pos_in_world()});
-                        return;
-                    }
-                    if (selected != nullptr) {
-                        selected = nullptr;
-                        return;
-                    }
-                    auto mpos = camera.get_mouse_pos_in_world();
-                    for (auto& part : this->particles) {
-                        if (glm::length(mpos - part.p) < 0.5f) {
-                            this->selected = &part;
-
-                        }
-                    }
+            if (p.action == GLFW_PRESS && p.button == GLFW_MOUSE_BUTTON_LEFT) {
+                if (shift_is_on) {
+                    this->particles.push_back(Particle<L>{camera.get_mouse_pos_in_world()});
+                    return;
                 }
-            });
-
-        Window::add_key_event([this, &camera](auto p) {
-           if (p.key == GLFW_KEY_LEFT_SHIFT) {
-               if (p.action == GLFW_PRESS) {
-                   shift_is_on = true;
-               } else {
-                   shift_is_on = false;
-               }
-           }
+                if (selected != nullptr) {
+                    selected = nullptr;
+                    return;
+                }
+                auto mpos = camera.get_mouse_pos_in_world();
+                for (auto& part : this->particles) {
+                    if (glm::length(mpos - part.p) < 0.5f)
+                        this->selected = &part;
+                }
+            }
         });
 
-        Window::add_time_passed_event([this, &camera](auto p) {
-            if (this->selected != nullptr) {
+        Window::add_key_event([this](auto p) {
+            if (p.key == GLFW_KEY_LEFT_SHIFT)
+                shift_is_on = (p.action == GLFW_PRESS);
+        });
 
-                std::cout << selected->p_dot.x << " " << selected->p_dot.y << std::endl;
-
+        Window::add_time_passed_event([this, &camera](auto ev) {
+            // 1. Mozgatott pont sebességének és pozíciójának frissítése
+            if (selected != nullptr) {
                 auto mpos = camera.get_mouse_pos_in_world();
-                this->selected->p_dot = 10.0f * (mpos - selected->p);
-                this->selected->p += selected->p_dot*static_cast<float>(p.dt);
+                selected->p_dot = 10.0f * (mpos - selected->p);
+                selected->p += selected->p_dot * static_cast<float>(ev.dt);
             }
 
+            if (surface == nullptr || this->particles.empty()) return;
+
+            int n = (int)this->particles.size();
+
+            // F_q^i gyűjtése minden control ponthoz
+            std::vector<glm::vec<L, float>> F_q_all(n);
+            std::vector<float> b_vec(n);
+
+            for (int i = 0; i < n; ++i) {
+                auto& pi = this->particles[i];
+                // P^i: csak a kijelölt pontnál nem nulla (7. egyenlet jobb oldala)
+                glm::vec3 P_i = (&pi == selected) ? pi.p_dot : glm::vec3{0};
+
+                F_q_all[i] = surface->get_F_q(pi.p);
+                float F_i   = surface->F.at(pi.p);
+                glm::vec3 F_x_i = surface->grad(pi.p);
+
+                // b[i] = F_x^i · P^i + phi * F^i
+                b_vec[i] = glm::dot(F_x_i, P_i) + phi * F_i;
+            }
+
+            // M[i][j] = F_q^i · F_q^j  (7. egyenlet mátrixa)
+            std::vector<std::vector<float>> M(n, std::vector<float>(n, 0.0f));
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; j < n; ++j)
+                    M[i][j] = glm::dot(F_q_all[i], F_q_all[j]);
+
+            // Mλ = b megoldása
+            auto lambda = solve_linear(M, b_vec);
+
+            // q_dot = Q - Σ lambda_j * F_q^j,  Q = 0 (8. egyenlet)
+            glm::vec<L, float> q_dot{0};
+            for (int j = 0; j < n; ++j)
+                q_dot -= lambda[j] * F_q_all[j];
+
+            surface->q_dot = q_dot;
+
+            // q Euler-integrálása (8. egyenlet utáni lépés a cikkben)
+            surface->q += q_dot * static_cast<float>(ev.dt);
         });
     }
 };
