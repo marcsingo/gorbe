@@ -24,18 +24,23 @@ struct Const {
 
 
 
-
+template<size_t L>
 class ImplicitSurface {
     Circle surface;
-    Floaters floaters;
-    ControlPoints controls;
+    Floaters<L> floaters;
+    ControlPoints<L> controls;
+
+    std::mt19937 rng;
+    std::uniform_real_distribution<float> dist_R;
 public:
     explicit ImplicitSurface(Camera const &camera) :
         floaters{5, {0, 0, 1}, camera},
-        controls{10, {1, 0, 0}, camera}
+        controls{10, {1, 0, 0}, camera},
+    rng(std::random_device{}()),
+    dist_R(0.0f, 1.0f)
     {
         //véletlen pontok generálása
-            int n = 50; // Hány darab pontot szeretnél?
+            int n = 20; // Hány darab pontot szeretnél?
         {
             float spread = 5.0f; // Milyen széles térrészben (pl. -5.0 és +5.0 között)
 
@@ -54,155 +59,130 @@ public:
                 // Ha csak 2D-ben akarod szétszórni őket, a z-t állítsd 0.0f-re!
                 float z = 0; //dist(gen);
 
+                auto p = Particle<3>{{x, y, z}};
+                p.sigma = sigma_max;
+
                 // Hozzáadjuk a floaters (vagy controls) tárolóhoz.
                 // A dupla kapcsos zárójel azért kell, mert a Particle első adata a glm::vec3 pozíció.
-                floaters.add_particle(Particle{{x, y, z}});
+                controls.add_particle(p);
             }
         }
 
          Window::add_time_passed_event([this](auto p) {
             glm::vec3 q_dot = surface.q_dot;
+                static float dt = 0;
+             dt += p.dt;
 
-             this->update_floaters(p.dt);
+             if (dt >= 0.003f) {
+             this->simulation(p.t, p.dt);
+                 dt = 0.0f;
+             } else {
+
+                 dt += p.dt;
+             }
         });
 
     }
 
-    void update_floaters(float dt) {
-        auto& particles = floaters.ps();
-        auto q_dot = surface.q_dot;
+    float const d = 5.0f;
 
-        for (auto& pp:particles) {
-            pp.update_surface_data(surface);
-        }
-        calculate_repulsion(floaters.ps());
-        float alpha = 6.0f;
-        float E_hat = 0.8f * alpha;
-        float rho = 15.0f;
-        float beta = 10.0f;
-        float sigma_hat = 0.5f;
-        float sigma_max = 1.5f * sigma_hat;
-        float gamma = 4.0f;
-        float nu = 0.2f;
-        float delta_death = 0.7f;
+    float const alpha = 6.0f;
+    float const sigma = 1.0f;
+    float const PHI = 15.0f;
+    float const E_v = 0.8f * alpha;
+    float const rho = PHI;
+    float const beta = 10.0f;
+    float const gamma = 4.0f;
+    float const sigma_v = d / 4.0f;
+    float const sigma_max = std::max(d/2.0f, 1.5f * sigma_v);
+    float const nu = 0.2f;
+    float const delta = 0.7f;
+    float const fraction = 0.1f;
 
-        std::vector<Particle> next_generation;
-        next_generation.reserve(particles.size()*2);
+    void calculate_particle(Particle<L>& p) {
+        p.F = surface.F.at(p.p);
+        p.F_x = surface.grad(p.p);
+        p.P = glm::vec3{0};
+        p.D = 0.0f;
+        p.D_sigma = 0.0f;
+    }
 
-        for (auto& pp : particles) {
+    void simulation(float t, float dt) {
+        std::vector<Particle<L>> particles;
+        for (auto& i : controls.ps()) {
+            calculate_particle(i);
 
+            for (auto& j : controls.ps()) {
+                if (&i == &j) continue;
+                auto r = i.p - j.p;
+                auto E_ij = alpha*std::exp(-glm::dot(r, r) / (i.sigma*i.sigma*2));
+                auto E_ji = alpha*std::exp(-glm::dot(-r, -r) / (j.sigma*j.sigma*2));
+                i.P += r / (i.sigma*i.sigma) * E_ij + r / (j.sigma*j.sigma) * E_ji;
+                i.D += E_ij;
 
-            auto F_q = surface.get_F_q(pp.p);
+                i.D_sigma += glm::dot(r, r)*E_ij;
 
-            float dot_Fq_qdot = glm::dot(F_q, q_dot);
-            float dot_Fx_P = glm::dot(pp.F_x, pp.P);
-            float grad_sq = glm::dot(pp.F_x, pp.F_x);
+            }
+            i.P *= i.sigma*i.sigma;
 
+            i.D_dot = -rho*(i.D - E_v);
+            i.D_sigma *= (1/(i.sigma*i.sigma*i.sigma));
 
-            if (grad_sq > 0.0001f) {
-                float lambda = (dot_Fx_P + dot_Fq_qdot + 15.0f * pp.F) / grad_sq;
-                pp.p_dot = pp.P - lambda * pp.F_x;
+            i.sigma += (i.D_dot / (i.D_sigma +  beta)) * dt;
+            i.sigma = std::max(i.sigma, 1e-3f);
+
+            if (glm::length(i.F_x) > 1e-6f) {
+                i.p_dot =
+                    i.P -
+                        ((glm::dot(i.F_x, i.P) + glm::dot(surface.q_dot,surface.get_F_q(i.p)) + PHI*i.F)
+                            /
+                        glm::dot(i.F_x, i.F_x)) * i.F_x;
             } else {
-                pp.p_dot = glm::vec3{0};
+                i.p_dot = glm::vec3(0,0,0);
             }
 
-            pp.p += pp.p_dot * dt;
+            i.p += i.p_dot * dt;
 
-            float D_dot = -rho * (pp.D - E_hat);
-            float sigma_dot = D_dot / (pp.D_sigma + beta);
-            pp.sigma += sigma_dot * dt;
-            pp.sigma = std::clamp(pp.sigma, 0.1f, 3.0f);
+            float R = dist_R(rng);
 
-            bool survive = true;
+            if (glm::length(i.p_dot) < gamma*i.sigma &&
+                (i.sigma > sigma_max || (i.D > nu * E_v && i.sigma > sigma_v)))
+            {
+                //fisszó
+                i.sigma /= std::sqrt(2.0f);
 
-            float equilibrium_speed = glm::length(pp.P);
+                auto rand_dir = glm::normalize(glm::vec3{
+                    dist_R(rng) - 0.5f,
+                    dist_R(rng) - 0.5f,
+                    dist_R(rng) - 0.5f
+                });
 
-            if (equilibrium_speed < gamma *pp.sigma) {
-                if (pp.sigma < delta_death * sigma_hat) {
-                    float R = (float)rand() / (float)RAND_MAX;
-                    if (R > pp.sigma /(delta_death * sigma_hat)) {
-                        survive = false;
-                    }
-                }
+                auto offset = rand_dir * fraction * i.sigma;
+                i.p += offset;
+                particles.push_back(i);
 
-                if (survive &&
-                    (pp.sigma > sigma_max ||( pp.D > nu * E_hat && pp.sigma > sigma_hat))) {
-                    pp.sigma /= 1.41421f;
 
-                    Particle child = pp;
+                Particle<L> child = i;
+                child.p -= 2.0f* offset;
+                particles.push_back(child);
 
-                    glm::vec3 tangent = glm::vec3(-pp.F_x.y, pp.F_x.x, 0.0f);
-                    if (glm::length(tangent) > 0.001f) tangent = glm::normalize(tangent);
-                    else tangent = glm::vec3(1.0f, 0, 0);
 
-                    float offset = ((float)rand() / RAND_MAX -0.5f) * pp.sigma;
-                    child.p += tangent * offset;
+            } else if (
+                glm::length(i.p_dot) < gamma*i.sigma &&
+                i.sigma < delta*sigma_v &&
+                R > i.sigma/(delta*sigma_v))
+            {
+                //halál
 
-                    next_generation.push_back(child);
-                }
+            } else {
+                //megmarad a pont
+                particles.push_back(i);
             }
 
-            if (survive) {
-                next_generation.push_back(pp);
-            }
+
         }
-
-        if (next_generation.empty()) {
-            Particle seed;
-            seed.p = {surface.q.x, surface.q.y + surface.q.z, 0.0f}; // Kör teteje
-            seed.sigma = sigma_hat;
-            next_generation.push_back(seed);
-        }
-
-        // particles = std::move(next_generation);
+        controls.ps() = particles;
     }
-
-    void calculate_repulsion(std::vector<Particle>& particles) {
-       for (auto& pp : particles) {
-            pp.P = glm::vec3(0.0f);
-            pp.D = 0.0f;
-            pp.D_sigma = 0.0f;
-        }
-
-        for (size_t i = 0; i < particles.size(); i++) {
-            for (size_t j = i + 1; j < particles.size(); j++) {
-
-                auto& p1 = particles[i];
-                auto& p2 = particles[j];
-
-                glm::vec3 r = p1.p - p2.p; // Vektor p2-ből p1-be
-                float dist_sq = glm::dot(r, r);
-
-                float sig1_sq = p1.sigma * p1.sigma;
-                float sig2_sq = p2.sigma * p2.sigma;
-
-                if (dist_sq > 9.0f * std::max(sig1_sq, sig2_sq)) continue;
-
-                float E_ij = 0.0f;
-                float E_ji = 0.0f;
-
-                if (dist_sq < 9.0f * sig1_sq) {
-                    E_ij = 6.0f * std::exp(-dist_sq / (2.0f * sig1_sq));
-                    p1.D_sigma += (dist_sq / (p1.sigma * sig1_sq)) * E_ij;
-                }
-
-                if (dist_sq < 9.0f * sig2_sq) {
-                    E_ji = 6.0f * std::exp(-dist_sq / (2.0f * sig2_sq));
-                    p2.D_sigma += (dist_sq / (p2.sigma * sig2_sq)) * E_ji;
-                }
-
-               float total_energy = E_ij + E_ji;
-                p1.D += total_energy;
-                p2.D += total_energy;
-
-                float shared_scalar = (E_ij / sig1_sq) + (E_ji / sig2_sq);
-
-                p1.P += sig1_sq * r * shared_scalar;
-                p2.P -= sig2_sq * r * shared_scalar; // Kivonjuk, mert p2-ből nézve a vektor -r
-            }
-        }
-    }
-
 
     void draw(const Camera &camera) {
         floaters.draw(camera);

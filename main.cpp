@@ -22,7 +22,7 @@ int main() {
     // Camera3D camera(glm::vec4(0.0f, 0.0f, 800.0f, 800.0f), glm::vec3(0.0f, 0.0f, 5.0f));
     Camera2D camera;
     // Gorbe gorbe{5.0f};
-    ImplicitSurface is{camera};
+    ImplicitSurface<3> is{camera};
 
     while (!Window::window_schould_close()) {
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);

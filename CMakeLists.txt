@@ -28,6 +28,23 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         model/Scene.cpp
         model/Scene.hpp
         matek/Analizis.hpp
+        matek/Kifejezes.hpp
+        matek/levelek/Konstans.hpp
+        matek/levelek/Valtozo.hpp
+        matek/levelek/Parameter.hpp
+        matek/muveletek/KetOperandus.hpp
+        matek/muveletek/Osszeg.hpp
+        matek/muveletek/Kulonbseg.hpp
+        matek/muveletek/Szorzat.hpp
+        matek/muveletek/Hanyados.hpp
+        matek/muveletek/Hatvany.hpp
+        matek/fuggvenyek/Fuggveny.hpp
+        matek/fuggvenyek/Ln.hpp
+        matek/fuggvenyek/Log.hpp
+        matek/fuggvenyek/Sin.hpp
+        matek/fuggvenyek/Cos.hpp
+        matek/fuggvenyek/Tan.hpp
+        matek/fuggvenyek/Ctg.hpp
         model/Window.cpp
         model/Window.hpp
         model/Window.hpp
