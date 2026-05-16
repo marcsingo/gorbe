@@ -48,21 +48,30 @@ GLuint Builder::ShaderBuilder::compile_shader(GLenum type, std::vector<std::stri
     glGetShaderiv(shader_id, GL_COMPILE_STATUS, &success);
     if (!success) {
         char infoLog[512];
-        glGetShaderInfoLog(type, 512, nullptr, infoLog);
-        std::string typeStr = (type == GL_VERTEX_SHADER) ? "VERTEX" : "FRAGMENT";
+        glGetShaderInfoLog(shader_id, 512, nullptr, infoLog);
+        std::string typeStr = (type == GL_VERTEX_SHADER)   ? "VERTEX"
+                            : (type == GL_GEOMETRY_SHADER) ? "GEOMETRY"
+                                                           : "FRAGMENT";
         std::cerr << "HIBA::SHADER::" << typeStr << "::FORDITASI_HIBA\n" << infoLog << std::endl;
     }
 
     return shader_id;
 }
 
+Builder::ShaderBuilder& Builder::ShaderBuilder::add_geometry_shader(const char* fileName) {
+    this->geometryShader.push_back(read_from_file(fileName));
+    return *this;
+}
+
 GLuint Builder::ShaderBuilder::build() {
-    GLuint vertexShader = compile_shader(GL_VERTEX_SHADER, this->vertexShader);
+    GLuint vertexShader   = compile_shader(GL_VERTEX_SHADER,   this->vertexShader);
+    GLuint geometryShader = compile_shader(GL_GEOMETRY_SHADER, this->geometryShader);
     GLuint fragmentShader = compile_shader(GL_FRAGMENT_SHADER, this->fragmentShader);
 
     GLuint shaderProgram = glCreateProgram();
 
-    if (vertexShader) glAttachShader(shaderProgram, vertexShader);
+    if (vertexShader)   glAttachShader(shaderProgram, vertexShader);
+    if (geometryShader) glAttachShader(shaderProgram, geometryShader);
     if (fragmentShader) glAttachShader(shaderProgram, fragmentShader);
 
     glLinkProgram(shaderProgram);
@@ -75,7 +84,8 @@ GLuint Builder::ShaderBuilder::build() {
         std::cerr << "HIBA::SHADER::PROGRAM::LINKELESI_HIBA\n" << infoLog << std::endl;
     }
 
-    if (vertexShader) glDeleteShader(vertexShader);
+    if (vertexShader)   glDeleteShader(vertexShader);
+    if (geometryShader) glDeleteShader(geometryShader);
     if (fragmentShader) glDeleteShader(fragmentShader);
 
     return shaderProgram;

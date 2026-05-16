@@ -32,7 +32,7 @@ void Model::update_buffers() const {
     glEnableVertexAttribArray(0);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    // VAO intentionally left bound so render() can safely add more attributes after this call
 }
 
 void Model::set_shader(GLuint shader) {

@@ -22,6 +22,11 @@ public:
     Camera(glm::vec4 viewport) : viewport(viewport) {}
     glm::mat4 get_matrix() const;
     glm::vec3 get_mouse_pos_in_world() const;
+
+    // Sugár–sík metszéspontja (3D drag). Alap implementáció: 2D fallback.
+    virtual glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const;
+    virtual glm::vec3 get_front() const { return glm::vec3(0.0f, 0.0f, -1.0f); }
+
     virtual ~Camera() = default;
 
 };
@@ -77,6 +82,8 @@ private:
     float last_x;
     float last_y;
     bool first_mouse;
+    bool right_mouse_down = false;
+    bool left_mouse_down  = false;
 
     void update_camera_vectors();
 
@@ -87,7 +94,9 @@ protected:
 public:
     Camera3D(glm::vec4 viewport, glm::vec3 start_position = glm::vec3(0.0f, 0.0f, 3.0f));
 
-    // Publikus metódusok az események manuális hívásához, ha nem a konstruktorban kötjük be
+    glm::vec3 get_front() const override { return front; }
+    glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;
+
     void process_keyboard(int key);
     void process_mouse_movement(float xpos, float ypos);
     void process_mouse_scroll(float yoffset);

@@ -13,6 +13,7 @@
 namespace Builder {
     class ShaderBuilder {
         std::vector<std::string> vertexShader;
+        std::vector<std::string> geometryShader;
         std::vector<std::string> fragmentShader;
 
         std::string read_from_file(const char* fileName);
@@ -21,6 +22,7 @@ namespace Builder {
     public:
         ShaderBuilder& add_vertex_shader(std::string  & text);
         ShaderBuilder& add_vertex_shader(const char* fileName);
+        ShaderBuilder& add_geometry_shader(const char* fileName);
         ShaderBuilder& add_fragment_shader(std::string & text);
         ShaderBuilder& add_fragment_shader(const char* fileName);
 

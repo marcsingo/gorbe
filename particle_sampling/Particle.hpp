@@ -38,52 +38,77 @@ struct Particle {
 template<size_t L>
 struct Particles : Model {
 private:
-
-    int p_size;
     glm::vec3 color;
 
-
+    static constexpr int DISK_SEGS = 16;
+    static constexpr float TWO_PI  = 6.28318530718f;
 
 protected:
     std::vector<Particle<L>> particles;
+
     void render(const Camera &camera) override {
-        this->vertices.resize(particles.size());
-        for (int i = 0; i < particles.size(); i++) {
-            this->vertices[i] = particles[i].p;
+        if (particles.empty()) return;
+
+        // CPU-oldalon korong-háromszögek generálása minden részecskéhez.
+        // Minden korong 16 háromszögből áll (fan), összesen 48 csúcs/részecske.
+        this->vertices.clear();
+        this->vertices.reserve(particles.size() * DISK_SEGS * 3);
+
+        for (auto& p : particles) {
+            glm::vec3 N = (glm::length(p.F_x) > 1e-6f)
+                ? glm::normalize(p.F_x)
+                : glm::vec3(0.0f, 1.0f, 0.0f);
+
+            glm::vec3 helper = (std::abs(N.x) < 0.9f)
+                ? glm::vec3(1.0f, 0.0f, 0.0f)
+                : glm::vec3(0.0f, 1.0f, 0.0f);
+            glm::vec3 T = glm::normalize(glm::cross(N, helper));
+            glm::vec3 B = glm::cross(N, T);
+
+            for (int i = 0; i < DISK_SEGS; i++) {
+                float a0 = TWO_PI * float(i)     / float(DISK_SEGS);
+                float a1 = TWO_PI * float(i + 1) / float(DISK_SEGS);
+                this->vertices.push_back(p.p);
+                this->vertices.push_back(p.p + p.sigma * (std::cos(a0) * T + std::sin(a0) * B));
+                this->vertices.push_back(p.p + p.sigma * (std::cos(a1) * T + std::sin(a1) * B));
+            }
         }
-        glPointSize(p_size);
+
+        // Feltöltés a GPU-ra (update_buffers hagyja a VAO-t kötve)
+        this->update_buffers();
+
         this->set_uniform("color", color);
-        glDrawArrays(GL_POINTS, 0, vertices.size());
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)this->vertices.size());
     }
+
 public:
-    std::vector<Particle<L>>& ps(){ return particles; };
-    Particles(int size, glm::vec3 color, Camera const & camera) : p_size{size}, color{color} {
-        this->update_buffers_on_draw = true;
+    std::vector<Particle<L>>& ps() { return particles; }
+
+    Particles(int /*size*/, glm::vec3 color, Camera const& camera) : color{color} {
+        this->update_buffers_on_draw = false; // render() kezeli a feltöltést
+
         Builder::ShaderBuilder builder;
         set_shader(builder
-            .add_vertex_shader("../particle_sampling/vertex.vert")
+            .add_vertex_shader  ("../particle_sampling/vertex.vert")
             .add_fragment_shader("../particle_sampling/fragment.glsl")
             .build());
-
-
-
     }
+
+    ~Particles() = default;
 
     void add_particle(Particle<L> p) {
         particles.push_back(p);
     }
 
-    Particle<L>& operator[](size_t i) { return particles[i]; };
+    Particle<L>& operator[](size_t i) { return particles[i]; }
 
-    size_t size() {return particles.size();}
-
-
+    size_t size() { return particles.size(); }
 };
 
 template<size_t L>
 struct ControlPoints final : public Particles<L> {
 private:
-    Particle<L>* selected = nullptr;
+    int selected_idx = -1;
     bool shift_is_on = false;
     Surface<L>* surface = nullptr;
     float phi = 15.0f;
@@ -125,19 +150,25 @@ public:
         : Particles<L>(size, color, camera) {
 
         Window::add_mouse_button_event([this, &camera](auto p) {
-            if (p.action == GLFW_PRESS && p.button == GLFW_MOUSE_BUTTON_LEFT) {
-                if (shift_is_on) {
-                    this->particles.push_back(Particle<L>{camera.get_mouse_pos_in_world()});
-                    return;
-                }
-                if (selected != nullptr) {
-                    selected = nullptr;
-                    return;
-                }
-                auto mpos = camera.get_mouse_pos_in_world();
-                for (auto& part : this->particles) {
-                    if (glm::length(mpos - part.p) < 0.5f)
-                        this->selected = &part;
+            if (p.button == GLFW_MOUSE_BUTTON_LEFT && !(p.mods & GLFW_MOD_ALT)) {
+                if (p.action == GLFW_PRESS) {
+                    if (shift_is_on) {
+                        auto pos = camera.get_mouse_pos_on_plane(glm::vec3(0.0f), camera.get_front());
+                        Particle<L> cp{pos};
+                        cp.sigma = 0.5f; // fix vizuális sugár kontrollpontokhoz
+                        if (surface) cp.F_x = surface->grad(pos);
+                        this->particles.push_back(cp);
+                        return;
+                    }
+                    for (int i = 0; i < (int)this->particles.size(); ++i) {
+                        auto mpos = camera.get_mouse_pos_on_plane(this->particles[i].p, camera.get_front());
+                        if (glm::length(mpos - this->particles[i].p) < 0.5f) {
+                            selected_idx = i;
+                            break;
+                        }
+                    }
+                } else if (p.action == GLFW_RELEASE) {
+                    selected_idx = -1;
                 }
             }
         });
@@ -149,10 +180,13 @@ public:
 
         Window::add_time_passed_event([this, &camera](auto ev) {
             // 1. Mozgatott pont sebességének és pozíciójának frissítése
-            if (selected != nullptr) {
-                auto mpos = camera.get_mouse_pos_in_world();
-                selected->p_dot = 10.0f * (mpos - selected->p);
-                selected->p += selected->p_dot * static_cast<float>(ev.dt);
+            if (selected_idx >= 0 && selected_idx < (int)this->particles.size()) {
+                auto& sel = this->particles[selected_idx];
+                auto mpos = camera.get_mouse_pos_on_plane(sel.p, camera.get_front());
+                sel.p_dot = 10.0f * (mpos - sel.p);
+                sel.p += sel.p_dot * static_cast<float>(ev.dt);
+                // Normális frissítése vonszoláskor (korong orientációja kövesse a felszínt)
+                if (surface) sel.F_x = surface->grad(sel.p);
             }
 
             if (surface == nullptr || this->particles.empty()) return;
@@ -166,7 +200,7 @@ public:
             for (int i = 0; i < n; ++i) {
                 auto& pi = this->particles[i];
                 // P^i: csak a kijelölt pontnál nem nulla (7. egyenlet jobb oldala)
-                glm::vec3 P_i = (&pi == selected) ? pi.p_dot : glm::vec3{0};
+                glm::vec3 P_i = (i == selected_idx) ? pi.p_dot : glm::vec3{0};
 
                 F_q_all[i] = surface->get_F_q(pi.p);
                 float F_i   = surface->F.at(pi.p);

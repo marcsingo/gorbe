@@ -34,6 +34,10 @@ glm::vec3 Camera::get_mouse_pos_in_world() const {
     return glm::vec3(world_pos.x, world_pos.y, world_pos.z);
 }
 
+glm::vec3 Camera::get_mouse_pos_on_plane(glm::vec3 /*plane_point*/, glm::vec3 /*plane_normal*/) const {
+    return get_mouse_pos_in_world();
+}
+
 #include "Camera.hpp"
 #include <gtc/matrix_transform.hpp> // Ez kell a glm::translate és glm::ortho függvényekhez
 
@@ -60,25 +64,46 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position)
 
     update_camera_vectors();
 
-    // 1. Egér mozgás (Nézelődés)
+    // 1. Egér mozgás (csak jobb gomb lenyomva esetén forgat)
     Window::add_mouse_pos_event([this](auto p) {
         this->process_mouse_movement(static_cast<float>(p.x), static_cast<float>(p.y));
     });
 
-    // 2. Görgő (FOV / Zoom)
+    // 2. Egérgomb figyelése: jobb gomb VAGY Alt+bal gomb = forgás mód
+    Window::add_mouse_button_event([this](auto p) {
+        if (p.button == GLFW_MOUSE_BUTTON_RIGHT) {
+            if (p.action == GLFW_PRESS) {
+                right_mouse_down = true;
+                first_mouse = true;
+            } else if (p.action == GLFW_RELEASE) {
+                right_mouse_down = false;
+            }
+        }
+        if (p.button == GLFW_MOUSE_BUTTON_LEFT) {
+            if (p.action == GLFW_PRESS && (p.mods & GLFW_MOD_ALT)) {
+                left_mouse_down = true;
+                first_mouse = true;
+            } else if (p.action == GLFW_RELEASE) {
+                left_mouse_down = false;
+            }
+        }
+    });
+
+    // 3. Görgő (FOV / Zoom)
     Window::add_mouse_scroll_event([this](auto p) {
         this->process_mouse_scroll(static_cast<float>(p.offsetY));
     });
 
-    // 3. Billentyűzet (Mozgás)
+    // 4. Billentyűzet (Mozgás + Alt figyelés)
     Window::add_key_event([this](auto p) {
-        // A GLFW_REPEAT az operációs rendszer ismétlési sebességétől függ
         if (p.action == GLFW_PRESS || p.action == GLFW_REPEAT) {
             this->process_keyboard(p.key);
         }
+        if ((p.key == GLFW_KEY_LEFT_ALT || p.key == GLFW_KEY_RIGHT_ALT)
+                && p.action == GLFW_RELEASE) {
+            left_mouse_down = false;
+        }
     });
-
-    Window::disable_cursor();
 
     // FIGYELEM: Ehhez szükséged lesz egy kurzor pozíciót figyelő eseményre a Window osztályban!
     // Window::add_cursor_event([this](double xpos, double ypos) {
@@ -120,28 +145,51 @@ void Camera3D::process_mouse_movement(float xpos, float ypos) {
         last_x = xpos;
         last_y = ypos;
         first_mouse = false;
+        return;
     }
 
     float xoffset = xpos - last_x;
-    float yoffset = last_y - ypos; // Fordítva van, mert az Y koordináták lentről felfelé nőnek 3D-ben
+    float yoffset = last_y - ypos;
     last_x = xpos;
     last_y = ypos;
+
+    if (!right_mouse_down && !left_mouse_down) return;
 
     xoffset *= mouse_sensitivity;
     yoffset *= mouse_sensitivity;
 
-    yaw += xoffset;
+    yaw   += xoffset;
     pitch += yoffset;
 
-    // Pitch korlátozása, hogy ne "forduljon át" a kamera (Gimbal lock elkerülése)
-    if (pitch > 89.0f) pitch = 89.0f;
+    if (pitch >  89.0f) pitch =  89.0f;
     if (pitch < -89.0f) pitch = -89.0f;
 
     update_camera_vectors();
 }
 
 void Camera3D::process_mouse_scroll(float yoffset) {
-    fov -= (float)yoffset;
-    if (fov < 1.0f) fov = 1.0f;
+    fov -= static_cast<float>(yoffset);
+    if (fov < 1.0f)  fov = 1.0f;
     if (fov > 45.0f) fov = 45.0f;
+}
+
+glm::vec3 Camera3D::get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const {
+    int width  = Window::get_width();
+    int height = Window::get_height();
+    auto minfo = Window::get_mouse_info();
+
+    float x_ndc = (2.0f * static_cast<float>(minfo.x)) / static_cast<float>(width)  - 1.0f;
+    float y_ndc = 1.0f - (2.0f * static_cast<float>(minfo.y)) / static_cast<float>(height);
+
+    // NDC → eye space irány, majd → world space irány
+    glm::vec4 ray_eye = glm::inverse(get_projection()) * glm::vec4(x_ndc, y_ndc, -1.0f, 1.0f);
+    ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
+    glm::vec3 ray_dir = glm::normalize(glm::vec3(glm::inverse(get_view()) * ray_eye));
+
+    // Sugár–sík metszés: position + t*ray_dir a síkon
+    float denom = glm::dot(ray_dir, plane_normal);
+    if (std::abs(denom) < 1e-6f) return plane_point;
+    float t = glm::dot(plane_point - position, plane_normal) / denom;
+    if (t < 0.0f) return plane_point;
+    return position + t * ray_dir;
 }
