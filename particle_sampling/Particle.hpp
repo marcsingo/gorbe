@@ -9,6 +9,11 @@
 #include <algorithm>
 #include <vector>
 
+enum ParticleState {
+    ramozog,
+    rajtamozog
+};
+
 template<size_t L>
 struct Particle {
     glm::vec3 p {0};
@@ -18,12 +23,18 @@ struct Particle {
     glm::vec3 F_x;
     glm::vec<L, float> F_q;
 
+    ParticleState state = ramozog;
+
     float F;
 
     float sigma{10.0f};
     float D = 0.0f;
     float D_dot = 0.0f;
     float D_sigma = 0.0f;
+
+    float delta = 0.01f;
+
+    bool detah = false;
 
     void update_surface_data(const Surface<L>& surface) {
         this->F = surface.F.at(this->p);
@@ -69,8 +80,8 @@ protected:
                 float a0 = TWO_PI * float(i)     / float(DISK_SEGS);
                 float a1 = TWO_PI * float(i + 1) / float(DISK_SEGS);
                 this->vertices.push_back(p.p);
-                this->vertices.push_back(p.p + p.sigma * (std::cos(a0) * T + std::sin(a0) * B));
-                this->vertices.push_back(p.p + p.sigma * (std::cos(a1) * T + std::sin(a1) * B));
+                this->vertices.push_back(p.p + p.sigma / 2.0f * (std::cos(a0) * T + std::sin(a0) * B));
+                this->vertices.push_back(p.p + p.sigma / 2.0f * (std::cos(a1) * T + std::sin(a1) * B));
             }
         }
 

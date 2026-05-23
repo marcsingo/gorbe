@@ -2,7 +2,6 @@
 #include <iostream>
 #include <vector>
 
-// Feltételezem, hogy ezek a headerek megvannak a korábbi lépésekből
 #include "utils/init.hpp"
 #include "model/Camera.hpp"
 #include "model/Model.hpp"
@@ -17,22 +16,17 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
 
-    Camera3D camera(glm::vec4(0.0f, 0.0f, 800.0f, 800.0f), glm::vec3(0.0f, 0.0f, 10.0f));
-    ImplicitSurface<4> is{camera};
+    Camera3D camera(glm::vec4(0.0f, 0.0f, 800.0f, 800.0f), glm::vec3(0.0f, -8.0f, 8.0f), -90.0f, 45.0f);
+    ImplicitSurface<4> is{camera};   // Sphere=<4>, Torus=<2>
 
     while (!Window::window_schould_close()) {
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-
-        // 3. Ne felejtsd el törölni a GL_DEPTH_BUFFER_BIT-et is a cikluson belül!
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         is.draw(camera);
-        // gorbe.draw(camera);
         Window::event_handling();
     }
 
     Window::destroy_window();
     return 0;
 }
-
-

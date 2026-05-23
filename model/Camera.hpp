@@ -92,7 +92,8 @@ protected:
     glm::mat4 get_view() const override;
 
 public:
-    Camera3D(glm::vec4 viewport, glm::vec3 start_position = glm::vec3(0.0f, 0.0f, 3.0f));
+    Camera3D(glm::vec4 viewport, glm::vec3 start_position = glm::vec3(0.0f, 0.0f, 3.0f),
+             float initial_yaw = -90.0f, float initial_pitch = 0.0f);
 
     glm::vec3 get_front() const override { return front; }
     glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;

@@ -56,9 +56,9 @@ glm::mat4 Camera2D::get_projection() const {
 
 // --- Camera3D implementáció ---
 
-Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position)
+Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_yaw, float initial_pitch)
     : Camera(viewport), position(start_position), front(glm::vec3(0.0f, 0.0f, -1.0f)),
-      world_up(glm::vec3(0.0f, 1.0f, 0.0f)), yaw(-90.0f), pitch(0.0f),
+      world_up(glm::vec3(0.0f, 1.0f, 0.0f)), yaw(initial_yaw), pitch(initial_pitch),
       movement_speed(0.1f), mouse_sensitivity(0.1f), fov(45.0f),
       first_mouse(true), last_x(viewport.z / 2.0f), last_y(viewport.w / 2.0f) {
 

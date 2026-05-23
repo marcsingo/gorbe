@@ -18,6 +18,7 @@ public:
 
     std::function<void(float, float)> q_dot_function = [](float t, float dt){};
     Surface() {
+        q_dot = glm::vec<L, float>(0);
         Window::add_time_passed_event([this](auto p) {
             this->q_dot_function(p.t, p.dt);
         });
@@ -53,7 +54,7 @@ public:
 
 struct Circle : Surface<3> {
     Circle() {
-        q = {0, 0, 3};
+        q = {0, 0, 1};
         F = ((x- &q.x) ^ 2.0f)  + ((y - &q.y) ^2.0f) - ((&q.z) ^ 2.0_k);
         q_dot_function = [this](float t, float dt) {
             // q = {
@@ -74,7 +75,7 @@ struct Circle : Surface<3> {
 // q = {cx, cy, cz, r}
 struct Sphere : Surface<4> {
     Sphere() {
-        q = {0, 0, 0, 3};
+        q = {0, 0, 0, 1};
         F = ((x - &q.x)^2.0f) + ((y - &q.y)^2.0f) + ((z - &q.z)^2.0f) - ((&q.w)^2.0_k);
         q_dot_function = [this](float t, float dt) {
             // q = {
@@ -145,17 +146,19 @@ struct Ellipse : Surface<4> {
         q = {0, 0, 3, 1.5f};
         F = ((x - &q.x)^2.0f)/((&q.z)^2.0_k) + ((y - &q.y)^2.0f)/((&q.w)^2.0_k) - 1.0_k;
         q_dot_function = [this](float t, float dt) {
-            // q = {
-            //     std::cos(t)*5.0f,
-            //     std::sin(t)*5.0f,
-            //     3.0f + std::sin(t)
-            // };
-            // q_dot = {
-            //     -std::sin(t)*5.0f,
-            //     std::cos(t)*5.0f,
-            //     std::cos(t)
-            // };
         };
+        calculate();
+    }
+};
+
+// q = {a, b, c}  —  origó középpontú ellipszoid
+// F = x²/a² + y²/b² + z²/c² - 1
+struct Ellipsoid : Surface<3> {
+    Ellipsoid() {
+        q = {3.0f, 2.0f, 1.0f};
+        F = (x^2.0f)/((&q.x)^2.0_k)
+          + (y^2.0f)/((&q.y)^2.0_k)
+          + (z^2.0f)/((&q.z)^2.0_k) - 1.0_k;
         calculate();
     }
 };

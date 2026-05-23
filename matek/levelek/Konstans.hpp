@@ -16,13 +16,13 @@ namespace Matek {
 
             float get_value() const { return value; }
 
-            std::shared_ptr<Kifejezes const> derrive(char var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
                 return std::make_shared<Konstans>(0);
             }
-            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(std::shared_ptr<Kifejezes const> var) const override {
                 return std::make_shared<Konstans>(0);
             }
-            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(float const * var) const override {
                 return std::make_shared<Konstans>(0);
             }
 

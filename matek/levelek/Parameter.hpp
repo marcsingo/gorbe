@@ -21,14 +21,14 @@ namespace Matek {
 
             float at(glm::vec3 const v) const override { return *ertek_ref; }
 
-            std::shared_ptr<Kifejezes const> derrive(char var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
                 return std::make_shared<Konstans>(this->id == var ? 1.0f : 0.0f);
             }
-            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(float const * var) const override {
                 if (ertek_ref == var) return std::make_shared<Konstans>(1);
                 return std::make_shared<Konstans>(0);
             }
-            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(std::shared_ptr<Kifejezes const> var) const override {
                 if (this == var.get()) return std::make_shared<Konstans>(1);
                 return std::make_shared<Konstans>(0);
             }

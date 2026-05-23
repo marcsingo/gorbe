@@ -30,30 +30,30 @@ namespace Matek {
                 os << ')';
             }
 
-            std::shared_ptr<Kifejezes const> derrive(char var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
                 return std::make_shared<Szorzat>(
                     std::make_shared<Hatvany>(get_bal(), get_jobb()),
                     std::make_shared<Osszeg>(
-                        std::make_shared<Szorzat>(get_jobb()->derrive(var), std::make_shared<Ln>(get_bal())),
-                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrive(var), get_bal()))
+                        std::make_shared<Szorzat>(get_jobb()->derrivate(var), std::make_shared<Ln>(get_bal())),
+                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrivate(var), get_bal()))
                     )
                 );
             }
-            std::shared_ptr<Kifejezes const> derrive(float const * var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(float const * var) const override {
                 return std::make_shared<Szorzat>(
                     std::make_shared<Hatvany>(get_bal(), get_jobb()),
                     std::make_shared<Osszeg>(
-                        std::make_shared<Szorzat>(get_jobb()->derrive(var), std::make_shared<Ln>(get_bal())),
-                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrive(var), get_bal()))
+                        std::make_shared<Szorzat>(get_jobb()->derrivate(var), std::make_shared<Ln>(get_bal())),
+                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrivate(var), get_bal()))
                     )
                 );
             }
-            std::shared_ptr<Kifejezes const> derrive(std::shared_ptr<Kifejezes const> var) const override {
+            std::shared_ptr<Kifejezes const> derrivate(std::shared_ptr<Kifejezes const> var) const override {
                 return std::make_shared<Szorzat>(
                     std::make_shared<Hatvany>(get_bal(), get_jobb()),
                     std::make_shared<Osszeg>(
-                        std::make_shared<Szorzat>(get_jobb()->derrive(var), std::make_shared<Ln>(get_bal())),
-                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrive(var), get_bal()))
+                        std::make_shared<Szorzat>(get_jobb()->derrivate(var), std::make_shared<Ln>(get_bal())),
+                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrivate(var), get_bal()))
                     )
                 );
             }
