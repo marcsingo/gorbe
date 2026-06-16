@@ -52,7 +52,7 @@ public:
 
     }
 
-    float const d = 2.0f;// * surface.q.w;
+    float const d = 4.0f;// * surface.q.w;
 
     float const alpha = 6.0f;
     float const sigma = 1.0f;
