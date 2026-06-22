@@ -1,3 +1,5 @@
+#ifndef GORBE_IMPLICITSURFACE_HPP
+#define GORBE_IMPLICITSURFACE_HPP
 
 #include <map>
 #include <random>
@@ -12,23 +14,49 @@
 using namespace Matek::Analizis;
 
 
+// A részecske-szimuláció hangolható paraméterei. A main-ből opcionálisan átadható
+// az ImplicitSurface / App.show() hívásnak; ha nem adsz semmit, az alapértékek
+// (a cikk eredeti beállításai) lépnek életbe.
+struct SimParams {
+    float d        = 4.0f;   // jellemző méretskála
+    float alpha    = 6.0f;   // tűrési energia erőssége
+    float sigma    = 1.0f;
+    float phi      = 15.0f;  // felületre-húzó visszacsatolás
+    float beta     = 10.0f;  // sigma-csillapítás
+    float gamma    = 4.0f;   // egyensúly-küszöb a fisszióhoz/halálhoz
+    float nu       = 0.2f;   // fisszió sűrűség-küszöbe
+    float delta    = 0.7f;   // halál sűrűség-küszöbe
+    float fraction = 0.001f;
+};
 
-template<size_t L>
+
+// SurfaceT: a megjelenítendő implicit felület típusa (Sphere, Torus, Ellipsoid, ...).
+// Az L paraméterszámot és a hozzá tartozó occludert automatikusan levezetjük, így
+// a main-ben elég a felület típusát megadni.
+template<class SurfaceT>
 class ImplicitSurface {
-    Sphere surface;
+    static constexpr size_t L = SurfaceT::param_count;
+    using Occluder = typename OccluderFor<SurfaceT>::type;
+
+    SurfaceT surface;
     Floaters<L> floaters;
     ControlPoints<L> controls;
-    SphereOccluder sphere_mesh;
+    Occluder sphere_mesh;
 
     std::mt19937 rng;
     std::uniform_real_distribution<float> dist_R;
 public:
-    explicit ImplicitSurface( Camera const &camera) :
+    explicit ImplicitSurface( Camera const &camera, SimParams params = {}) :
         floaters{5, {0, 0, 1}, camera},
         controls{10, {1, 0, 0}, camera},
         sphere_mesh{surface, {0.85f, 0.85f, 0.85f}, camera},
-    rng(std::random_device{}()),
-    dist_R(0.0f, 1.0f)
+        rng(std::random_device{}()),
+        dist_R(0.0f, 1.0f),
+        d(params.d), alpha(params.alpha), sigma(params.sigma), PHI(params.phi),
+        E_v(0.8f * params.alpha), rho(params.phi), beta(params.beta), gamma(params.gamma),
+        sigma_v(params.d / 4.0f),
+        sigma_max(std::max(params.d / 2.0f, 1.5f * (params.d / 4.0f))),
+        nu(params.nu), delta(params.delta), fraction(params.fraction)
     {
         // Egyetlen kezdő részecske — a globális fisszió (4.2 fejezet) ebből épít fel
         // egyenletes mintavételt anélkül, hogy előre el kellene helyezni a pontokat.
@@ -52,20 +80,20 @@ public:
 
     }
 
-    float const d = 4.0f;// * surface.q.w;
-
-    float const alpha = 6.0f;
-    float const sigma = 1.0f;
-    float const PHI = 15.0f;
-    float const E_v = 0.8f * alpha;
-    float const rho = PHI;
-    float const beta = 10.0f;
-    float const gamma = 4.0f;
-    float const sigma_v = d / 4.0f;
-    float const sigma_max = std::max(d/2.0f, 1.5f * sigma_v);
-    float const nu = 0.2f;
-    float const delta = 0.7f;
-    float const fraction = 0.001f;
+    // Értéküket a konstruktor init-listája adja a SimParams-ból (lásd fentebb).
+    float const d;
+    float const alpha;
+    float const sigma;
+    float const PHI;
+    float const E_v;
+    float const rho;
+    float const beta;
+    float const gamma;
+    float const sigma_v;
+    float const sigma_max;
+    float const nu;
+    float const delta;
+    float const fraction;
 
     void spawn_random_particles(int n, float cube_size) {
         // A kocka közepe az origó, így a határok -méret/2 és +méret/2 között lesznek
@@ -229,5 +257,5 @@ public:
 
 };
 
-
+#endif //GORBE_IMPLICITSURFACE_HPP
 

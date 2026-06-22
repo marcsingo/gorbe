@@ -54,8 +54,10 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         objects/Vector.hpp
         objects/Point.hpp
         matek/Egyenlet.hpp
-        particle_sampling/ImplicitSurface.cpp
+        App.hpp
+        particle_sampling/ImplicitSurface.hpp
         particle_sampling/Surface.hpp
+        particle_sampling/Occluders.hpp
         matek/Kif.hpp
         model/Include.hpp
         particle_sampling/Particle.hpp)

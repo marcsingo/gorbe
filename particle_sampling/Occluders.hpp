@@ -224,3 +224,12 @@ public:
             .build());
     }
 };
+
+
+// Felület -> hozzá tartozó occluder (referencia-mesh) párosítás.
+// Új felület felvételekor itt kell egy sort hozzáadni, a main-hez nem kell nyúlni.
+template<class S> struct OccluderFor;
+template<> struct OccluderFor<Sphere>    { using type = SphereOccluder;    };
+template<> struct OccluderFor<Torus>     { using type = TorusOccluder;     };
+template<> struct OccluderFor<Ellipsoid> { using type = EllipsoidOccluder; };
+template<> struct OccluderFor<Ellipse>   { using type = EllipseOccluder;   };

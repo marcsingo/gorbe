@@ -1,3 +1,4 @@
+#pragma once
 #include "../matek/Kif.hpp"
 #include "../matek/Analizis.hpp"
 #include "Particle.hpp"
@@ -9,6 +10,11 @@ private:
     Surface(Surface const & s) = default;
 
 public:
+    // A felület paramétereinek (q) száma. Innen tudja az ImplicitSurface és az App
+    // automatikusan levezetni az L sablonparamétert, így a main-ben elég a felület
+    // típusát megadni (pl. Sphere, Torus), a számot nem kell ismerni.
+    static constexpr size_t param_count = L;
+
     std::map<float const *, Kif> F_dp_s;
     Kif F_dx, F_dy, F_dz;
     Kif F;
