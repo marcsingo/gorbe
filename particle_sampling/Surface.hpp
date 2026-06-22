@@ -22,12 +22,31 @@ public:
     glm::vec<L, float> q;
     glm::vec<L, float> q_dot;
 
+    // Ide írjuk folyamatosan az alakzat aktuális átmérőjét, ha valaki (pl. az
+    // ImplicitSurface) megkérte rá a cím átadásával. Így a hívó d-je mindig a
+    // felület valódi átmérőjét tükrözi, akkor is, ha a q paraméterek mozognak.
+    float* d_ptr = nullptr;
+
     std::function<void(float, float)> q_dot_function = [](float t, float dt){};
     Surface() {
         q_dot = glm::vec<L, float>(0);
         Window::add_time_passed_event([this](auto p) {
             this->q_dot_function(p.t, p.dt);
+            if (this->d_ptr) *this->d_ptr = this->diameter();
         });
+    }
+
+    virtual ~Surface() = default;
+
+    // Az alakzat aktuális átmérője a q paraméterekből. Felületenként más a képlet,
+    // ezért virtuális; a folyamatos kiszámítást és kiírást viszont az ős intézi.
+    virtual float diameter() const = 0;
+
+    // A megadott cím alá folyamatosan az átmérőt írjuk; rögtön be is állítjuk,
+    // hogy az első frame előtt is helyes legyen az érték.
+    void bind_diameter(float* target) {
+        d_ptr = target;
+        if (d_ptr) *d_ptr = diameter();
     }
 
     glm::vec<L, float> get_F_q(glm::vec3 at) const {
@@ -76,6 +95,8 @@ struct Circle : Surface<3> {
         };
         calculate();
     }
+    // q = {cx, cy, r}  ->  átmérő = 2r
+    float diameter() const override { return 2.0f * q.z; }
 };
 
 // q = {cx, cy, cz, r}
@@ -97,6 +118,8 @@ struct Sphere : Surface<4> {
         };
         calculate();
     }
+    // q = {cx, cy, cz, r}  ->  átmérő = 2r
+    float diameter() const override { return 2.0f * q.w; }
 };
 
 // q = {cx, cy, r}  —  henger a z-tengely mentén
@@ -118,6 +141,8 @@ struct Cylinder : Surface<3> {
         };
         calculate();
     }
+    // q = {cx, cy, r}  ->  átmérő = 2r
+    float diameter() const override { return 2.0f * q.z; }
 };
 
 // q = {R, r}  —  tórusz, algebrai forma (sqrt nélkül)
@@ -143,6 +168,10 @@ struct Torus : Surface<2> {
         };
         calculate();
     }
+    // q = {R, r}. A mintavételi skálát a CSŐ átmérője (a legkisebb jellemző méret)
+    // határozza meg, nem a külső 2(R+r). Különben σ̂ = d/4 nagyobb lenne a cső
+    // sugaránál, és a repulzió átérne a csövön/lyukon -> instabilitás (lásd cikk).
+    float diameter() const override { return 2.0f * q.y; }
 };
 
 // q = {cx, cy, a, b}  —  ellipszis (z=0 síkban)
@@ -155,6 +184,8 @@ struct Ellipse : Surface<4> {
         };
         calculate();
     }
+    // q = {cx, cy, a, b}. A legvékonyabb féltengely adja a jellemző skálát.
+    float diameter() const override { return 2.0f * std::min(q.z, q.w); }
 };
 
 // q = {a, b, c}  —  origó középpontú ellipszoid
@@ -167,4 +198,7 @@ struct Ellipsoid : Surface<3> {
           + (z^2.0f)/((&q.z)^2.0_k) - 1.0_k;
         calculate();
     }
+    // q = {a, b, c}. A legvékonyabb tengely adja a jellemző skálát (2·min), különben
+    // egy lapos ellipszoid a vékony irányban ugyanúgy instabillá válik, mint a tórusz.
+    float diameter() const override { return 2.0f * std::min({q.x, q.y, q.z}); }
 };

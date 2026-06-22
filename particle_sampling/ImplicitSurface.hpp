@@ -54,8 +54,6 @@ public:
         dist_R(0.0f, 1.0f),
         d(params.d), alpha(params.alpha), sigma(params.sigma), PHI(params.phi),
         E_v(0.8f * params.alpha), rho(params.phi), beta(params.beta), gamma(params.gamma),
-        sigma_v(params.d / 4.0f),
-        sigma_max(std::max(params.d / 2.0f, 1.5f * (params.d / 4.0f))),
         nu(params.nu), delta(params.delta), fraction(params.fraction)
     {
         // Egyetlen kezdő részecske — a globális fisszió (4.2 fejezet) ebből épít fel
@@ -67,6 +65,8 @@ public:
         // floaters.add_particle(p0);
 
         controls.set_surface(&surface);
+        // A felület mostantól folyamatosan a saját átmérőjét írja a d-be.
+        surface.bind_diameter(&d);
         spawn_random_particles(1, 3);
 
         Window::add_time_passed_event([this](auto p) {
@@ -80,8 +80,16 @@ public:
 
     }
 
+    // Az alakzat aktuális átmérője. NEM const: a felület (Surface) folyamatosan
+    // ide írja a valódi átmérőt (lásd surface.bind_diameter(&d) a konstruktorban),
+    // így a belőle számolt skálák (sigma_v, sigma_max) követik a felület változását.
+    float d;
+
+    // d-ből származó, ezért menet közben is helyes méretskálák.
+    float sigma_v()   const { return d / 4.0f; }
+    float sigma_max() const { return std::max(d / 2.0f, 1.5f * sigma_v()); }
+
     // Értéküket a konstruktor init-listája adja a SimParams-ból (lásd fentebb).
-    float const d;
     float const alpha;
     float const sigma;
     float const PHI;
@@ -89,8 +97,6 @@ public:
     float const rho;
     float const beta;
     float const gamma;
-    float const sigma_v;
-    float const sigma_max;
     float const nu;
     float const delta;
     float const fraction;
@@ -110,7 +116,7 @@ public:
                 dist_cube(rng)
             };
 
-            p.sigma = sigma_v;
+            p.sigma = sigma_v();
 
             // A kezdeti gradiens kiszámítása kritikus a ráhúzó ág miatt
             p.F_x = surface.grad(p.p);
@@ -133,10 +139,19 @@ public:
         return x > 0.0f ? 1.0f : -1.0f;
     }
 
+    // A felülettől mért közelítő GEOMETRIAI távolság: |F| / |∇F| (elsőrendű, Taubin).
+    // A nyers |F| skálafüggő (a tórusz kvartikus F-je a felülettől 0.05-re már ~5),
+    // ezért a felület-közelség küszöböket erre normáljuk, hogy minden alakzatnál
+    // ugyanazt jelentsék.
+    static float surface_distance(Particle<L> const& p) {
+        float g = glm::length(p.F_x);
+        return g > 1e-6f ? std::abs(p.F) / g : std::abs(p.F);
+    }
+
     void witkin(Particle<L>& i, float dt) {
         for (auto& j : floaters.ps()) {
             if (&i == &j ||
-                std::abs(j.F) > 5e-1f) continue;
+                surface_distance(j) > 5e-1f) continue;
             auto r = i.p - j.p;
             auto E_ij = alpha*std::exp(-glm::dot(r, r) / (i.sigma*i.sigma*2));
             auto E_ji = alpha*std::exp(-glm::dot(r, r) / (j.sigma*j.sigma*2));
@@ -194,7 +209,8 @@ public:
             calculate_particle(i);
             if (i.state == ramozog) {
                 masik(i, dt);
-                if (std::abs(i.F) < 1e-3f) {
+                // Geometriai közelség (nem nyers F): minden alakzatnál ugyanazt jelenti.
+                if (surface_distance(i) < 1e-2f) {
                     i.state = rajtamozog;
                 }
             }
@@ -208,7 +224,7 @@ public:
             if (i.detah) {
                 // halál: van már felületi részecske, ez nem kell
             } else if (glm::length(i.p_dot) < gamma*i.sigma &&
-                (i.sigma > sigma_max || (i.D > nu * E_v && i.sigma > sigma_v)))
+                (i.sigma > sigma_max() || (i.D > nu * E_v && i.sigma > sigma_v())))
             {
                 // fisszió: csak felületi részecskéknél
                 i.sigma /= std::sqrt(2.0f);
@@ -235,8 +251,8 @@ public:
 
             } else if (
                 glm::length(i.p_dot) < gamma*i.sigma &&
-                i.sigma < delta*sigma_v &&
-                R > i.sigma/(delta*sigma_v))
+                i.sigma < delta*sigma_v() &&
+                R > i.sigma/(delta*sigma_v()))
             {
                 // halál: sűrűség alapú eliminálás
             } else {

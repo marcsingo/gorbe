@@ -30,7 +30,24 @@ namespace Matek {
                 os << ')';
             }
 
-            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
+            // Konstans kitevő esetén (a^n, n állandó) a STABIL hatványszabály:
+            //   d/dx a^n = n * a^(n-1) * a'
+            // A lenti általános (logaritmikus) képletet csak akkor használjuk, ha a
+            // kitevő is függ a változótól. Az általános képletben szereplő ln(a) és
+            // a'/a ugyanis NaN/Inf lesz a≤0, illetve a=0 esetén (pl. x^2 deriváltja
+            // y=0-nál 0/0), ami a kvartikus felületeknél (tórusz) robbanáshoz vezet.
+            template<class Var>
+            std::shared_ptr<Kifejezes const> derrivate_impl(Var const& var) const {
+                if (auto n = std::dynamic_pointer_cast<Konstans const>(get_jobb())) {
+                    return std::make_shared<Szorzat>(
+                        std::make_shared<Szorzat>(
+                            std::make_shared<Konstans>(n->get_value()),
+                            std::make_shared<Hatvany>(get_bal(),
+                                std::make_shared<Konstans>(n->get_value() - 1.0f))
+                        ),
+                        get_bal()->derrivate(var)
+                    );
+                }
                 return std::make_shared<Szorzat>(
                     std::make_shared<Hatvany>(get_bal(), get_jobb()),
                     std::make_shared<Osszeg>(
@@ -38,24 +55,16 @@ namespace Matek {
                         std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrivate(var), get_bal()))
                     )
                 );
+            }
+
+            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
+                return derrivate_impl(var);
             }
             std::shared_ptr<Kifejezes const> derrivate(float const * var) const override {
-                return std::make_shared<Szorzat>(
-                    std::make_shared<Hatvany>(get_bal(), get_jobb()),
-                    std::make_shared<Osszeg>(
-                        std::make_shared<Szorzat>(get_jobb()->derrivate(var), std::make_shared<Ln>(get_bal())),
-                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrivate(var), get_bal()))
-                    )
-                );
+                return derrivate_impl(var);
             }
             std::shared_ptr<Kifejezes const> derrivate(std::shared_ptr<Kifejezes const> var) const override {
-                return std::make_shared<Szorzat>(
-                    std::make_shared<Hatvany>(get_bal(), get_jobb()),
-                    std::make_shared<Osszeg>(
-                        std::make_shared<Szorzat>(get_jobb()->derrivate(var), std::make_shared<Ln>(get_bal())),
-                        std::make_shared<Szorzat>(get_jobb(), std::make_shared<Hanyados>(get_bal()->derrivate(var), get_bal()))
-                    )
-                );
+                return derrivate_impl(var);
             }
 
             std::shared_ptr<Kifejezes const> simplify() const override {
