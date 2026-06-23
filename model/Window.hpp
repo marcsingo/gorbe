@@ -67,6 +67,7 @@ public:
     static void init(int width, int height, char const * text);
     static int get_width() {return width;}
     static int get_height() {return height;}
+    static GLFWwindow* handle() {return window;} // pl. az ImGui backendnek
     static void destroy_window();
 
     static void add_key_event(KeyEvent&& f);

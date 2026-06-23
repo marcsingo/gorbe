@@ -1,6 +1,7 @@
 #include "Window.hpp"
 
 #include "../utils/init.hpp"
+#include "Gui.hpp"
 
 void Window::init(int width, int height, char const * text) {
 
@@ -24,6 +25,7 @@ void Window::destroy_window() {
 
 
 void Window::key_callback(GLFWwindow *window, int key, int scancode, int action, int mode) {
+    if (Gui::wants_keyboard()) return; // a UI épp gépel
     for (auto &f : key_events) {
         f({key, scancode, action, mode});
     }
@@ -34,6 +36,7 @@ void Window::add_key_event(KeyEvent&& f) {
 }
 
 void Window::mouse_pos_callback(GLFWwindow *window, double x, double y) {
+    if (Gui::wants_mouse()) return; // a UI fölött vagyunk
     for (auto &f : mouse_pos_events) {
         f({x, y});
     }
@@ -44,6 +47,7 @@ void Window::add_mouse_pos_event(MousePosEvent&& f) {
 }
 
 void Window::mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
+    if (Gui::wants_mouse()) return; // a UI kapja a kattintást
     for (auto& f: mouse_button_events) {
         f({button, action, mods});
     }
@@ -54,6 +58,7 @@ void Window::add_mouse_button_event(MouseButtonEvent&& f) {
 }
 
 void Window::mouse_scroll_callback(GLFWwindow *window, double x, double y) {
+    if (Gui::wants_mouse()) return; // a UI fölött görgetünk
     for (auto& f : mouse_scroll_events) {
         f({x, y});
     }

@@ -100,8 +100,8 @@ public:
 
         Builder::ShaderBuilder builder;
         set_shader(builder
-            .add_vertex_shader  ("../particle_sampling/vertex.vert")
-            .add_fragment_shader("../particle_sampling/fragment.glsl")
+            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
+            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
             .build());
     }
 

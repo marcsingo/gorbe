@@ -18,16 +18,11 @@ CMake + egy C++20 fordító kell. A `libraries/` mappa tartalmazza a GLFW/GLM/GL
 ```bash
 cmake -S . -B cmake-build-debug
 cmake --build cmake-build-debug --target gorbe
+./cmake-build-debug/gorbe          # Windows: .\cmake-build-debug\gorbe.exe
 ```
 
-A programot a **`cmake-build-debug` mappából** kell indítani, mert a shadereket a
-`../particle_sampling/...` relatív úton tölti be (`Can't open file ... vertex.vert`,
-ha máshonnan indítod):
-
-```bash
-cd cmake-build-debug
-./gorbe          # Windows: .\gorbe.exe
-```
+A build a shadereket a bináris mellé másolja, és a program onnan tölti, így
+**tetszőleges munkakönyvtárból indítható**.
 
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
@@ -90,6 +85,30 @@ Opcionális hangolás (a cikk paraméterei, lásd `SimParams`):
 ```cpp
 app.show<Sphere>({.alpha = 8.0f, .phi = 20.0f});
 ```
+
+## Felhasználói felület (Dear ImGui)
+
+A [Dear ImGui](https://github.com/ocornut/imgui) be van építve (`libraries/imgui`,
+GLFW + OpenGL3 backend), készen a modellező-UI fejlesztéséhez. Alapból egy kis
+demo-panel jelenik meg (rajta egy kapcsoló az ImGui demo-ablakhoz).
+
+Saját panelt az `App::set_gui(...)`-val adhatsz, ami minden frame-ben lefut:
+
+```cpp
+#include "imgui.h"
+// ...
+app.set_gui([&] {
+    ImGui::Begin("Vezérlőpult");
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    // ImGui::SliderFloat(...), ImGui::Button(...), stb.
+    ImGui::End();
+});
+```
+
+Az UI automatikusan „elnyeli" a bevitelt: amíg az egér/billentyűzet az ImGui fölött van,
+a kamera és a kontrollpontok nem reagálnak (a `Window` a `Gui::wants_mouse/keyboard`
+alapján szűri az eseményeket). A teljes ImGui API elérhető — gombok, csúszkák, fák,
+dokkolható panelek építőkövei stb.
 
 ---
 
@@ -175,8 +194,8 @@ public:
         : surf{s}, color{col} {
         update_buffers_on_draw = false;
         Builder::ShaderBuilder b;
-        set_shader(b.add_vertex_shader("../particle_sampling/vertex.vert")
-                    .add_fragment_shader("../particle_sampling/fragment.glsl")
+        set_shader(b.add_vertex_shader(SHADER_DIR "/vertex.vert")
+                    .add_fragment_shader(SHADER_DIR "/fragment.glsl")
                     .build());
     }
 };
@@ -214,5 +233,7 @@ automatikusan működik az új felületen.
 | `particle_sampling/Particle.hpp` | részecske + a `Particles`/`Floaters`/`ControlPoints` modellek |
 | `matek/` | a szimbolikus kifejezés-/deriválórendszer (Kif DSL) |
 | `model/`, `utils/` | OpenGL-réteg (kamera, ablak, shader, Model) |
+| `model/Gui.{hpp,cpp}` | Dear ImGui wrapper (init/frame/render, input-szűrés) |
+| `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
 
 A módszer részletei: `witkin_andrew_1994_1.pdf` (a gyökérben).

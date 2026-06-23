@@ -5,6 +5,12 @@
 #ifndef GORBE_SHADER_HPP
 #define GORBE_SHADER_HPP
 
+// A shaderek könyvtára. Normál esetben a CMake állítja be a bináris könyvtárára
+// (lásd CMakeLists.txt); ez csak tartalék, ha valamiért nincs megadva.
+#ifndef SHADER_DIR
+#define SHADER_DIR "../particle_sampling"
+#endif
+
 #include <vector>
 #include <string>
 
