@@ -45,6 +45,11 @@ class ImplicitSurface {
 
     std::mt19937 rng;
     std::uniform_real_distribution<float> dist_R;
+
+    // A szimuláció fut-e (alapból igen, hogy a show<T>() változatlanul működjön),
+    // és a fix-lépésű integrátor időakkumulátora.
+    bool  running   = true;
+    float sim_accum = 0.0f;
 public:
     explicit ImplicitSurface( Camera const &camera, SimParams params = {}) :
         floaters{5, {0, 0, 1}, camera},
@@ -70,14 +75,44 @@ public:
         spawn_random_particles(2, 3);
 
         Window::add_time_passed_event([this](auto p) {
-            static float dt = 0;
-            dt += p.dt;
-            if (dt >= 0.03f) {
-                this->simulation(p.t, dt);
-                dt = 0.0f;
+            if (!running) return;            // leállított állapotban nem szimulálunk
+            sim_accum += p.dt;
+            if (sim_accum >= 0.03f) {
+                this->simulation(p.t, sim_accum);
+                sim_accum = 0.0f;
             }
         });
 
+    }
+
+    // --- Futásidejű vezérlés (egyetlen, állandó életű példányhoz) ----------------
+    // A felület eseménykezelői (Window::add_*_event) a konstruktorban, egyszer
+    // regisztrálódnak és erre a példányra mutatnak. Ezért a szimulációt NEM a példány
+    // megsemmisítésével/újraépítésével indítjuk-állítjuk (az dangling lambdákat hagyna),
+    // hanem ezekkel a kapcsolókkal.
+
+    SurfaceT&       get_surface()       { return surface; }
+    SurfaceT const& get_surface() const { return surface; }
+
+    bool is_running() const { return running; }
+    void stop()  { running = false; }
+
+    // Új futás: friss részecskékkel, futó állapotban. set_equation() UTÁN hívandó,
+    // mert a kezdő gradiensekhez már az új F kell.
+    void restart() {
+        floaters.ps().clear();
+        controls.ps().clear();
+        sim_accum = 0.0f;
+        spawn_random_particles(2, 3);
+        running = true;
+    }
+
+    // Minden részecske törlése és leállítás (üres, álló jelenet).
+    void clear() {
+        running = false;
+        floaters.ps().clear();
+        controls.ps().clear();
+        sim_accum = 0.0f;
     }
 
     // Az alakzat aktuális átmérője. NEM const: a felület (Surface) folyamatosan
@@ -88,6 +123,12 @@ public:
     // d-ből származó, ezért menet közben is helyes méretskálák.
     float sigma_v()   const { return d / 4.0f; }
     float sigma_max() const { return std::max(d / 2.0f, 1.5f * sigma_v()); }
+
+    // Az átmérőt (d) alapból a felület folyamatosan felülírja a valódi átmérőjével
+    // (lásd surface.bind_diameter(&d) a konstruktorban). Ezzel kézi vezérlésre lehet
+    // váltani: ekkor a d szabadon állítható (pl. ImGui-csúszkáról), a felület már
+    // nem írja felül. Visszakapcsolva újra a felület átmérőjét követi.
+    void set_manual_diameter(bool on) { surface.bind_diameter(on ? nullptr : &d); }
 
     // Értéküket a konstruktor init-listája adja a SimParams-ból (lásd fentebb).
     float const alpha;

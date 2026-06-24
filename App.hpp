@@ -67,6 +67,18 @@ public:
         return *surface;
     }
 
+    // Futásidőben, stringből megadott egyenlethez. Egyetlen, ÁLLANDÓ életű felületet
+    // hoz létre (a Window eseménykezelői erre mutatnak), és rögtön ÁLLÓ állapotba teszi
+    // (clear): a szimuláció csak akkor indul, ha a GUI-ból meghívod a restart()-ot az új
+    // egyenlet beállítása (get_surface().set_equation(...)) után. Lásd a main.cpp paneljét.
+    ImplicitSurface<StringSurface> &show_equation() {
+        auto surface = std::make_shared<ImplicitSurface<StringSurface>>(camera);
+        surface_keepalive = surface;
+        draw_fn = [surface](Camera const &cam) { surface->draw(cam); };
+        surface->clear(); // induláskor üres, álló jelenet — az "Indít"-ra vár
+        return *surface;
+    }
+
     void run() {
         while (!Window::window_schould_close()) {
             Gui::begin_frame();

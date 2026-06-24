@@ -1,4 +1,5 @@
 #pragma once
+#include <list>
 #include "../matek/Kif.hpp"
 #include "../matek/Analizis.hpp"
 #include "Particle.hpp"
@@ -203,6 +204,37 @@ struct Ellipsoid : Surface<3> {
     float diameter() const override { return 2.0f * std::min({q.x, q.y, q.z}); }
 };
 
+// Futásidőben, STRINGBŐL megadott implicit felület: F(x,y,z)=0.
+// A q paraméterekre nincs szükség (a string csak x,y,z-t és konstansokat ismer),
+// de a glm::vec<0> nem létezik, ezért egyetlen, nem használt dummy paramétert tartunk
+// (Surface<1>). Az egyenlet menet közben átírható (set_equation), ami újraszámolja a
+// deriváltakat is. Parse-hiba esetén std::runtime_error-t dob (a hívó kapja el).
+struct StringSurface : Surface<1> {
+    // Felhasználói paraméter: NÉV + ÉRTÉK. A value címe (&value) STABIL kell legyen,
+    // mert a kifejezésfa Parameter-csomópontja erre mutató float const*-ot tárol —
+    // ezért std::list-ben tartjuk (a node-ok címe beszúrásra/törlésre nem mozdul).
+    struct Param { char name[32] = ""; float value = 0.0f; };
+    std::list<Param> params;
+
+    StringSurface() {
+        q.x = 0.0f; // dummy, nem használt (glm::vec<1> nincs {…}-értékadás)
+        set_equation("x^2 + y^2 + z^2 - 1"); // alap: egységgömb
+    }
+
+    // F(x,y,z) képlete stringből (pl. "x^2 + y^2 + z^2 - 1" vagy "x^2 + y^2 - r^2").
+    // Az x/y/z változó; minden más azonosító a params-ban felvett paraméter neve kell
+    // legyen, különben parse-hibát dob (std::runtime_error), amit a hívó kap el.
+    void set_equation(std::string const& eq) {
+        F = make_kif(eq, [this](std::string const& nm) -> float const* {
+            for (auto& p : params)
+                if (nm == p.name) return &p.value;
+            return nullptr; // ismeretlen név -> a parser hibát dob
+        });
+        calculate();
+    }
+    float diameter() const override { return 2.0f; }
+};
+
 struct Teszt : Surface<4> {
     Teszt() {
         q = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -216,6 +248,7 @@ struct Teszt : Surface<4> {
 
         float k = 0.5f;
         F = 0.5_k * ( f1 + f2 - ((((f1 - f2)^2.0f) + (k*k))^0.5f) );
+        F = "x^4 + y^4 + z^4 - 1";
         calculate();
     }
     float diameter() const override { return 2.0f; }
