@@ -115,6 +115,12 @@ namespace Matek {
 
         }
 
+        // Névfeloldó: egy azonosítóhoz (ami nem x/y/z és nem ismert függvény) egy
+        // részkifejezést ad vissza. Lehet skalár PARAMÉTER (Parameter-csomópont egy
+        // float const*-mal) vagy egy elnevezett ALAKZAT teljes fája — így a képletben
+        // hivatkozhatunk rájuk (pl. f1, f2, ... uniózásához). nullptr -> ismeretlen név.
+        using NameResolver = std::function<std::shared_ptr<Kifejezes const>(std::string const&)>;
+
         // ----------------------------------------------------------------------
         // String -> kifejezésfa (recursive descent parser)
         //
@@ -130,13 +136,11 @@ namespace Matek {
             struct Parser {
                 std::string s;
                 size_t i = 0;
-                // Névfeloldó a felhasználói paraméterekhez: egy névhez (ami nem x/y/z és
-                // nem függvény) stabil címet (float const*) ad; üres esetén ismeretlen
-                // név hibát dob.
-                std::function<float const*(std::string const&)> resolver;
+                // Névfeloldó (paraméter vagy elnevezett alakzat); üres esetén az
+                // ismeretlen név hibát dob.
+                NameResolver resolver;
 
-                explicit Parser(std::string str,
-                                std::function<float const*(std::string const&)> r = {})
+                explicit Parser(std::string str, NameResolver r = {})
                     : s(std::move(str)), resolver(std::move(r)) {}
 
                 void skip_ws() { while (i < s.size() && std::isspace((unsigned char)s[i])) ++i; }
@@ -231,12 +235,12 @@ namespace Matek {
                     // változó: egyetlen x / y / z betű
                     if (name.size() == 1 && (name[0] == 'x' || name[0] == 'y' || name[0] == 'z'))
                         return Kif(name[0]);
-                    // egyébként felhasználói paraméter: a resolver névről stabil címet ad,
-                    // amire a fa Parameter-csomópontja hivatkozik (a deriválás cím szerint megy).
+                    // egyébként a resolver oldja fel: paraméter (skalár) vagy elnevezett
+                    // alakzat (részkifejezés). A visszakapott fát beágyazzuk ide.
                     if (resolver)
-                        if (float const* ref = resolver(name))
-                            return Kif(ref);
-                    error("ismeretlen azonosító (x/y/z változó vagy felvett paraméter?): " + name);
+                        if (auto sub = resolver(name))
+                            return Kif(sub);
+                    error("ismeretlen azonosító (x/y/z változó, paraméter vagy alakzat?): " + name);
                 }
 
                 Kif make_func(std::string const& name, Kif const& a) const {
@@ -251,18 +255,14 @@ namespace Matek {
                 }
             };
 
-            inline Kif parse(std::string const& s,
-                             std::function<float const*(std::string const&)> resolver) {
+            inline Kif parse(std::string const& s, NameResolver resolver) {
                 return Parser(s, std::move(resolver)).parse();
             }
         }
 
-        // Stringből kifejezés, opcionális paraméter-feloldóval. A resolver egy névhez
-        // (ami nem x/y/z és nem ismert függvény) STABIL címet (float const*) ad vissza; a
-        // fa egy Parameter-csomóponttal hivatkozik rá. Üres resolver esetén az ismeretlen
-        // név hibát dob (ez a sima `Kif("...")` viselkedése).
-        inline Kif make_kif(std::string const& s,
-                            std::function<float const*(std::string const&)> resolver = {}) {
+        // Stringből kifejezés, opcionális névfeloldóval (paraméterek / elnevezett alakzatok).
+        // Üres resolver esetén az ismeretlen név hibát dob (ez a sima `Kif("...")` viselkedése).
+        inline Kif make_kif(std::string const& s, NameResolver resolver = {}) {
             return detail::parse(s, std::move(resolver));
         }
 

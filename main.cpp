@@ -1,4 +1,6 @@
 #include <string>
+#include <cstdio>
+#include <list>
 #include "App.hpp"
 
 // A felület-típusok (Sphere, Torus, Ellipsoid, Ellipse, ...) itt vannak definiálva:
@@ -11,70 +13,107 @@
 int main() {
     App app{800, 800, "Particle sampling"};
 
-    // Stringből, futásidőben megadható egyenlet (F(x,y,z)=0). A felület álló állapotban
-    // jön létre; az ImGui-panel "Indit" gombja állítja be az egyenletet és indítja a
-    // szimulációt, a "Torol" leállítja és kiüríti a részecskéket.
-    auto& sim = app.show_equation();
-    sim.set_manual_diameter(true); // a d csúszkáról állítható (különben a felület felülírná)
+    // Állandó életű sampler-pool: MINDEN felvett alakzat egy önálló ImplicitSurface-t kap,
+    // saját kezdő részecskékkel (külön mintavételezve). A pool egyszer jön létre és nem
+    // semmisül meg (a Window eseménykezelők miatt), itt csak elosztjuk az alakzatokat.
+    constexpr int MAX_SHAPES = 16;
+    auto pool = app.make_equation_pool(MAX_SHAPES);
 
-    // A panel állapota (a lambda a main végéig él, így biztonságos referenciával kapni el).
-    char        eq_buf[256] = "x^2 + y^2 + z^2 - 1";
+    // --- Jelenet-definíció (a GUI szerkeszti) -----------------------------------------
+    // Paraméter: NÉV + ÉRTÉK. A value címe STABIL kell legyen (a Parameter float const*-ot
+    // tárol rá) -> std::list. Alakzat: NÉV (f1, f2, ...) + KÉPLET + a beparseolt fája.
+    struct Param { char name[32] = ""; float value = 0.0f; };
+    struct Shape { char name[32] = ""; char formula[256] = ""; bool visible = true; std::shared_ptr<Kifejezes const> tree; };
+    std::list<Param> params;
+    std::list<Shape> shapes;
+
+    float       d_ui = 2.0f;   // közös méretskála minden samplerre
     std::string error;
 
+    // Névfeloldó: paraméter (skalár) vagy a NÁLA korábbi alakzat részfája (sorrend-függő).
+    auto resolve = [&](std::string const& nm, Shape const* limit) -> std::shared_ptr<Kifejezes const> {
+        for (auto& p : params)
+            if (nm[0] && nm == p.name) return Kif(&p.value).get();
+        for (auto& s : shapes) {
+            if (&s == limit) break;
+            if (s.name[0] && nm == s.name && s.tree) return s.tree;
+        }
+        return nullptr; // ismeretlen név -> a parser hibát dob
+    };
+
+    auto stop_all = [&] { for (auto* p : pool) p->clear(); };
+
     app.set_gui([&] {
-        ImGui::Begin("Egyenlet");
+        ImGui::Begin("Alakzatok");
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
 
-        ImGui::InputText("F(x,y,z) = 0", eq_buf, sizeof(eq_buf));
-
-        // --- Paramétertábla: NÉV | ÉRTÉK | törlés -----------------------------------
-        // Az x/y/z változó; minden más névre itt felvett paraméterként hivatkozhatsz a
-        // képletben (pl. "x^2 + y^2 - r^2", ha felvettél egy "r" paramétert). Az értéket
-        // futás közben is állíthatod (élőben hat). Sor törlése leállítja a szimulációt,
-        // mert a futó képlet még arra a paraméterre mutathat -> az "Indit"-tal indítsd újra.
+        // --- Paramétertábla: NÉV | ÉRTÉK | törlés ---
         ImGui::Separator();
         ImGui::Text("Parameterek (nev = ertek):");
-        auto& params = sim.get_surface().params;
         if (ImGui::Button("Uj parameter")) params.push_back({});
         for (auto it = params.begin(); it != params.end(); ) {
             ImGui::PushID(&*it);
-            ImGui::SetNextItemWidth(90.0f);
-            ImGui::InputText("##nev", it->name, sizeof(it->name));
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(110.0f);
-            ImGui::InputFloat("##ertek", &it->value);
-            ImGui::SameLine();
+            ImGui::SetNextItemWidth(90.0f);  ImGui::InputText("##nev", it->name, sizeof(it->name)); ImGui::SameLine();
+            ImGui::SetNextItemWidth(110.0f); ImGui::InputFloat("##ertek", &it->value);              ImGui::SameLine();
             bool del = ImGui::Button("X");
             ImGui::PopID();
-            if (del) { it = params.erase(it); sim.clear(); error.clear(); }
+            // Paraméter törlése: a futó képletek arra mutathatnak -> minden samplert leállítunk.
+            if (del) { it = params.erase(it); stop_all(); error.clear(); }
             else     { ++it; }
         }
-        ImGui::Separator();
 
+        // --- Alakzattábla: NÉV (f1, f2, ...) | KÉPLET (x,y,z, paraméterek) | törlés ---
+        // Minden alakzat KÜLÖN, önálló implicit felületként lesz mintavételezve. Egy alakzat
+        // hivatkozhat a NÁLA KORÁBBAN definiált alakzatokra is.
+        ImGui::Separator();
+        ImGui::Text("Alakzatok (nev = keplet) - kulon mintavetelezve:");
+        if (ImGui::Button("Uj alakzat") && (int)shapes.size() < MAX_SHAPES) {
+            auto& s = shapes.emplace_back();
+            std::snprintf(s.name, sizeof(s.name), "f%d", (int)shapes.size());
+        }
+        for (auto it = shapes.begin(); it != shapes.end(); ) {
+            ImGui::PushID(&*it);
+            ImGui::Checkbox("##show", &it->visible);                                                         ImGui::SameLine();
+            ImGui::SetNextItemWidth(60.0f);  ImGui::InputText("##nev", it->name, sizeof(it->name));          ImGui::SameLine();
+            ImGui::SetNextItemWidth(220.0f); ImGui::InputText("##keplet", it->formula, sizeof(it->formula)); ImGui::SameLine();
+            bool del = ImGui::Button("X");
+            ImGui::PopID();
+            if (del) { it = shapes.erase(it); stop_all(); error.clear(); }
+            else     { ++it; }
+        }
+        // A checkboxok élőben hatnak: alakzatonként a megfelelő pool-felület láthatósága.
+        { int i = 0; for (auto& s : shapes) { if (i < MAX_SHAPES) pool[i]->set_visible(s.visible); ++i; } }
+
+        ImGui::Separator();
         if (ImGui::Button("Indit")) {
             try {
-                sim.get_surface().set_equation(eq_buf); // string -> fa (dobhat)
-                sim.restart();                          // friss részecskék, futó állapot
+                int i = 0;
+                for (auto& s : shapes) {
+                    // alakzat fája (sorrendben: hivatkozhat a korábbiakra és paraméterekre)
+                    s.tree = make_kif(s.formula,
+                        [&](std::string const& nm) { return resolve(nm, &s); }).get();
+                    pool[i]->get_surface().set_tree(s.tree);
+                    pool[i]->restart(); // saját kezdő részecskék + futó állapot
+                    ++i;
+                }
+                for (; i < MAX_SHAPES; ++i) pool[i]->clear(); // a fel nem használtak állnak
                 error.clear();
             } catch (std::exception const& e) {
                 error = e.what();
-                sim.clear();
+                stop_all();
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Torol")) {
-            sim.clear();
-            error.clear();
-        }
+        if (ImGui::Button("Torol")) { stop_all(); error.clear(); }
 
-        ImGui::Text("Allapot: %s", sim.is_running() ? "fut" : "all");
         if (!error.empty())
             ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", error.c_str());
 
+        // --- Közös méretskála minden samplerre ---
         ImGui::Separator();
-        ImGui::SliderFloat("d (meretskala)", &sim.d, 0.1f, 10.0f);
-        ImGui::Text("sigma_v   = %.3f", sim.sigma_v());
-        ImGui::Text("sigma_max = %.3f", sim.sigma_max());
+        ImGui::SliderFloat("d (meretskala)", &d_ui, 0.5f, 10.0f);
+        for (auto* p : pool) p->d = d_ui;
+
         ImGui::End();
     });
 

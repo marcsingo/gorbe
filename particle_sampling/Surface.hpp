@@ -204,32 +204,21 @@ struct Ellipsoid : Surface<3> {
     float diameter() const override { return 2.0f * std::min({q.x, q.y, q.z}); }
 };
 
-// Futásidőben, STRINGBŐL megadott implicit felület: F(x,y,z)=0.
-// A q paraméterekre nincs szükség (a string csak x,y,z-t és konstansokat ismer),
-// de a glm::vec<0> nem létezik, ezért egyetlen, nem használt dummy paramétert tartunk
-// (Surface<1>). Az egyenlet menet közben átírható (set_equation), ami újraszámolja a
-// deriváltakat is. Parse-hiba esetén std::runtime_error-t dob (a hívó kapja el).
+// Futásidőben megadott implicit felület: F(x,y,z)=0, ahol az F-et KÉSZ (már beparseolt)
+// kifejezésfaként kapja (set_tree). Egy-egy ilyen felület EGY alakzatot mintavételez; a
+// több alakzatot a hívó (main) külön-külön StringSurface-ekhez rendeli (sampler-pool),
+// így mindegyiknek saját ImplicitSurface-lefutása és saját kezdő részecskéi vannak.
+// A q paraméterekre nincs szükség (a képlet csak x,y,z + paraméterek), de a glm::vec<0>
+// nem létezik, ezért egyetlen, nem használt dummy paramétert tartunk (Surface<1>).
 struct StringSurface : Surface<1> {
-    // Felhasználói paraméter: NÉV + ÉRTÉK. A value címe (&value) STABIL kell legyen,
-    // mert a kifejezésfa Parameter-csomópontja erre mutató float const*-ot tárol —
-    // ezért std::list-ben tartjuk (a node-ok címe beszúrásra/törlésre nem mozdul).
-    struct Param { char name[32] = ""; float value = 0.0f; };
-    std::list<Param> params;
-
     StringSurface() {
-        q.x = 0.0f; // dummy, nem használt (glm::vec<1> nincs {…}-értékadás)
-        set_equation("x^2 + y^2 + z^2 - 1"); // alap: egységgömb
+        q.x = 0.0f;       // dummy, nem használt (glm::vec<1> nincs {…}-értékadás)
+        F = Kif(0.0f);    // üres placeholder, amíg nem kap képletet (a pool addig áll)
+        calculate();
     }
-
-    // F(x,y,z) képlete stringből (pl. "x^2 + y^2 + z^2 - 1" vagy "x^2 + y^2 - r^2").
-    // Az x/y/z változó; minden más azonosító a params-ban felvett paraméter neve kell
-    // legyen, különben parse-hibát dob (std::runtime_error), amit a hívó kap el.
-    void set_equation(std::string const& eq) {
-        F = make_kif(eq, [this](std::string const& nm) -> float const* {
-            for (auto& p : params)
-                if (nm == p.name) return &p.value;
-            return nullptr; // ismeretlen név -> a parser hibát dob
-        });
+    // Az F-et egy KÉSZ kifejezésfára állítja, és újraszámolja a deriváltakat.
+    void set_tree(std::shared_ptr<Kifejezes const> tree) {
+        F = Kif(std::move(tree));
         calculate();
     }
     float diameter() const override { return 2.0f; }

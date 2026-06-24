@@ -50,6 +50,8 @@ class ImplicitSurface {
     // és a fix-lépésű integrátor időakkumulátora.
     bool  running   = true;
     float sim_accum = 0.0f;
+    // Megjelenjen-e: a draw() ezt figyeli (a szimuláció attól még futhat a háttérben).
+    bool  visible   = true;
 public:
     explicit ImplicitSurface( Camera const &camera, SimParams params = {}) :
         floaters{5, {0, 0, 1}, camera},
@@ -97,8 +99,12 @@ public:
     bool is_running() const { return running; }
     void stop()  { running = false; }
 
-    // Új futás: friss részecskékkel, futó állapotban. set_equation() UTÁN hívandó,
-    // mert a kezdő gradiensekhez már az új F kell.
+    // Megjelenítés ki/be (a szimulációt nem állítja le, csak a rajzolást hagyja ki).
+    void set_visible(bool v) { visible = v; }
+    bool is_visible() const  { return visible; }
+
+    // Új futás: friss részecskékkel, futó állapotban. A felület F-jének beállítása UTÁN
+    // hívandó (pl. StringSurface::set_tree), mert a kezdő gradiensekhez már az új F kell.
     void restart() {
         floaters.ps().clear();
         controls.ps().clear();
@@ -306,6 +312,7 @@ public:
     }
 
     void draw(const Camera &camera) {
+        if (!visible) return;
         sphere_mesh.draw(camera);
         floaters.draw(camera);
         controls.draw(camera);

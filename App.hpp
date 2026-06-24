@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include <glad/glad.h>
 
@@ -41,6 +42,9 @@ class App {
     std::function<void(Camera const &)> draw_fn;    // típus-független rajzolás
     std::function<void()> gui_fn;                   // a felhasználó ImGui-panelei
 
+    // Állandó életű sampler-pool a stringből megadott alakzatokhoz (lásd make_equation_pool).
+    std::vector<std::shared_ptr<ImplicitSurface<StringSurface>>> eq_pool;
+
     glm::vec3 background{1.0f, 1.0f, 1.0f};
 
 public:
@@ -67,16 +71,37 @@ public:
         return *surface;
     }
 
-    // Futásidőben, stringből megadott egyenlethez. Egyetlen, ÁLLANDÓ életű felületet
-    // hoz létre (a Window eseménykezelői erre mutatnak), és rögtön ÁLLÓ állapotba teszi
-    // (clear): a szimuláció csak akkor indul, ha a GUI-ból meghívod a restart()-ot az új
-    // egyenlet beállítása (get_surface().set_equation(...)) után. Lásd a main.cpp paneljét.
+    // Egyetlen, stringből megadott egyenlethez (egy felület). Több, külön mintavételezett
+    // alakzathoz lásd make_equation_pool-t. ÁLLANDÓ életű felületet hoz létre (a Window
+    // eseménykezelői erre mutatnak), és rögtön ÁLLÓ állapotba teszi (clear): a szimuláció
+    // a GUI-ból, az F beállítása (get_surface().set_tree(...)) + restart() után indul.
     ImplicitSurface<StringSurface> &show_equation() {
         auto surface = std::make_shared<ImplicitSurface<StringSurface>>(camera);
         surface_keepalive = surface;
         draw_fn = [surface](Camera const &cam) { surface->draw(cam); };
         surface->clear(); // induláskor üres, álló jelenet — az "Indít"-ra vár
         return *surface;
+    }
+
+    // EGYSZER hívandó: létrehoz `n` darab ÁLLANDÓ életű, üres (álló) ImplicitSurface-t.
+    // Minden felvett alakzat ezek közül egyhez rendelődik (saját kezdő részecskékkel,
+    // külön mintavételezve). A pool tag-változó, így a benne lévő felületek a program
+    // teljes életében élnek — ezért biztonságos, hogy a Window eseménykezelőik (amik a
+    // ctorban regisztrálódnak és nem leiratkoztathatók) mindvégig érvényes objektumra
+    // mutassanak. A visszaadott nyers mutatók a pool elemeire mutatnak.
+    std::vector<ImplicitSurface<StringSurface>*> make_equation_pool(int n) {
+        eq_pool.clear(); // egyszeri hívásra szánt; üres pool-ról indulunk
+        std::vector<ImplicitSurface<StringSurface>*> out;
+        out.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            auto s = std::make_shared<ImplicitSurface<StringSurface>>(camera);
+            s->set_manual_diameter(true); // a d-t a GUI állítja, ne a felület írja felül
+            s->clear();                   // induláskor üres, álló
+            eq_pool.push_back(s);
+            out.push_back(s.get());
+        }
+        draw_fn = [this](Camera const &cam) { for (auto &s : eq_pool) s->draw(cam); };
+        return out;
     }
 
     void run() {
