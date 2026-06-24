@@ -26,6 +26,9 @@ public:
     // Sugár–sík metszéspontja (3D drag). Alap implementáció: 2D fallback.
     virtual glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const;
     virtual glm::vec3 get_front() const { return glm::vec3(0.0f, 0.0f, -1.0f); }
+    // A kamera jobbra- és felfelé-vektora világkoordinátában (billboardozáshoz).
+    virtual glm::vec3 get_right() const { return glm::vec3(1.0f, 0.0f, 0.0f); }
+    virtual glm::vec3 get_up()    const { return glm::vec3(0.0f, 1.0f, 0.0f); }
 
     virtual ~Camera() = default;
 
@@ -85,6 +88,14 @@ private:
     bool right_mouse_down = false;
     bool left_mouse_down  = false;
 
+    // WASD nyomva-tartás állapota. A key-callback csak ezeket állítgatja
+    // (PRESS -> true, RELEASE -> false); a tényleges mozgás frame-enként,
+    // dt-vel skálázva történik (lásd update()), így sima és framerate-független.
+    bool move_forward  = false;
+    bool move_backward = false;
+    bool move_left     = false;
+    bool move_right    = false;
+
     void update_camera_vectors();
 
 protected:
@@ -96,9 +107,14 @@ public:
              float initial_yaw = -90.0f, float initial_pitch = 0.0f);
 
     glm::vec3 get_front() const override { return front; }
+    glm::vec3 get_right() const override { return right; }
+    glm::vec3 get_up()    const override { return up; }
     glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;
 
-    void process_keyboard(int key);
+    // A nyomva-tartás állapotát állítja (PRESS -> true, RELEASE -> false).
+    void process_keyboard(int key, bool pressed);
+    // Frame-enként hívandó: a held billentyűk alapján, dt-vel skálázva mozgat.
+    void update(float dt);
     void process_mouse_movement(float xpos, float ypos);
     void process_mouse_scroll(float yoffset);
 };

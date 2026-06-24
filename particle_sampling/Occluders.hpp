@@ -226,9 +226,86 @@ public:
 };
 
 
+// Teszt: két egységgömb sima uniója a (±0.5, ±0.5, ±0.5) középpontokkal.
+// Az occluder csak vizuális segédlet, ezért egyszerűen a két gömböt rajzoljuk ki.
+class TesztOccluder : public Model {
+    Teszt const& teszt;
+    glm::vec3 color;
+
+    static constexpr int   RINGS   = 24;
+    static constexpr int   SEGS    = 24;
+    static constexpr float PI      = 3.14159265359f;
+    static constexpr float TWO_PI  = 6.28318530718f;
+
+    void render(const Camera&) override {
+        vertices.clear();
+
+        auto sphere = [&](glm::vec3 c, float r) {
+            auto v = [&](float phi, float theta) -> glm::vec3 {
+                return c + r * glm::vec3{
+                    std::sin(phi) * std::cos(theta),
+                    std::cos(phi),
+                    std::sin(phi) * std::sin(theta)
+                };
+            };
+            for (int ri = 0; ri < RINGS; ++ri) {
+                float p0 = PI * float(ri)     / float(RINGS);
+                float p1 = PI * float(ri + 1) / float(RINGS);
+                for (int si = 0; si < SEGS; ++si) {
+                    float t0 = TWO_PI * float(si)     / float(SEGS);
+                    float t1 = TWO_PI * float(si + 1) / float(SEGS);
+                    vertices.push_back(v(p0, t0));
+                    vertices.push_back(v(p1, t0));
+                    vertices.push_back(v(p1, t1));
+                    vertices.push_back(v(p0, t0));
+                    vertices.push_back(v(p1, t1));
+                    vertices.push_back(v(p0, t1));
+                }
+            }
+        };
+
+        sphere(glm::vec3{ 0.5f,  0.5f,  0.5f}, 1.0f);
+        sphere(glm::vec3{-0.5f, -0.5f, -0.5f}, 1.0f);
+
+        update_buffers();
+        set_uniform("color", color);
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(1.0f, 1.0f);
+        //glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertices.size());
+        glDisable(GL_POLYGON_OFFSET_FILL);
+    }
+
+public:
+    TesztOccluder(Teszt const& t, glm::vec3 col, Camera const&)
+        : teszt{t}, color{col}
+    {
+        update_buffers_on_draw = false;
+        Builder::ShaderBuilder builder;
+        set_shader(builder
+            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
+            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
+            .build());
+    }
+};
+
+
+// Üres occluder: bármelyik felülethez passzol, és nem rajzol ki semmit.
+// Nem állít be shadert, így a Model::draw a shaderProgram==0 ágon azonnal kilép
+// (nincs mesh, nincs rajzolás). A render() override csak azért kell, hogy a
+// (különben absztrakt) osztály példányosítható legyen.
+template<class S>
+class NullOccluder : public Model {
+    void render(Camera const&) override {}
+public:
+    NullOccluder(S const&, glm::vec3, Camera const&) {}
+};
+
+
 // Felület -> hozzá tartozó occluder (referencia-mesh) párosítás.
-// Új felület felvételekor itt kell egy sort hozzáadni, a main-hez nem kell nyúlni.
-template<class S> struct OccluderFor;
+// Az ALAPÉRTELMEZÉS a NullOccluder: minden felület, aminek nincs saját occludere,
+// automatikusan "semmit nem rajzol" (így nem is kötelező occludert írni hozzá).
+// Saját mesh-hez vegyél fel egy specializációt a Sphere/Torus mintájára.
+template<class S> struct OccluderFor      { using type = NullOccluder<S>;   };
 template<> struct OccluderFor<Sphere>    { using type = SphereOccluder;    };
 template<> struct OccluderFor<Torus>     { using type = TorusOccluder;     };
 template<> struct OccluderFor<Ellipsoid> { using type = EllipsoidOccluder; };

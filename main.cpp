@@ -11,7 +11,7 @@ int main() {
 
     // Csak a felületet kell kiválasztani. Próbáld ki: Torus, Ellipsoid, Ellipse.
     // Hangoláshoz: app.show<Sphere>({.alpha = 8.0f, .phi = 20.0f});
-    app.show<Sphere>();
+    app.show<Teszt>();
 
     // Saját ImGui panel (különben egy alap demo-panel jelenik meg):
     // app.set_gui([&] {

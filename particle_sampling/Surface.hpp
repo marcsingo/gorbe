@@ -202,3 +202,21 @@ struct Ellipsoid : Surface<3> {
     // egy lapos ellipszoid a vékony irányban ugyanúgy instabillá válik, mint a tórusz.
     float diameter() const override { return 2.0f * std::min({q.x, q.y, q.z}); }
 };
+
+struct Teszt : Surface<4> {
+    Teszt() {
+        q = {0.0f, 0.0f, 0.0f, 0.0f};
+        float R = 2.5f, r = 1.0f, eps = 1e-3f;
+        auto sxy = (((x^2.0f) + (y^2.0f) + eps)^0.5f);                 // sqrt(x²+y²)
+        auto f1  = (((((sxy - R)^2.0f) + (z^2.0f) + eps)^0.5f)) - r;   // sqrt((sxy-R)²+z²)-r
+
+
+        float cx = 4.8f, a = 1.3f, b = 1.0f, c = 1.0f;
+        auto f2 = (((((x - cx)^2.0f)/(a*a)) + ((y^2.0f)/(b*b)) + ((z^2.0f)/(c*c)) + eps)^0.5f) - 1.0_k;
+
+        float k = 0.5f;
+        F = 0.5_k * ( f1 + f2 - ((((f1 - f2)^2.0f) + (k*k))^0.5f) );
+        calculate();
+    }
+    float diameter() const override { return 2.0f; }
+};

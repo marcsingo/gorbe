@@ -59,7 +59,7 @@ glm::mat4 Camera2D::get_projection() const {
 Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_yaw, float initial_pitch)
     : Camera(viewport), position(start_position), front(glm::vec3(0.0f, 0.0f, -1.0f)),
       world_up(glm::vec3(0.0f, 1.0f, 0.0f)), yaw(initial_yaw), pitch(initial_pitch),
-      movement_speed(0.1f), mouse_sensitivity(0.1f), fov(45.0f),
+      movement_speed(5.0f), mouse_sensitivity(0.1f), fov(45.0f),
       first_mouse(true), last_x(viewport.z / 2.0f), last_y(viewport.w / 2.0f) {
 
     update_camera_vectors();
@@ -94,15 +94,21 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
         this->process_mouse_scroll(static_cast<float>(p.offsetY));
     });
 
-    // 4. Billentyűzet (Mozgás + Alt figyelés)
+    // 4. Billentyűzet: csak az állapotot (held / nem held) jegyezzük fel.
+    // A REPEAT-et szándékosan figyelmen kívül hagyjuk: a folyamatos mozgást
+    // a frame-enkénti update() adja, nem az OS billentyű-ismétlése.
     Window::add_key_event([this](auto p) {
-        if (p.action == GLFW_PRESS || p.action == GLFW_REPEAT) {
-            this->process_keyboard(p.key);
-        }
+        if (p.action == GLFW_PRESS)   this->process_keyboard(p.key, true);
+        if (p.action == GLFW_RELEASE) this->process_keyboard(p.key, false);
         if ((p.key == GLFW_KEY_LEFT_ALT || p.key == GLFW_KEY_RIGHT_ALT)
                 && p.action == GLFW_RELEASE) {
             left_mouse_down = false;
         }
+    });
+
+    // 5. Frame-enkénti mozgatás a held billentyűk alapján, dt-vel skálázva.
+    Window::add_time_passed_event([this](auto p) {
+        this->update(static_cast<float>(p.dt));
     });
 
     // FIGYELEM: Ehhez szükséged lesz egy kurzor pozíciót figyelő eseményre a Window osztályban!
@@ -133,11 +139,21 @@ void Camera3D::update_camera_vectors() {
     up = glm::normalize(glm::cross(right, front));
 }
 
-void Camera3D::process_keyboard(int key) {
-    if (key == GLFW_KEY_W) position += front * movement_speed;
-    if (key == GLFW_KEY_S) position -= front * movement_speed;
-    if (key == GLFW_KEY_A) position -= right * movement_speed;
-    if (key == GLFW_KEY_D) position += right * movement_speed;
+void Camera3D::process_keyboard(int key, bool pressed) {
+    if (key == GLFW_KEY_W) move_forward  = pressed;
+    if (key == GLFW_KEY_S) move_backward = pressed;
+    if (key == GLFW_KEY_A) move_left     = pressed;
+    if (key == GLFW_KEY_D) move_right    = pressed;
+}
+
+void Camera3D::update(float dt) {
+    // movement_speed egység/másodpercben; dt-vel skálázva framerate-független
+    // és sima mozgást ad, akármilyen az ablak frissítési rátája.
+    float velocity = movement_speed * dt;
+    if (move_forward)  position += front * velocity;
+    if (move_backward) position -= front * velocity;
+    if (move_left)     position -= right * velocity;
+    if (move_right)    position += right * velocity;
 }
 
 void Camera3D::process_mouse_movement(float xpos, float ypos) {

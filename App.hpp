@@ -10,6 +10,7 @@
 #include "model/Window.hpp"
 #include "model/Camera.hpp"
 #include "model/Gui.hpp"
+#include "model/Axes.hpp"
 #include "particle_sampling/ImplicitSurface.hpp"
 
 // A teljes boilerplate (GLFW/ablak init, kamera, render loop) egy helyen.
@@ -31,6 +32,10 @@ class App {
     } gl_context;
 
     Camera3D camera;
+
+    // Koordináta-tengelyek (piros=x, zöld=y, kék=z). A gl_context után jön létre,
+    // így a Model (VAO/VBO) és a shader már érvényes GL-kontextusban épül fel.
+    Axes axes;
 
     std::shared_ptr<void> surface_keepalive;        // életben tartja a kiválasztott felületet
     std::function<void(Camera const &)> draw_fn;    // típus-független rajzolás
@@ -65,10 +70,11 @@ public:
     void run() {
         while (!Window::window_schould_close()) {
             Gui::begin_frame();
-            if (gui_fn) gui_fn(); else Gui::demo_panel();
+            if (gui_fn) gui_fn(); //else Gui::demo_panel();
 
             glClearColor(background.r, background.g, background.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            axes.draw(camera);
             if (draw_fn) draw_fn(camera);
 
             Gui::end_frame();            // a UI a jelenet fölé kerül, a swap előtt

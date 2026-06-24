@@ -67,7 +67,7 @@ public:
         controls.set_surface(&surface);
         // A felület mostantól folyamatosan a saját átmérőjét írja a d-be.
         surface.bind_diameter(&d);
-        spawn_random_particles(1, 3);
+        spawn_random_particles(2, 3);
 
         Window::add_time_passed_event([this](auto p) {
             static float dt = 0;
