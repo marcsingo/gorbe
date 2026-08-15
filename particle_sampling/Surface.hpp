@@ -19,6 +19,7 @@ using Matek::Analizis::Kifejezes;
 using Matek::Analizis::NameResolver;
 using Matek::Analizis::Program;
 using Matek::Analizis::make_kif;
+using Matek::Analizis::kif_and;
 using Matek::Analizis::x;
 using Matek::Analizis::y;
 using Matek::Analizis::z;

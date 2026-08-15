@@ -70,6 +70,7 @@ ctest --test-dir build --output-on-failure
 | `test_csg` | halmazműveletek értéke és deriváltja, szimbolikus vs. numerikus gradiens, hibás hívások |
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
+| `test_transform` | eltolás/forgatás/méret és összetételük, a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
 Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
 
@@ -121,7 +122,7 @@ A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakz
 | ablak | mi van benne |
 |---|---|
 | **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
-| **Tulajdonságok** | a kijelölt alakzat neve, `F(x,y,z) =` képlete, opcionális **tartomány-feltétele** és a **lokális** paraméterei (név = érték). |
+| **Tulajdonságok** | a kijelölt alakzat neve, `F(x,y,z) =` képlete, opcionális **tartomány-feltétele**, **tér-transzformációja** és a **lokális** paraméterei (név = érték). |
 | **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték), és a **globális tartomány**. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
 
@@ -153,6 +154,41 @@ zárójelezni). Függvények:
 
 Az angol nevek is működnek: `union`, `intersect`, `subtract`, `sunion`, `sintersect`,
 `ssubtract`. A sima műveleteknél a `k` a lekerekítés mértéke (elhagyva `0.5`).
+
+### Tér-transzformáció (eltolás / forgatás / méret)
+
+Alakzatonként megadható pozíció, forgatás és méret a Tulajdonságok panelen — nem kell
+a képletbe írni, hogy `(x-3)^2 + ...`.
+
+Az alakzatot nem „mozgatjuk": a **teret** transzformáljuk. Ha a lokálisból a világba a
+`p_világ = T + R·(S·p_lok)` leképezés visz, akkor a világbeli egyenlet
+
+```
+F_világ(p) = F_lok( w(p) ),    w(p) = S⁻¹ · Rᵀ · (p − T)
+```
+
+vagyis az **inverz** leképezést helyettesítjük be `F`-be
+(`Kifejezes::substitute`, lásd `particle_sampling/Transform.hpp`). A deriváltakkal nem
+kell külön foglalkozni: a szimbolikus deriválás a láncszabályt magától elvégzi — a
+BlobTree-cikk 3.4-e ehhez explicit Jacobi-mátrixot számol, itt ez ingyen van.
+
+Néhány következmény:
+
+- A transzformáció paraméterei **cím szerint** épülnek be, ezért a csúszkák **élőben**
+  mozgatják az alakzatot: nincs újraparseolás és újraderiválás.
+- Egységtranszformációnál a warp **nem épül be**, hogy az egyszerű alakzatok olcsók
+  maradjanak (a gömb programja 15 utasítás a warpos 153 helyett). Ezért amikor először
+  nyúlsz a vezérlőkhöz, a program egyszer újraépíti az alakzatot — utána élő.
+- Az alakzat **saját tartomány-feltétele** vele együtt mozog (a „véges hosszú henger"
+  végei a hengerrel), a **globális tartomány** viszont nem — az a világ munkatere.
+- A rá **hivatkozó** későbbi alakzatok már az elhelyezett formát látják, tehát két
+  elhelyezett gömb uniója a helyükön lesz.
+
+| képlet | program (utasítás) | transzformálva |
+|---|---|---|
+| gömb | 15 | 153 |
+| tórusz | 45 | 203 |
+| sima unió | 106 | 271 |
 
 ### Tartomány-feltétel — végtelen alakzatok véges darabon
 
@@ -509,6 +545,7 @@ minden kimenetre.
 | `matek/muveletek/{Minimum,Maximum}.hpp` | éles halmazműveletek (CSG) csomópontjai |
 | `matek/fuggvenyek/{Abs,Elojel}.hpp` | `abs` / `sign` — ezekre épül a min/max deriváltja |
 | `particle_sampling/DomainConstraint.hpp` | a tartomány-feltétel matematikája (felület menti csúsztatás + perem-fal) |
+| `particle_sampling/Transform.hpp` | tér-transzformáció: a világ→lokális leképezés behelyettesítése |
 | `model/`, `utils/` | OpenGL-réteg (kamera, ablak, shader, Model) |
 | `model/Gui.{hpp,cpp}` | Dear ImGui wrapper (init/frame/render, input-szűrés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |

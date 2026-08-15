@@ -12,6 +12,7 @@
 // A Kif / make_kif / Kifejezes a Matek::Analizis névtérből jön (a Surface.hpp
 // globális `using namespace`-e miatt közvetlenül elérhető).
 #include "particle_sampling/Surface.hpp"
+#include "particle_sampling/Transform.hpp"
 
 #include "imgui.h"
 
@@ -53,6 +54,15 @@ struct Shape {
     bool visible      = true;
     std::list<Param> locals;
     std::shared_ptr<Kifejezes const> tree;
+
+    // Tér-transzformáció: az alakzatot nem mozgatjuk, hanem az inverz leképezést
+    // helyettesítjük F-be (lásd particle_sampling/Transform.hpp). A mezők CÍME épül
+    // be a kifejezésbe, ezért a csúszkák élőben mozgatják az alakzatot.
+    TransformParams xform;
+    // Beépült-e a warp az utolsó Indításkor? Egységtranszformációnál nem épül be
+    // (hogy az egyszerű alakzatok olcsók maradjanak), ezért az első hozzányúláskor
+    // újra kell építeni — különben a csúszka némán nem csinálna semmit.
+    bool warped = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -307,26 +317,36 @@ int main() {
                 try {
                     s.tree = make_kif(s.formula,
                                       [&](std::string const& nm) { return resolve(s, nm); }).get();
+
+                    // Tér-transzformáció: az alakzat saját képletén ÉS a saját
+                    // tartományán is alkalmazzuk (a "véges hosszú henger" végei
+                    // együtt mozogjanak a hengerrel), a GLOBÁLIS tartományon viszont
+                    // NEM — az a világ munkatere, nem az alakzaté.
+                    //
+                    // A transzformált alakot tesszük vissza s.tree-be, hogy a rá
+                    // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
+                    // (két elhelyezett gömb uniója a helyükön legyen).
+                    s.warped = !s.xform.is_identity();
+                    s.tree = apply_transform(Kif(s.tree), s.xform).get();
                     pool[i]->get_surface().set_tree(s.tree);
 
-                    // Tartomány = GLOBÁLIS és SAJÁT feltétel ÉS-kapcsolata. A két
-                    // részt szövegszinten kötjük össze, és egyben parseoljuk az alakzat
-                    // névfeloldójával — ez azért biztonságos, mert a névellenőrzés tiltja,
-                    // hogy egy lokális paraméter neve megegyezzen egy globáliséval, tehát
-                    // a globális rész nevei itt sem tudnak mást jelenteni.
-                    std::string dom_src;
-                    if (global_domain[0] && s.domain[0])
-                        dom_src = std::string("(") + global_domain + ") and (" + s.domain + ")";
-                    else if (global_domain[0]) dom_src = global_domain;
-                    else if (s.domain[0])      dom_src = s.domain;
-
-                    if (!dom_src.empty()) {
-                        auto dom = make_kif(dom_src,
-                                            [&](std::string const& nm) { return resolve(s, nm); }).get();
-                        pool[i]->get_surface().set_domain(dom);
-                    } else {
-                        pool[i]->get_surface().clear_domain();
+                    // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.
+                    Kif dom;
+                    bool has_dom = false;
+                    if (s.domain[0]) {
+                        dom = apply_transform(
+                            make_kif(s.domain, [&](std::string const& nm) { return resolve(s, nm); }),
+                            s.xform);
+                        has_dom = true;
                     }
+                    if (global_domain[0]) {
+                        Kif g = make_kif(global_domain, resolve_global);
+                        dom = has_dom ? kif_and(g, dom) : g;   // ÉS = min
+                        has_dom = true;
+                    }
+
+                    if (has_dom) pool[i]->get_surface().set_domain(dom.get());
+                    else         pool[i]->get_surface().clear_domain();
                 } catch (std::exception const& e) {
                     throw std::runtime_error(std::string(s.name[0] ? s.name : "(nevtelen)")
                                              + ": " + e.what());
@@ -385,6 +405,9 @@ int main() {
 
     app.set_gui([&] {
         validate();
+        // Ha a transzformacios vezerlokhoz eloszor nyulunk hozza, az alakzatot
+        // ujra kell epiteni (lasd a Tulajdonsagok panelnel).
+        bool needs_rebuild = false;
 
         // ------------------------------------------------------------------
         // 1. ablak: a jelenet alakzatai (lista + kijelölés) és a futtatás.
@@ -517,6 +540,24 @@ int main() {
             ImGui::TextDisabled("A reszecskek a FELULETEN csusznak be a jo terreszbe,");
             ImGui::TextDisabled("es a peremen nem lepnek at. Ures = korlatlan.");
 
+            // --- Tér-transzformáció ---------------------------------------------
+            ImGui::SeparatorText("Transzformacio");
+            bool xf_edited = false;
+            xf_edited |= ImGui::DragFloat3("pozicio", s.xform.pos, 0.05f);
+            xf_edited |= ImGui::SliderAngle("forgatas x", &s.xform.rot[0], -180.0f, 180.0f);
+            xf_edited |= ImGui::SliderAngle("forgatas y", &s.xform.rot[1], -180.0f, 180.0f);
+            xf_edited |= ImGui::SliderAngle("forgatas z", &s.xform.rot[2], -180.0f, 180.0f);
+            xf_edited |= ImGui::DragFloat3("meret", s.xform.scale, 0.02f, 0.01f, 100.0f);
+            if (ImGui::SmallButton("Alaphelyzet")) { s.xform.reset(); xf_edited = true; }
+            ImGui::SameLine();
+            ImGui::TextDisabled(s.warped ? "(eloben mozog)" : "(elso mozgatasra ujraepul)");
+
+            // Egységtranszformációval a warp NEM épül be (így az egyszerű alakzatok
+            // olcsók maradnak: a gömb programja 15 utasítás a warpos 153 helyett).
+            // Ezért amikor ELŐSZÖR nyúlsz a vezérlőkhöz, újra kell építeni — utána
+            // a paraméterek címe már benne van, és a csúszkák élőben hatnak.
+            if (xf_edited && !s.warped && !s.xform.is_identity()) needs_rebuild = true;
+
             ImGui::Separator();
             ImGui::Text("Lokalis parameterek (csak ez az alakzat latja):");
             if (draw_params(s.locals, "p")) { drop_all(); error.clear(); }
@@ -639,6 +680,8 @@ int main() {
         if (ImGui::SmallButton("Torol")) global_domain[0] = '\0';
         ImGui::TextDisabled("Csak globalis parametert hasznalhat.");
         ImGui::End();
+
+        if (needs_rebuild) build_all();
     });
 
     app.run();

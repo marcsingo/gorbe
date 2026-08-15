@@ -16,6 +16,11 @@ namespace Matek {
             const char * get_name() const override { return "cos"; }
 
             Op get_op() const override { return Op::Cos; }
+
+            std::shared_ptr<Kifejezes const> with_arg(
+                std::shared_ptr<Kifejezes const> a) const override {
+                return std::make_shared<Cos>(std::move(a));
+            }
         public:
             explicit Cos(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float x) { return std::cos(x); }, std::move(kif)) {}

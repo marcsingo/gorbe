@@ -67,6 +67,12 @@ namespace Matek {
                 return derrivate_impl(var);
             }
 
+            std::shared_ptr<Kifejezes const> with_children(
+                std::shared_ptr<Kifejezes const> a,
+                std::shared_ptr<Kifejezes const> b) const override {
+                return std::make_shared<Hatvany>(std::move(a), std::move(b));
+            }
+
             int compile(Program& prog) const override {
                 int a = get_bal()->compile(prog);
                 int b = get_jobb()->compile(prog);

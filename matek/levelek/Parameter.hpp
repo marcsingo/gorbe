@@ -35,6 +35,10 @@ namespace Matek {
 
             void print(std::ostream &os) const override { os << "p_" << id; }
 
+            std::shared_ptr<Kifejezes const> substitute(SubstMap const&) const override {
+                return std::make_shared<Parameter>(ertek_ref, id);
+            }
+
             int compile(Program& prog) const override {
                 return prog.emit(Op::Param, -1, -1, 0.0f, ertek_ref);
             }

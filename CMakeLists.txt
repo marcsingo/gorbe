@@ -87,6 +87,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         particle_sampling/Surface.hpp
         particle_sampling/Occluders.hpp
         particle_sampling/DomainConstraint.hpp
+        particle_sampling/Transform.hpp
         particle_sampling/SpatialGrid.hpp
         matek/Program.hpp
         matek/Kif.hpp
@@ -112,7 +113,7 @@ target_compile_definitions(gorbe PRIVATE "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program)
+    foreach(t test_shapes test_csg test_domain test_program test_transform)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})

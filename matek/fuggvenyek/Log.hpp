@@ -21,6 +21,11 @@ namespace Matek {
             const char * get_name() const override { return "(1/log(10))*log"; }
 
             Op get_op() const override { return Op::Log; }
+
+            std::shared_ptr<Kifejezes const> with_arg(
+                std::shared_ptr<Kifejezes const> a) const override {
+                return std::make_shared<Log>(std::move(a));
+            }
         public:
             explicit Log(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float x) { return std::log10(x); }, std::move(kif)) {}

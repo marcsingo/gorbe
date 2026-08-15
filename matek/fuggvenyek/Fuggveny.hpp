@@ -18,7 +18,14 @@ namespace Matek {
             // A laposított program műveletkódja (lásd matek/Program.hpp). Csak ennyiben
             // különböznek a függvények, ezért a compile() itt, közösen van megírva.
             virtual Op get_op() const = 0;
+            // Ugyanaz a fuggveny, mas argumentummal (a substitute()-hoz).
+            virtual std::shared_ptr<Kifejezes const> with_arg(
+                std::shared_ptr<Kifejezes const> a) const = 0;
         public:
+            std::shared_ptr<Kifejezes const> substitute(SubstMap const& m) const override {
+                return with_arg(kif->substitute(m));
+            }
+
             int compile(Program& prog) const override {
                 return prog.emit(get_op(), kif->compile(prog));
             }

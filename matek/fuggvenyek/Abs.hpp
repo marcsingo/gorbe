@@ -20,6 +20,11 @@ namespace Matek {
 
             Op get_op() const override { return Op::Abs; }
 
+            std::shared_ptr<Kifejezes const> with_arg(
+                std::shared_ptr<Kifejezes const> a) const override {
+                return std::make_shared<Abs>(std::move(a));
+            }
+
         public:
             explicit Abs(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float v) { return std::abs(v); }, std::move(kif)) {}

@@ -115,10 +115,26 @@ namespace Matek {
             return Kif(var);
         }
 
-        // Függvények is sokkal tisztábbak
-        inline Kif sin(const Kif& a) {
-            return Kif(std::make_shared<Sin>(a.get()));
+        // Függvény-burkolók a C++ oldali DSL-hez. (A string-parser saját táblát használ,
+        // lásd make_func; ezek a kódból épített kifejezésekhez kellenek.)
+        inline Kif sin(const Kif& a)  { return Kif(std::make_shared<Sin>(a.get())); }
+        inline Kif cos(const Kif& a)  { return Kif(std::make_shared<Cos>(a.get())); }
+        inline Kif abs(const Kif& a)  { return Kif(std::make_shared<Abs>(a.get())); }
+        inline Kif sign(const Kif& a) { return Kif(std::make_shared<Elojel>(a.get())); }
 
+        inline Kif min(const Kif& a, const Kif& b) {
+            return Kif(std::make_shared<Minimum>(a.get(), b.get()));
+        }
+        inline Kif max(const Kif& a, const Kif& b) {
+            return Kif(std::make_shared<Maximum>(a.get(), b.get()));
+        }
+
+        // A feltételek "igaz = pozitív" ábrázolásában az ÉS a minimum (lásd parse_and).
+        inline Kif kif_and(const Kif& a, const Kif& b) { return min(a, b); }
+
+        // Változó-behelyettesítés a Kif szintjén (tér-transzformációkhoz).
+        inline Kif substitute(Kif const& e, SubstMap const& m) {
+            return Kif(e.get()->substitute(m));
         }
 
         // Névfeloldó: egy azonosítóhoz (ami nem x/y/z és nem ismert függvény) egy

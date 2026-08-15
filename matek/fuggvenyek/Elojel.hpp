@@ -22,6 +22,11 @@ namespace Matek {
 
             Op get_op() const override { return Op::Sign; }
 
+            std::shared_ptr<Kifejezes const> with_arg(
+                std::shared_ptr<Kifejezes const> a) const override {
+                return std::make_shared<Elojel>(std::move(a));
+            }
+
         public:
             explicit Elojel(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float v) { return v > 0.0f ? 1.0f : (v < 0.0f ? -1.0f : 0.0f); },
