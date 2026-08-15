@@ -61,10 +61,7 @@ public:
     explicit Axes(float length = 5.0f, float label_size = 0.3f)
         : length{length}, label_size{label_size} {
         update_buffers_on_draw = false; // a render() tölti fel a csúcsokat
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 };

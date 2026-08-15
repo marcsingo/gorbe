@@ -23,4 +23,10 @@
 #include "fuggvenyek/Tan.hpp"
 #include "fuggvenyek/Ctg.hpp"
 
+// Előjel / abszolútérték, és a rájuk épülő éles min-max (CSG) csomópontok.
+#include "fuggvenyek/Elojel.hpp"
+#include "fuggvenyek/Abs.hpp"
+#include "muveletek/Minimum.hpp"
+#include "muveletek/Maximum.hpp"
+
 #endif //MATEK_FUGGVENY_HPP

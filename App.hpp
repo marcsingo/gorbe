@@ -42,8 +42,8 @@ class App {
     std::function<void(Camera const &)> draw_fn;    // típus-független rajzolás
     std::function<void()> gui_fn;                   // a felhasználó ImGui-panelei
 
-    // Állandó életű sampler-pool a stringből megadott alakzatokhoz (lásd make_equation_pool).
-    std::vector<std::shared_ptr<ImplicitSurface<StringSurface>>> eq_pool;
+    // A stringből megadott alakzatok samplerei (lásd resize_equation_surfaces).
+    std::vector<std::unique_ptr<ImplicitSurface<StringSurface>>> eq_pool;
 
     glm::vec3 background{1.0f, 1.0f, 1.0f};
 
@@ -83,23 +83,24 @@ public:
         return *surface;
     }
 
-    // EGYSZER hívandó: létrehoz `n` darab ÁLLANDÓ életű, üres (álló) ImplicitSurface-t.
-    // Minden felvett alakzat ezek közül egyhez rendelődik (saját kezdő részecskékkel,
-    // külön mintavételezve). A pool tag-változó, így a benne lévő felületek a program
-    // teljes életében élnek — ezért biztonságos, hogy a Window eseménykezelőik (amik a
-    // ctorban regisztrálódnak és nem leiratkoztathatók) mindvégig érvényes objektumra
-    // mutassanak. A visszaadott nyers mutatók a pool elemeire mutatnak.
-    std::vector<ImplicitSurface<StringSurface>*> make_equation_pool(int n) {
-        eq_pool.clear(); // egyszeri hívásra szánt; üres pool-ról indulunk
-        std::vector<ImplicitSurface<StringSurface>*> out;
-        out.reserve(n);
-        for (int i = 0; i < n; ++i) {
-            auto s = std::make_shared<ImplicitSurface<StringSurface>>(camera);
+    // Stringből megadott alakzatok samplerei. Bármikor hívható: a lista tetszőlegesen
+    // nőhet és csökkenhet, mert az ImplicitSurface a destruktorában leiratkozik az
+    // ablak eseményeiről (Window::Subscription), tehát nem marad utána lógó lambda.
+    using EqSurface = ImplicitSurface<StringSurface>;
+
+    // Gondoskodik róla, hogy pontosan `n` sampler legyen; a visszaadott mutatók a
+    // következő hívásig érvényesek.
+    std::vector<EqSurface*> resize_equation_surfaces(std::size_t n) {
+        while (eq_pool.size() > n) eq_pool.pop_back();
+        while (eq_pool.size() < n) {
+            auto s = std::make_unique<EqSurface>(camera);
             s->set_manual_diameter(true); // a d-t a GUI állítja, ne a felület írja felül
             s->clear();                   // induláskor üres, álló
-            eq_pool.push_back(s);
-            out.push_back(s.get());
+            eq_pool.push_back(std::move(s));
         }
+        std::vector<EqSurface*> out;
+        out.reserve(eq_pool.size());
+        for (auto& s : eq_pool) out.push_back(s.get());
         draw_fn = [this](Camera const &cam) { for (auto &s : eq_pool) s->draw(cam); };
         return out;
     }
@@ -117,6 +118,12 @@ public:
             Gui::end_frame();            // a UI a jelenet fölé kerül, a swap előtt
             Window::event_handling();    // swap + idő-események + poll
         }
+        // A GL erőforrásokat még élő kontextus mellett kell elengedni: előbb a
+        // jelenet (Model-ek: VAO/VBO), aztán a shader-cache, végül az ablak.
+        eq_pool.clear();
+        surface_keepalive.reset();
+        draw_fn = nullptr;
+        Builder::clear_shader_cache();
         Gui::shutdown();
         Window::destroy_window();
     }

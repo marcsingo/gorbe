@@ -65,12 +65,12 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
     update_camera_vectors();
 
     // 1. Egér mozgás (csak jobb gomb lenyomva esetén forgat)
-    Window::add_mouse_pos_event([this](auto p) {
+    subs.push_back(Window::Subscription(Window::add_mouse_pos_event([this](auto p) {
         this->process_mouse_movement(static_cast<float>(p.x), static_cast<float>(p.y));
-    });
+    })));
 
     // 2. Egérgomb figyelése: jobb gomb VAGY Alt+bal gomb = forgás mód
-    Window::add_mouse_button_event([this](auto p) {
+    subs.push_back(Window::Subscription(Window::add_mouse_button_event([this](auto p) {
         if (p.button == GLFW_MOUSE_BUTTON_RIGHT) {
             if (p.action == GLFW_PRESS) {
                 right_mouse_down = true;
@@ -87,29 +87,29 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
                 left_mouse_down = false;
             }
         }
-    });
+    })));
 
     // 3. Görgő (FOV / Zoom)
-    Window::add_mouse_scroll_event([this](auto p) {
+    subs.push_back(Window::Subscription(Window::add_mouse_scroll_event([this](auto p) {
         this->process_mouse_scroll(static_cast<float>(p.offsetY));
-    });
+    })));
 
     // 4. Billentyűzet: csak az állapotot (held / nem held) jegyezzük fel.
     // A REPEAT-et szándékosan figyelmen kívül hagyjuk: a folyamatos mozgást
     // a frame-enkénti update() adja, nem az OS billentyű-ismétlése.
-    Window::add_key_event([this](auto p) {
+    subs.push_back(Window::Subscription(Window::add_key_event([this](auto p) {
         if (p.action == GLFW_PRESS)   this->process_keyboard(p.key, true);
         if (p.action == GLFW_RELEASE) this->process_keyboard(p.key, false);
         if ((p.key == GLFW_KEY_LEFT_ALT || p.key == GLFW_KEY_RIGHT_ALT)
                 && p.action == GLFW_RELEASE) {
             left_mouse_down = false;
         }
-    });
+    })));
 
     // 5. Frame-enkénti mozgatás a held billentyűk alapján, dt-vel skálázva.
-    Window::add_time_passed_event([this](auto p) {
+    subs.push_back(Window::Subscription(Window::add_time_passed_event([this](auto p) {
         this->update(static_cast<float>(p.dt));
-    });
+    })));
 
     // FIGYELEM: Ehhez szükséged lesz egy kurzor pozíciót figyelő eseményre a Window osztályban!
     // Window::add_cursor_event([this](double xpos, double ypos) {
@@ -122,7 +122,12 @@ glm::mat4 Camera3D::get_view() const {
 }
 
 glm::mat4 Camera3D::get_projection() const {
-    float aspect_ratio = (viewport.z - viewport.x) / (viewport.w - viewport.y);
+    // Az aspect-et az AKTUÁLIS ablakméretből számoljuk, így resize-kor (a glViewport
+    // frissítésével együtt) a kép arányhelyes marad, nem nyúlik szét. (h==0: minimalizálva.)
+    int h = Window::get_height();
+    float aspect_ratio = (h > 0)
+        ? static_cast<float>(Window::get_width()) / static_cast<float>(h)
+        : 1.0f;
     return glm::perspective(glm::radians(fov), aspect_ratio, 0.1f, 100.0f);
 }
 

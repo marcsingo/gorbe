@@ -91,3 +91,34 @@ GLuint Builder::ShaderBuilder::build() {
     return shaderProgram;
 }
 
+
+// --- Shader-cache ---------------------------------------------------------
+// Ugyanahhoz a fájlpárhoz csak egyszer olvasunk, fordítunk és linkelünk.
+
+#include <map>
+#include <utility>
+
+namespace {
+    std::map<std::pair<std::string, std::string>, GLuint>& cache() {
+        static std::map<std::pair<std::string, std::string>, GLuint> c;
+        return c;
+    }
+}
+
+GLuint Builder::get_or_build(char const* vertex_file, char const* fragment_file) {
+    auto key = std::make_pair(std::string(vertex_file), std::string(fragment_file));
+    auto it = cache().find(key);
+    if (it != cache().end()) return it->second;
+
+    Builder::ShaderBuilder b;
+    GLuint prog = b.add_vertex_shader(vertex_file)
+                   .add_fragment_shader(fragment_file)
+                   .build();
+    cache().emplace(std::move(key), prog);
+    return prog;
+}
+
+void Builder::clear_shader_cache() {
+    for (auto& kv : cache()) glDeleteProgram(kv.second);
+    cache().clear();
+}

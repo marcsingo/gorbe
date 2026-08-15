@@ -20,6 +20,8 @@ namespace Matek {
                 );
             }
             const char * get_name() const override { return "ctg"; }
+
+            Op get_op() const override { return Op::Ctg; }
         public:
             explicit Ctg(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float x) { return 1.0f / std::tan(x); }, std::move(kif)) {}

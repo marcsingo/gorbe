@@ -20,6 +20,8 @@ namespace Matek {
                 );
             }
             const char * get_name() const override { return "tan"; }
+
+            Op get_op() const override { return Op::Tan; }
         public:
             explicit Tan(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float x) { return std::tan(x); }, std::move(kif)) {}

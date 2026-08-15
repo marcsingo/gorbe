@@ -18,14 +18,25 @@ Model::~Model() {
     glDeleteBuffers(1, &VBO);
 }
 
-void Model::update_buffers() const {
+void Model::update_buffers() {
     if (vertices.empty()) return;
 
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
     // sizeof(glm::vec3) pontosan 3 db float mérete (12 bájt), így biztonságos.
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
+    GLsizeiptr const bytes = static_cast<GLsizeiptr>(vertices.size() * sizeof(glm::vec3));
+
+    // A részecske-modellek MINDEN frame-ben újratöltik a csúcsokat, ezért
+    // GL_DYNAMIC_DRAW (a GL_STATIC_DRAW ennek pont az ellenkezőjét ígérte a
+    // drivernek). Amíg belefér a már lefoglalt bufferbe, csak felülírjuk —
+    // így nincs frame-enkénti újrafoglalás.
+    if (bytes > vbo_capacity) {
+        glBufferData(GL_ARRAY_BUFFER, bytes, vertices.data(), GL_DYNAMIC_DRAW);
+        vbo_capacity = bytes;
+    } else {
+        glBufferSubData(GL_ARRAY_BUFFER, 0, bytes, vertices.data());
+    }
 
     // 0. index: pozíció (vec3)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
@@ -37,6 +48,7 @@ void Model::update_buffers() const {
 
 void Model::set_shader(GLuint shader) {
     shaderProgram = shader;
+    uniform_cache.clear();   // a helyek programonként mások
 }
 
 void Model::set_position(const glm::vec3& pos) { position = pos; }
@@ -82,17 +94,23 @@ void Model::draw(const Camera& camera)  {
 }
 
 // --- Segédfüggvény a hely lekérdezésére és a hibaüzenetre ---
+// A talált (és a hiányzó) helyeket is gyorsítótárazzuk, így a string szerinti
+// keresés és az esetleges hibaüzenet is legfeljebb EGYSZER fut le nevenként —
+// nem frame-enként, ahogy korábban.
 GLint Model::get_uniform_location(const std::string& name) const {
     if (shaderProgram == 0) {
         std::cerr << "Hiba: Nincs shader beallitva a modellhez!" << std::endl;
         return -1;
     }
 
+    auto it = uniform_cache.find(name);
+    if (it != uniform_cache.end()) return it->second;
+
     GLint location = glGetUniformLocation(shaderProgram, name.c_str());
     if (location == -1) {
-        // Pontosan a kért hibaüzenet formátum
         std::cerr << "Hiba: nem talalhato ez a uniform: " << name << std::endl;
     }
+    uniform_cache.emplace(name, location);
     return location;
 }
 

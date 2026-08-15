@@ -3,6 +3,8 @@
 
 #include <glad/glad.h>
 #include <glm.hpp>
+#include <string>
+#include <unordered_map>
 #include <vector>
 #include "Camera.hpp"
 
@@ -10,6 +12,12 @@ class Model {
 private:
     GLuint VAO, VBO;
     GLuint shaderProgram;
+    GLsizeiptr vbo_capacity = 0;   // a GPU-n lefoglalt méret (bájt)
+
+    // A uniform-helyek nevenkénti gyorsítótára. Enélkül minden set_uniform hívás
+    // string szerinti glGetUniformLocation-t csinál — frame-enként, modellenként,
+    // többször —, és hiánynál a cerr-re is írt, ami frame-enkénti spamot okozott.
+    mutable std::unordered_map<std::string, GLint> uniform_cache;
 
 
 protected:
@@ -29,7 +37,7 @@ protected:
     virtual void render(Camera const &camera) = 0;
 
     // Ezt a függvényt hívja a leszármazott, ha feltöltötte vagy módosította a vektort
-    void update_buffers() const;
+    void update_buffers();
 
 public:
     Model();

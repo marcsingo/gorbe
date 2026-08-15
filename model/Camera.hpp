@@ -15,11 +15,18 @@ class Camera {
 protected:
     glm::vec4 viewport;
 
+    // A leszármazottak `this`-t kapó eseménykezelőket regisztrálnak; ezek élettartama
+    // a kamerához van kötve, így a destruktorban automatikusan leiratkoznak.
+    std::vector<Window::Subscription> subs;
 
     virtual glm::mat4 get_projection() const = 0;
     virtual glm::mat4 get_view() const = 0;;
 public:
     Camera(glm::vec4 viewport) : viewport(viewport) {}
+
+    // Az eseménykezelők `this`-re mutatnak, ezért a kamera nem másolható/mozgatható.
+    Camera(Camera const&) = delete;
+    Camera& operator=(Camera const&) = delete;
     glm::mat4 get_matrix() const;
     glm::vec3 get_mouse_pos_in_world() const;
 
@@ -44,11 +51,11 @@ public:
     glm::vec4 walls;
     Camera2D(glm::vec4 viewport = glm::vec4{-10.0f, 10.0f, -10.0f, 10.0f})
     : Camera(viewport), offset(0), walls{glm::vec4{-10.0f, 10.0f, -10.0f, 10.0f}} {
-        Window::add_mouse_scroll_event([this](auto p) {
+        subs.push_back(Window::Subscription(Window::add_mouse_scroll_event([this](auto p) {
             walls *= 1.0f - (0.1f * p.offsetY);
-        });
+        })));
 
-        Window::add_key_event([this](auto p) {
+        subs.push_back(Window::Subscription(Window::add_key_event([this](auto p) {
             // Reagálunk a lenyomásra és a folyamatos nyomva tartásra is
             if (p.action == GLFW_PRESS || p.action == GLFW_REPEAT) {
                 float speed = 0.2f;
@@ -59,7 +66,7 @@ public:
                     case GLFW_KEY_D: offset.x += speed; break; // Jobbra
                 }
             }
-        });
+        })));
     }
 
 };

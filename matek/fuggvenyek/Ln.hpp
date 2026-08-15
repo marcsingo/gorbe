@@ -15,6 +15,8 @@ namespace Matek {
                 return std::make_shared<Hanyados>(std::make_shared<Konstans>(1), kif);
             }
             const char * get_name() const override { return "(1/log(2.271))*log"; }
+
+            Op get_op() const override { return Op::Ln; }
         public:
             explicit Ln(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float x) { return std::log(x); }, std::move(kif)) {}

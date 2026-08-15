@@ -6,12 +6,14 @@
 #include <cmath>
 
 #include "Particle.hpp"
+#include "SpatialGrid.hpp"
 #include "../model/Include.hpp"
 #include "../matek/Kif.hpp"
 #include "Occluders.hpp"
 
 
-using namespace Matek::Analizis;
+// A szükséges neveket a Surface.hpp már behozza célzott using-deklarációkkal;
+// globális `using namespace` szándékosan nincs (lásd az ottani indoklást).
 
 
 // A részecske-szimuláció hangolható paraméterei. A main-ből opcionálisan átadható
@@ -76,16 +78,23 @@ public:
         surface.bind_diameter(&d);
         spawn_random_particles(2, 3);
 
-        Window::add_time_passed_event([this](auto p) {
+        tick_sub = Window::Subscription(Window::add_time_passed_event([this](auto p) {
             if (!running) return;            // leállított állapotban nem szimulálunk
             sim_accum += p.dt;
             if (sim_accum >= 0.03f) {
                 this->simulation(p.t, sim_accum);
                 sim_accum = 0.0f;
             }
-        });
+        }));
 
     }
+
+    // A `this`-t kapó eseménykezelő élettartama a példányhoz kötve, ezért az
+    // ImplicitSurface immár szabadon megszüntethető (nem marad utána "lógó" lambda).
+    Window::Subscription tick_sub;
+
+    ImplicitSurface(ImplicitSurface const&) = delete;
+    ImplicitSurface& operator=(ImplicitSurface const&) = delete;
 
     // --- Futásidejű vezérlés (egyetlen, állandó életű példányhoz) ----------------
     // A felület eseménykezelői (Window::add_*_event) a konstruktorban, egyszer
@@ -126,9 +135,38 @@ public:
     // így a belőle számolt skálák (sigma_v, sigma_max) követik a felület változását.
     float d;
 
+    // Felső korlát a részecskeszámra. Ez a garancia, hogy SEMMILYEN beírt képlet ne
+    // tudja lefagyasztani a programot: önmagában végtelen felületnél (sík, henger) a
+    // konstans mintavételi sűrűség végtelen sok részecskét jelentene, mert a
+    // sűrűséghiány sosem szűnik meg, tehát a fisszió sosem áll le.
+    // A plafon elérésekor a fisszió leáll, és a szigmát is meg kell fogni: különben
+    // korlátlanul nőne (D < E_v marad), és a korongok gigantikusra hízva jelennének meg.
+    int max_particles = 4000;
+
+    // A görbület-adaptív taszítás erőssége (futásidőben állítható, pl. GUI-csúszka).
+    // 0 = kikapcsolva (egyenletes mintavétel); nagyobb érték = a görbült helyek erősebben
+    // sűrűsödnek. A curvature_scale() ezt használja.
+    float curvature_repulsion = 1.0f;
+
     // d-ből származó, ezért menet közben is helyes méretskálák.
     float sigma_v()   const { return d / 4.0f; }
     float sigma_max() const { return std::max(d / 2.0f, 1.5f * sigma_v()); }
+
+    // Görbület-adaptív skálatényező (0,1]: lapos helyen (|K|→0) 1, görbült helyen (nagy
+    // |K|) kisebb. Ezzel SZOROZZUK a cél-méretskálákat (sigma_v/sigma_max) a fisszió/halál
+    // küszöbeiben: görbültebb helyen kisebb a cél-σ -> hamarabb fisszionál, kevésbé hal ->
+    // SŰRŰBB mintavétel. Így a taszítás (a cél-távolság) fordítottan arányos a görbülettel.
+    // Ennél kisebbre nem mehet a skálatényező: legfeljebb 10x sűrűbb mintavétel a
+    // görbült helyeken. Az éles CSG-operátorok (min/max) miatt kötelező a levágás: a
+    // varraton a felület csak C0, ezért a MÁSODIK deriváltak ott értelmetlenül nagyok,
+    // |K| elszállna, a cél-szigma nullába menne, és korlátlan fisszió indulna.
+    static constexpr float MIN_CURVATURE_SCALE = 0.1f;
+
+    float curvature_scale(Particle<L> const& p) const {
+        if (curvature_repulsion <= 0.0f) return 1.0f;
+        float s = 1.0f / (1.0f + curvature_repulsion * std::abs(p.K));
+        return std::max(s, MIN_CURVATURE_SCALE);
+    }
 
     // Az átmérőt (d) alapból a felület folyamatosan felülírja a valódi átmérőjével
     // (lásd surface.bind_diameter(&d) a konstruktorban). Ezzel kézi vezérlésre lehet
@@ -156,12 +194,15 @@ public:
         for (int i = 0; i < n; ++i) {
             Particle<L> p;
 
-            // Descartes-koordináták sorsolása a kockán belül
-            p.p = glm::vec3{
-                dist_cube(rng),
-                dist_cube(rng),
-                dist_cube(rng)
-            };
+            // Descartes-koordináták sorsolása a kockán belül. Ha van tartomány-feltétel,
+            // elutasításos mintavétellel a JÓ térrészbe célzunk: a részecske ugyan a
+            // felület mentén be tudna csúszni, de az lépésenként legfeljebb 0.25 szigma,
+            // tehát egy távoli tartománynál sokáig tartana, amíg megjelenik bármi.
+            int tries = 0;
+            do {
+                p.p = glm::vec3{dist_cube(rng), dist_cube(rng), dist_cube(rng)};
+                ++tries;
+            } while (surface.has_domain && tries < 64 && surface.Dom.at(p.p) <= 0.0f);
 
             p.sigma = sigma_v();
 
@@ -173,12 +214,42 @@ public:
     }
 
     void calculate_particle(Particle<L>& p) {
-        p.F = surface.F.at(p.p);
-        p.F_x = surface.grad(p.p);
+        // A lefordított programokkal EGY menetben áll elő minden, amire szükség van,
+        // a közös részkifejezések pedig csak egyszer futnak le (matek/Program.hpp).
+        //
+        // A görbületet (és vele a Hesse-mátrixot) csak akkor számoljuk, ha tényleg
+        // kell: a Hesse a derivált-fák tömegének ~98%-a, és ha a görbület-taszítás
+        // ki van kapcsolva, a curvature_scale() amúgy is 1-et ad.
+        if (curvature_repulsion > 0.0f) {
+            surface.eval_full(p.p, p.F, p.F_x, p.K);
+            // Éles CSG-varraton (min/max) a Hesse nem véges — ilyenkor 0, mintha sík lenne.
+            if (!std::isfinite(p.K)) p.K = 0.0f;
+        } else {
+            surface.eval_grad(p.p, p.F, p.F_x);
+            p.K = 0.0f;
+        }
+        // Tartomány-feltétel (ha van): érték + gradiens + a felület menti irány.
+        // Hesse NEM kell hozzá, ezért ez sokkal olcsóbb, mint a feltételt beépíteni F-be.
+        if (surface.has_domain) {
+            surface.eval_domain(p.p, p.dom, p.dom_x);
+            p.dom_g    = Domain::tangential_gradient(p.dom_x, p.F_x);
+            p.dom_dist = Domain::distance(p.dom, p.dom_g);
+        } else {
+            p.dom      = 1.0f;
+            p.dom_x    = glm::vec3{0};
+            p.dom_g    = glm::vec3{0};
+            p.dom_dist = 1e30f;
+        }
         p.P = glm::vec3{0};
         p.D = 0.0f;
         p.D_sigma = 0.0f;
-        p.detah = false;
+        // A NEM VÉGES részecske azonnal kiesik. Ez fontos: a felhasználó képlete
+        // adhat NaN-t (ln(0), 0/0, negatív alap törtkitevővel), és a taszítás
+        // szomszédszűrője NaN-nal hamis eredményt ad -> a NaN egyetlen részecskéről
+        // az ÖSSZES szomszédra átterjedne, és tönkretenné a teljes szimulációt.
+        p.detah = !(std::isfinite(p.F) && std::isfinite(p.F_x.x) &&
+                    std::isfinite(p.F_x.y) && std::isfinite(p.F_x.z) &&
+                    std::isfinite(p.p.x) && std::isfinite(p.p.y) && std::isfinite(p.p.z));
     }
 
     float sign(float x) {
@@ -195,17 +266,42 @@ public:
         return g > 1e-6f ? std::abs(p.F) / g : std::abs(p.F);
     }
 
-    void witkin(Particle<L>& i, float dt) {
-        for (auto& j : floaters.ps()) {
-            if (&i == &j ||
-                surface_distance(j) > 5e-1f) continue;
-            auto r = i.p - j.p;
-            auto E_ij = alpha*std::exp(-glm::dot(r, r) / (i.sigma*i.sigma*2));
-            auto E_ji = alpha*std::exp(-glm::dot(r, r) / (j.sigma*j.sigma*2));
+    // A Gauss-kernel ennyi szigmán túl elhanyagolható: exp(-3²/2) ≈ 1.1%. Ennél
+    // messzebb lévő párokat sem a rács nem ad vissza, sem a távolság-ellenőrzés
+    // nem engedi át — így lesz a taszítás O(n²) helyett O(n).
+    static constexpr float REPULSION_CUTOFF = 3.0f;
+
+    SpatialGrid grid;
+
+    // A taszításhoz használt rács újraépítése a lépés eleji pozíciókkal.
+    void rebuild_grid() {
+        auto& ps = floaters.ps();
+        float max_sigma = 0.0f;
+        for (auto& p : ps) max_sigma = std::max(max_sigma, p.sigma);
+        grid.build(ps.size(), [&](std::size_t k) { return ps[k].p; },
+                   REPULSION_CUTOFF * max_sigma);
+    }
+
+    void witkin(int idx, float dt) {
+        auto& ps = floaters.ps();
+        Particle<L>& i = ps[static_cast<std::size_t>(idx)];
+
+        grid.for_each_near(i.p, [&](int jdx) {
+            if (jdx == idx) return;
+            Particle<L>& j = ps[static_cast<std::size_t>(jdx)];
+            if (surface_distance(j) > 5e-1f) return;
+            auto  r  = i.p - j.p;
+            float r2 = glm::dot(r, r);
+            // A rács 27 cellája a hatósugárnál nagyobb területet fed le, ezért itt
+            // még pontosan is ellenőrizzük — ez a drága exp() elé kerülő olcsó szűrő.
+            float cut = REPULSION_CUTOFF * std::max(i.sigma, j.sigma);
+            if (r2 > cut * cut) return;
+            auto E_ij = alpha*std::exp(-r2 / (i.sigma*i.sigma*2) );
+            auto E_ji = alpha*std::exp(-r2 / (j.sigma*j.sigma*2) );
             i.P += r / (i.sigma*i.sigma) * E_ij + r / (j.sigma*j.sigma) * E_ji;
             i.D += E_ij;
-            i.D_sigma += glm::dot(r, r)*E_ij;
-        }
+            i.D_sigma += r2*E_ij;
+        });
         i.P *= i.sigma*i.sigma;
 
         i.D_dot = -rho*(i.D - E_v);
@@ -214,9 +310,12 @@ public:
         float sigma_update = (i.D_dot / (i.D_sigma + beta)) * dt;
         // Egy lépésben legfeljebb 30%-ot csökkenhet, hogy ne zuhanjon
         // halálküszöb alá azonnali D-spike miatt (pl. egyszerre érkező részecskék).
-        sigma_update = std::max(sigma_update, -0.3f * i.sigma);
+        sigma_update = std::max(sigma_update, -0.3f * i.sigma) ;
         i.sigma += sigma_update;
         i.sigma = std::max(i.sigma, 1e-3f);
+        // (A görbület-adaptáció NEM itt, σ felülírásával történik — az tönkretenné a
+        //  fenti sűrűség-visszacsatolást és előjelhibás lenne. Lásd curvature_scale()-t
+        //  és a fisszió/halál küszöböket a simulation()-ben.)
 
         if (glm::length(i.F_x) > 1e-6f) {
             i.p_dot =
@@ -228,14 +327,57 @@ public:
             i.p_dot = glm::vec3(0,0,0);
         }
 
+        apply_domain_constraint(i, dt);
+
         i.p += i.p_dot * dt;
     }
 
+    // Milyen erősen csúsztatjuk vissza a rossz térrészbe került részecskét (1/s).
+    static constexpr float DOMAIN_PULL = 6.0f;
+    // Egy lépésben legfeljebb ennyi szigmányit csúszhat. Két dolog miatt kell:
+    //  * túl nagy lépés átlőné a tartományt;
+    //  * a csúsztatás ÉRINTŐ irányú, görbült felületen tehát másodrendben kivisz
+    //    (v·dt hosszú lépés R görbületi sugárnál ~(v·dt)²/2R eltérést okoz), amit a
+    //    felület-visszacsatolás csak késleltetve hoz vissza. Mivel sigma a felület
+    //    legkisebb jellemző méretéhez van kötve (lásd diameter()), a 0.25·sigma-s
+    //    korlát a görbületi sugárhoz képest is kicsi lépést jelent.
+    static constexpr float DOMAIN_MAX_SLIDE = 0.25f;
+
+    // A tartomány-feltétel érvényesítése a Witkin-lépés MÁSODIK kényszereként: a
+    // részecske a jó térrész felé mozdul (illetve nem lép ki belőle), miközben végig
+    // a felületen marad. A matek a DomainConstraint.hpp-ban van, hogy tesztelhető legyen.
+    void apply_domain_constraint(Particle<L>& i, float dt) {
+        if (!surface.has_domain) return;
+
+        if (glm::dot(i.dom_g, i.dom_g) < 1e-12f) {
+            // A feltétel gradiense párhuzamos a felület normálisával: a felület mentén
+            // csúszva a dom értéke nem változik, ezt a részecskét nem lehet behozni.
+            if (i.dom < 0.0f) i.detah = true;
+            return;
+        }
+
+        i.p_dot = Domain::constrain(i.p_dot, i.dom_x, i.dom_g, i.dom_dist,
+                                    i.sigma, dt, DOMAIN_PULL, DOMAIN_MAX_SLIDE);
+    }
+
+    // Egy lépésben legfeljebb ennyi szigmányit haladhat a felület felé repülő
+    // részecske; enélkül a lenti sebesség-akkumuláció elszállna.
+    static constexpr float APPROACH_MAX_STEP = 0.5f;
+
     void masik(Particle<L>& i, float dt) {
-        // Figueiredo-Gomes: a részecske nincs a felületen, rárepítjük
-        i.p_dot += i.delta * (-sign(i.F)*i.F_x );
+        // Figueiredo-Gomes: a részecske nincs a felületen, rárepítjük.
+        // A sebesség CSILLAPÍTVA halmozódik: eredetileg korlátlanul nőtt, ezért egy
+        // messziről induló részecske végül átlőtte a felületet és oszcillált.
+        i.p_dot = 0.8f * i.p_dot + i.delta * (-sign(i.F) * i.F_x);
+
+        // Lépéshossz-korlát, hogy egy nagy |∇F| (pl. kvartikus tórusz) se lökje el.
+        float step = glm::length(i.p_dot) * dt;
+        float max_step = APPROACH_MAX_STEP * i.sigma;
+        if (step > max_step && step > 1e-9f) i.p_dot *= max_step / step;
+
         auto uj_p = i.p + i.p_dot * dt;
         if (surface.F.at(uj_p) * i.F < 0.0f) {
+            // Átlőttük a felületet: felezzük a lépésközt és álljunk meg.
             i.delta /= 2.0f;
             i.p_dot = glm::vec3{0};
         }
@@ -251,8 +393,13 @@ public:
         //                     return std::abs(p.F) < 1e-6f;
         //                 });
         // is_particle_on_surface = false;
+        rebuild_grid();   // a taszítás szomszédkeresése ezen megy (O(n) a O(n²) helyett)
+
         std::vector<Particle<L>> particles;
-        for (auto& i : floaters.ps()) {
+        auto& ps = floaters.ps();
+        particles.reserve(ps.size() + 8);
+        for (std::size_t idx = 0; idx < ps.size(); ++idx) {
+            Particle<L>& i = ps[idx];
             calculate_particle(i);
             if (i.state == ramozog) {
                 masik(i, dt);
@@ -262,16 +409,43 @@ public:
                 }
             }
             if (i.state == rajtamozog) {
-                witkin(i, dt);
+                witkin(static_cast<int>(idx), dt);
             }
 
 
             float R = dist_R(rng);
 
+            // Görbület-adaptív cél-méretskálák: görbült helyen kisebbek -> sűrűbb mintavétel.
+            float cs    = curvature_scale(i);
+            float sv    = sigma_v()   * cs;
+            float smax  = sigma_max() * cs;
+
+            // A tartomány-feltételen kívüli részecske még ÚTON van (a felület mentén
+            // csúszik befelé): addig se nem osztódik, se nem hal meg sűrűség alapján —
+            // különben a peremen "churn" alakulna ki (kilökődik, meghal, a szomszéd
+            // fisszionál a helyére, azt is kilöki, ...).
+            bool const uton = Domain::is_outside(i.dom_dist, i.sigma);
+
+            // A fisszió és a sűrűség-alapú halál CSAK a felületen mozgó részecskékre
+            // értelmes: a még repülő (ramozog) részecske p_dot-ja a ráhúzó ágból jön,
+            // nem a taszításból, tehát a `|p_dot| < gamma*sigma` egyensúly-feltétel
+            // rá nézve értelmetlen. (A kód eddig ezt nem szűrte, a komment viszont
+            // már akkor is "csak felületi részecskéknél"-t írt.)
+            bool const felszinen = (i.state == rajtamozog);
+            // A fisszió két részecskét ad, ezért a plafon alatt egy hellyel korábban állunk meg.
+            bool const at_budget = static_cast<int>(particles.size()) >= max_particles - 1;
+
             if (i.detah) {
-                // halál: van már felületi részecske, ez nem kell
+                // halál: nem véges részecske, vagy a tartományba nem behozható
+            } else if (uton || !felszinen) {
+                particles.push_back(i);
+            } else if (at_budget) {
+                // Elértük a részecske-plafont: nincs több fisszió. A szigmát is le
+                // kell fogni, különben korlátlanul nőne (a sűrűség a cél alatt marad).
+                i.sigma = std::min(i.sigma, smax);
+                particles.push_back(i);
             } else if (glm::length(i.p_dot) < gamma*i.sigma &&
-                (i.sigma > sigma_max() || (i.D > nu * E_v && i.sigma > sigma_v())))
+                (i.sigma > smax || (i.D > nu * E_v && i.sigma > sv)))
             {
                 // fisszió: csak felületi részecskéknél
                 i.sigma /= std::sqrt(2.0f);
@@ -298,8 +472,8 @@ public:
 
             } else if (
                 glm::length(i.p_dot) < gamma*i.sigma &&
-                i.sigma < delta*sigma_v() &&
-                R > i.sigma/(delta*sigma_v()))
+                i.sigma < delta*sv &&
+                R > i.sigma/(delta*sv))
             {
                 // halál: sűrűség alapú eliminálás
             } else {

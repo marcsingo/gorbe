@@ -53,11 +53,8 @@ public:
         : sphere{s}, color{col}
     {
         update_buffers_on_draw = false;
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 };
 
@@ -111,11 +108,8 @@ public:
         : torus{t}, color{col}
     {
         update_buffers_on_draw = false;
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 };
 
@@ -171,11 +165,8 @@ public:
         : ellipsoid{e}, color{col}
     {
         update_buffers_on_draw = false;
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 };
 
@@ -217,11 +208,8 @@ public:
         : ellipse{e}, color{col}
     {
         update_buffers_on_draw = false;
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 };
 
@@ -280,11 +268,8 @@ public:
         : teszt{t}, color{col}
     {
         update_buffers_on_draw = false;
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 };
 

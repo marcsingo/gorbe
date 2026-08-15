@@ -6,6 +6,7 @@
 #define GORBE_PARTICLE_HPP
 #include "../model/Include.hpp"
 #include "Surface.hpp"
+#include "DomainConstraint.hpp"
 #include <algorithm>
 #include <vector>
 
@@ -26,6 +27,15 @@ struct Particle {
     ParticleState state = ramozog;
 
     float F;
+    float K = 0.0f;   // a felület közepes görbülete a részecske helyén (surface.curvature)
+
+    // Tartomány-feltétel a részecske helyén: dom > 0 = megfelelő térrészben van.
+    // Feltétel nélküli felületnél dom_dist végig +végtelen, tehát mindig "bent van".
+    // Lásd particle_sampling/DomainConstraint.hpp.
+    float     dom      = 1.0f;      // a feltétel nyers értéke
+    glm::vec3 dom_x{0};             // ∇dom
+    glm::vec3 dom_g{0};             // ∇dom felület menti (érintőirányú) része
+    float     dom_dist = 1e30f;     // előjeles geometriai távolság a peremtől
 
     float sigma{10.0f};
     float D = 0.0f;
@@ -66,6 +76,10 @@ protected:
         this->vertices.reserve(particles.size() * DISK_SEGS * 3);
 
         for (auto& p : particles) {
+            // A tartomány-feltételen kívüli részecskék még "úton vannak" a jó térrész
+            // felé (a felület mentén csúsznak) — azokat nem rajzoljuk ki.
+            if (Domain::is_outside(p.dom_dist, p.sigma)) continue;
+
             glm::vec3 N = (glm::length(p.F_x) > 1e-6f)
                 ? glm::normalize(p.F_x)
                 : glm::vec3(0.0f, 1.0f, 0.0f);
@@ -98,11 +112,8 @@ public:
     Particles(int /*size*/, glm::vec3 color, Camera const& camera) : color{color} {
         this->update_buffers_on_draw = false; // render() kezeli a feltöltést
 
-        Builder::ShaderBuilder builder;
-        set_shader(builder
-            .add_vertex_shader  (SHADER_DIR "/vertex.vert")
-            .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-            .build());
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert",
+                                         SHADER_DIR "/fragment.glsl"));
     }
 
     ~Particles() = default;
@@ -157,10 +168,13 @@ private:
 public:
     void set_surface(Surface<L>* s) { surface = s; }
 
+    // A `this`-t kapó eseménykezelők élettartama a példányhoz kötve.
+    Window::Subscription btn_sub, key_sub, tick_sub;
+
     ControlPoints(int size, const glm::vec3 &color, Camera const &camera)
         : Particles<L>(size, color, camera) {
 
-        Window::add_mouse_button_event([this, &camera](auto p) {
+        btn_sub = Window::Subscription(Window::add_mouse_button_event([this, &camera](auto p) {
             if (p.button == GLFW_MOUSE_BUTTON_LEFT && !(p.mods & GLFW_MOD_ALT)) {
                 if (p.action == GLFW_PRESS) {
                     if (shift_is_on) {
@@ -182,14 +196,14 @@ public:
                     selected_idx = -1;
                 }
             }
-        });
+        }));
 
-        Window::add_key_event([this](auto p) {
-            if (p.key == GLFW_KEY_LEFT_SHIFT)
+        key_sub = Window::Subscription(Window::add_key_event([this](auto p) {
+            if (p.key == GLFW_KEY_LEFT_SHIFT || p.key == GLFW_KEY_RIGHT_SHIFT)
                 shift_is_on = (p.action == GLFW_PRESS);
-        });
+        }));
 
-        Window::add_time_passed_event([this, &camera](auto ev) {
+        tick_sub = Window::Subscription(Window::add_time_passed_event([this, &camera](auto ev) {
             // 1. Mozgatott pont sebességének és pozíciójának frissítése
             if (selected_idx >= 0 && selected_idx < (int)this->particles.size()) {
                 auto& sel = this->particles[selected_idx];
@@ -239,7 +253,7 @@ public:
 
             // q Euler-integrálása (8. egyenlet utáni lépés a cikkben)
             surface->q += q_dot * static_cast<float>(ev.dt);
-        });
+        }));
     }
 };
 

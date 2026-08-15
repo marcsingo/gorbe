@@ -47,6 +47,12 @@ namespace Matek {
                 );
             }
 
+            int compile(Program& prog) const override {
+                int a = get_bal()->compile(prog);
+                int b = get_jobb()->compile(prog);
+                return prog.emit(Op::Mul, a, b);
+            }
+
         protected:
             char const get_operator() const override { return '*'; }
         };

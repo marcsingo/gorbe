@@ -2,7 +2,9 @@
 #define GORBE_KIF_HPP
 #include <memory>
 #include <string>
+#include <vector>
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 #include <functional>
 #include "Analizis.hpp"
@@ -27,8 +29,12 @@ namespace Matek {
             // és a stringliterál közvetlen átadása is működik). A definíció a fájl végén
             // van, mert a parser a lentebb deklarált operátorokra/függvényekre épül.
             // Természetes matematikai precedencia: ^  >  * /  >  + -, így NEM kell
-            // zárójelezni a hatványt, mint a C++ DSL-ben. Változók: x, y, z; függvények:
-            // sin, cos, tan/tg, ctg/cot, ln, log, sqrt. (Paramétert string nem tud hivatkozni.)
+            // zárójelezni a hatványt, mint a C++ DSL-ben. Változók: x, y, z.
+            // Függvények (lásd make_func):
+            //   egyváltozós: sin cos tan/tg ctg/cot ln log sqrt abs sign
+            //   éles:        min(a,b) max(a,b) unio metszet kulonbseg
+            //   sima:        smin(a,b[,k]) smax sunio smetszet skulonbseg
+            // (Paramétert a sima `Kif("...")` nem tud hivatkozni, ahhoz make_kif + resolver kell.)
             Kif(char const* s);
             Kif(std::string const& s);
 
@@ -147,6 +153,26 @@ namespace Matek {
                 char peek()    { skip_ws(); return i < s.size() ? s[i] : '\0'; }
                 bool match(char c) { if (peek() == c) { ++i; return true; } return false; }
 
+                // Két karakteres operátor (>=, <=, &&, ||).
+                bool match2(char a, char b) {
+                    skip_ws();
+                    if (i + 1 < s.size() && s[i] == a && s[i + 1] == b) { i += 2; return true; }
+                    return false;
+                }
+
+                // Kulcsszó (and / or / not). Csak akkor illeszkedik, ha nem egy hosszabb
+                // azonosító eleje — így egy "orso" nevű alakzat nem lesz "or" + "so".
+                bool match_kw(char const* kw) {
+                    skip_ws();
+                    size_t n = std::strlen(kw);
+                    if (s.compare(i, n, kw) != 0) return false;
+                    size_t after = i + n;
+                    if (after < s.size() &&
+                        (std::isalnum((unsigned char)s[after]) || s[after] == '_')) return false;
+                    i = after;
+                    return true;
+                }
+
                 [[noreturn]] void error(std::string const& msg) const {
                     throw std::runtime_error(
                         "Kif parse hiba a(z) " + std::to_string(i) + ". pozicionál: " +
@@ -154,9 +180,53 @@ namespace Matek {
                 }
 
                 Kif parse() {
-                    Kif e = parse_expr();
+                    Kif e = parse_or();
                     if (peek() != '\0') error("váratlan karakter a kifejezés végén");
                     return e;
+                }
+
+                // --- Logikai szint ---------------------------------------------------
+                // A feltételeket ugyanabban a kifejezésfában ábrázoljuk, mint minden mást:
+                // "igaz" azt jelenti, hogy az érték POZITÍV. Ezzel minden logikai művelet
+                // leképződik a már meglévő csomópontokra, új osztály nélkül:
+                //
+                //     a > b   ->  a - b          a and b  ->  min(a, b)
+                //     a < b   ->  b - a          a or  b  ->  max(a, b)
+                //     a >= b  ->  a - b          not a    ->  -a
+                //     a <= b  ->  b - a
+                //
+                // (Ez az R-függvények szokásos trükkje. A >= és a > ugyanaz: lebegőpontos
+                //  mezőnél a szigorúságnak nincs értelme.)
+                Kif parse_or() {
+                    Kif left = parse_and();
+                    while (match_kw("or") || match2('|', '|')) {
+                        Kif right = parse_and();
+                        left = Kif(std::make_shared<Maximum>(left.get(), right.get()));
+                    }
+                    return left;
+                }
+
+                Kif parse_and() {
+                    Kif left = parse_not();
+                    while (match_kw("and") || match2('&', '&')) {
+                        Kif right = parse_not();
+                        left = Kif(std::make_shared<Minimum>(left.get(), right.get()));
+                    }
+                    return left;
+                }
+
+                Kif parse_not() {
+                    if (match_kw("not") || match('!')) return Kif(0.0f) - parse_not();
+                    return parse_cmp();
+                }
+
+                Kif parse_cmp() {
+                    Kif left = parse_expr();
+                    if (match2('>', '=')) return left - parse_expr();
+                    if (match2('<', '=')) { Kif r = parse_expr(); return r - left; }
+                    if (match('>'))       return left - parse_expr();
+                    if (match('<'))       { Kif r = parse_expr(); return r - left; }
+                    return left;
                 }
 
                 Kif parse_expr() {
@@ -198,7 +268,9 @@ namespace Matek {
                     char c = peek();
                     if (c == '(') {
                         ++i;
-                        Kif e = parse_expr();
+                        // Zárójelen belül a LEGFELSŐ szintről indulunk, hogy a
+                        // feltételek is működjenek: pl. "not (x > 2)".
+                        Kif e = parse_or();
                         if (!match(')')) error("hiányzó ')'");
                         return e;
                     }
@@ -226,11 +298,17 @@ namespace Matek {
                     while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '_')) ++i;
                     std::string name = s.substr(start, i - start);
 
-                    if (peek() == '(') { // függvényhívás
+                    if (peek() == '(') { // függvényhívás, vesszővel elválasztott argumentumokkal
                         ++i;
-                        Kif arg = parse_expr();
-                        if (!match(')')) error("hiányzó ')' a függvény argumentuma után");
-                        return make_func(name, arg);
+                        // Az argumentumok is a legfelső szintről indulnak, hogy
+                        // feltétel is átadható legyen: pl. min(x > 1, y > 1).
+                        std::vector<Kif> args;
+                        if (peek() != ')') {
+                            args.push_back(parse_or());
+                            while (match(',')) args.push_back(parse_or());
+                        }
+                        if (!match(')')) error("hiányzó ')' a függvény argumentumai után");
+                        return make_func(name, args);
                     }
                     // változó: egyetlen x / y / z betű
                     if (name.size() == 1 && (name[0] == 'x' || name[0] == 'y' || name[0] == 'z'))
@@ -243,15 +321,66 @@ namespace Matek {
                     error("ismeretlen azonosító (x/y/z változó, paraméter vagy alakzat?): " + name);
                 }
 
-                Kif make_func(std::string const& name, Kif const& a) const {
-                    if (name == "sin")                    return Kif(std::make_shared<Sin>(a.get()));
-                    if (name == "cos")                    return Kif(std::make_shared<Cos>(a.get()));
-                    if (name == "tan" || name == "tg")    return Kif(std::make_shared<Tan>(a.get()));
-                    if (name == "ctg" || name == "cot")   return Kif(std::make_shared<Ctg>(a.get()));
-                    if (name == "ln")                     return Kif(std::make_shared<Ln>(a.get()));
-                    if (name == "log")                    return Kif(std::make_shared<Log>(a.get()));
-                    if (name == "sqrt")                   return a ^ Kif(0.5f);
-                    error("ismeretlen függvény: " + name);
+                // A halmazműveletek alapértelmezett lekerekítési sugara, ha a hívó nem ad
+                // harmadik argumentumot. Az F értékének nagyságrendjéhez kell igazítani,
+                // ezért érdemes explicit megadni.
+                static constexpr float DEFAULT_K = 0.5f;
+
+                Kif make_func(std::string const& name, std::vector<Kif> const& a) const {
+                    auto arity = [&](size_t lo, size_t hi) {
+                        if (a.size() < lo || a.size() > hi)
+                            error("a(z) '" + name + "' " +
+                                  (lo == hi ? std::to_string(lo)
+                                            : std::to_string(lo) + "-" + std::to_string(hi)) +
+                                  " argumentumot var, kapott " + std::to_string(a.size()));
+                    };
+
+                    // --- egyváltozós függvények ---
+                    if (name == "sin")  { arity(1, 1); return Kif(std::make_shared<Sin>(a[0].get())); }
+                    if (name == "cos")  { arity(1, 1); return Kif(std::make_shared<Cos>(a[0].get())); }
+                    if (name == "tan" || name == "tg")  { arity(1, 1); return Kif(std::make_shared<Tan>(a[0].get())); }
+                    if (name == "ctg" || name == "cot") { arity(1, 1); return Kif(std::make_shared<Ctg>(a[0].get())); }
+                    if (name == "ln")   { arity(1, 1); return Kif(std::make_shared<Ln>(a[0].get())); }
+                    if (name == "log")  { arity(1, 1); return Kif(std::make_shared<Log>(a[0].get())); }
+                    if (name == "sqrt") { arity(1, 1); return a[0] ^ Kif(0.5f); }
+                    if (name == "abs")  { arity(1, 1); return Kif(std::make_shared<Abs>(a[0].get())); }
+                    if (name == "sign") { arity(1, 1); return Kif(std::make_shared<Elojel>(a[0].get())); }
+
+                    // --- éles min / max ---
+                    auto MIN = [](Kif const& p, Kif const& q) {
+                        return Kif(std::make_shared<Minimum>(p.get(), q.get()));
+                    };
+                    auto MAX = [](Kif const& p, Kif const& q) {
+                        return Kif(std::make_shared<Maximum>(p.get(), q.get()));
+                    };
+                    if (name == "min") { arity(2, 2); return MIN(a[0], a[1]); }
+                    if (name == "max") { arity(2, 2); return MAX(a[0], a[1]); }
+
+                    // --- éles halmazműveletek (F < 0 = belül konvencióval) ---
+                    // A BlobTree-cikk max-ot ír unióra, mert ott a potenciál BELÜL nagy;
+                    // nálunk F belül negatív, ezért unió = min és metszet = max.
+                    if (name == "unio"      || name == "union")     { arity(2, 2); return MIN(a[0], a[1]); }
+                    if (name == "metszet"   || name == "intersect") { arity(2, 2); return MAX(a[0], a[1]); }
+                    if (name == "kulonbseg" || name == "subtract")  { arity(2, 2); return MAX(a[0], Kif(0.0f) - a[1]); }
+
+                    // --- sima (C^inf) halmazműveletek ---
+                    // smin(p,q,k) = ½·( p + q − sqrt((p−q)² + k²) ).  A gyök alatti +k²
+                    // miatt az argumentum sosem 0, így a derivált a varraton is véges —
+                    // ellentétben a cikk R-függvényével, ami ott NaN-t adna.
+                    auto k_of = [&](size_t idx) { return a.size() > idx ? a[idx] : Kif(DEFAULT_K); };
+                    auto SMIN = [&](Kif const& p, Kif const& q, Kif const& k) {
+                        return Kif(0.5f) * (p + q - ((((p - q) ^ Kif(2.0f)) + (k ^ Kif(2.0f))) ^ Kif(0.5f)));
+                    };
+                    auto SMAX = [&](Kif const& p, Kif const& q, Kif const& k) {
+                        return Kif(0.5f) * (p + q + ((((p - q) ^ Kif(2.0f)) + (k ^ Kif(2.0f))) ^ Kif(0.5f)));
+                    };
+                    if (name == "smin") { arity(2, 3); return SMIN(a[0], a[1], k_of(2)); }
+                    if (name == "smax") { arity(2, 3); return SMAX(a[0], a[1], k_of(2)); }
+                    if (name == "sunio"      || name == "sunion")     { arity(2, 3); return SMIN(a[0], a[1], k_of(2)); }
+                    if (name == "smetszet"   || name == "sintersect") { arity(2, 3); return SMAX(a[0], a[1], k_of(2)); }
+                    if (name == "skulonbseg" || name == "ssubtract")  { arity(2, 3); return SMAX(a[0], Kif(0.0f) - a[1], k_of(2)); }
+
+                    error("ismeretlen fuggveny: " + name);
                 }
             };
 

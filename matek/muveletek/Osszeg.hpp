@@ -35,6 +35,12 @@ namespace Matek {
                 return std::make_shared<Osszeg>(get_bal()->derrivate(var), get_jobb()->derrivate(var));
             }
 
+            int compile(Program& prog) const override {
+                int a = get_bal()->compile(prog);
+                int b = get_jobb()->compile(prog);
+                return prog.emit(Op::Add, a, b);
+            }
+
         protected:
             char const get_operator() const override { return '+'; }
         };

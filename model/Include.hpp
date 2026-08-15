@@ -9,6 +9,5 @@
 #include "Model.hpp"
 #include "Window.hpp"
 #include "Shader.hpp"
-#include "Scene.hpp"
 
 #endif //GORBE_INCLUDE_HPP

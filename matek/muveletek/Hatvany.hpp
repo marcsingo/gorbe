@@ -67,6 +67,12 @@ namespace Matek {
                 return derrivate_impl(var);
             }
 
+            int compile(Program& prog) const override {
+                int a = get_bal()->compile(prog);
+                int b = get_jobb()->compile(prog);
+                return prog.emit(Op::Pow, a, b);
+            }
+
             std::shared_ptr<Kifejezes const> simplify() const override {
                 auto bal = get_bal()->simplify();
                 auto jobb = get_jobb()->simplify();

@@ -35,6 +35,18 @@ namespace Builder {
         GLuint build();
 
     };
+
+    // Fájlpárból épített shader program, gyorsítótárazva.
+    //
+    // Enélkül minden Model példány külön beolvasta és lefordította UGYANAZT a
+    // vertex+fragment párt: a részecske-samplerekkel együtt ez több tucat egyforma
+    // GL programot jelentett, amiket ráadásul senki nem szabadított fel. A cache
+    // fájlútvonalakra kulcsol, így az azonos párok egyetlen programon osztoznak.
+    GLuint get_or_build(char const* vertex_file, char const* fragment_file);
+
+    // Az összes gyorsítótárazott program felszabadítása. A GL kontextus megszűnése
+    // ELŐTT kell hívni (lásd App::run vége).
+    void clear_shader_cache();
 }
 
 

@@ -31,6 +31,11 @@ namespace Matek {
             }
 
             void print(std::ostream& os) const override { os << value; }
+
+            int compile(Program& prog) const override {
+                return prog.emit(Op::Const, -1, -1, value);
+            }
+
         };
 
     }

@@ -33,6 +33,14 @@ namespace Matek {
 
             void print(std::ostream &os) const override { os << var; }
 
+            int compile(Program& prog) const override {
+                if (var == 'x') return prog.emit(Op::VarX);
+                if (var == 'y') return prog.emit(Op::VarY);
+                if (var == 'z') return prog.emit(Op::VarZ);
+                return prog.emit(Op::Const, -1, -1, 0.0f);   // at() is 0-t ad
+            }
+
+
             std::shared_ptr<Kifejezes const> simplify() const override {
                 return std::make_shared<Valtozo>(var);
             }

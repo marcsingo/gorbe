@@ -15,6 +15,14 @@ void Window::init(int width, int height, char const * text) {
     glfwSetCursorPosCallback(window, mouse_pos_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetScrollCallback(window, mouse_scroll_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+}
+
+void Window::framebuffer_size_callback(GLFWwindow * /*window*/, int width, int height) {
+    Window::width = width;
+    Window::height = height;
+    // A teljes (új) framebufferre rajzolunk; az aspect-et a kamera ebből számolja.
+    glViewport(0, 0, width, height);
 }
 
 
@@ -24,48 +32,72 @@ void Window::destroy_window() {
 }
 
 
-void Window::key_callback(GLFWwindow *window, int key, int scancode, int action, int mode) {
-    if (Gui::wants_keyboard()) return; // a UI épp gépel
-    for (auto &f : key_events) {
-        f({key, scancode, action, mode});
+// A UI fölött történő beviteltől a jelenetnek nem szabad reagálnia — DE a gomb- és
+// billentyű-ELENGEDÉST akkor is tovább kell adni, különben az beragad. Tipikus eset:
+// megfogsz egy kontrollpontot, a húzás közben az egér az ImGui-panel fölé ér, ott
+// engeded el — a RELEASE elveszne, és a pont örökre követné az egeret. Ugyanez a
+// kamera Alt+bal gombjával és a shift állapotával.
+static bool gui_swallows(int action) {
+    return action != GLFW_RELEASE;
+}
+
+// Egy eseménylista bejárása. Indexeléssel megy (nem tartomány-ciklussal), mert egy
+// kezelő regisztrálhat vagy leiratkoztathat újat, ami a vektort újrafoglalhatja.
+template<class V, class Info>
+static void dispatch(V& slots, Info const& info) {
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        auto fn = slots[i].fn;          // másolat: leiratkozás közben is érvényes marad
+        if (fn) fn(info);
     }
 }
 
-void Window::add_key_event(KeyEvent&& f) {
-    key_events.push_back(std::move(f));
+void Window::key_callback(GLFWwindow *window, int key, int scancode, int action, int mode) {
+    if (Gui::wants_keyboard() && gui_swallows(action)) return; // a UI épp gépel
+    dispatch(key_events, KeyEventInformation{key, scancode, action, mode});
+}
+
+EventId Window::add_key_event(KeyEvent&& f) {
+    key_events.push_back({next_id, std::move(f)});
+    return next_id++;
 }
 
 void Window::mouse_pos_callback(GLFWwindow *window, double x, double y) {
     if (Gui::wants_mouse()) return; // a UI fölött vagyunk
-    for (auto &f : mouse_pos_events) {
-        f({x, y});
-    }
+    dispatch(mouse_pos_events, MousePosEventInformation{x, y});
 }
 
-void Window::add_mouse_pos_event(MousePosEvent&& f) {
-    mouse_pos_events.push_back(std::move(f));
+EventId Window::add_mouse_pos_event(MousePosEvent&& f) {
+    mouse_pos_events.push_back({next_id, std::move(f)});
+    return next_id++;
 }
 
 void Window::mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
-    if (Gui::wants_mouse()) return; // a UI kapja a kattintást
-    for (auto& f: mouse_button_events) {
-        f({button, action, mods});
-    }
+    if (Gui::wants_mouse() && gui_swallows(action)) return; // a UI kapja a kattintást
+    dispatch(mouse_button_events, MouseButtonEventInformation{button, action, mods});
 }
 
-void Window::add_mouse_button_event(MouseButtonEvent&& f) {
-    mouse_button_events.push_back(std::move(f));
+EventId Window::add_mouse_button_event(MouseButtonEvent&& f) {
+    mouse_button_events.push_back({next_id, std::move(f)});
+    return next_id++;
 }
 
 void Window::mouse_scroll_callback(GLFWwindow *window, double x, double y) {
     if (Gui::wants_mouse()) return; // a UI fölött görgetünk
-    for (auto& f : mouse_scroll_events) {
-        f({x, y});
-    }
+    dispatch(mouse_scroll_events, MouseScrollEventInformation{x, y});
 }
 
-void Window::add_mouse_scroll_event(MouseScrollEvent&& f) {
-    mouse_scroll_events.push_back(std::move(f));
+EventId Window::add_mouse_scroll_event(MouseScrollEvent&& f) {
+    mouse_scroll_events.push_back({next_id, std::move(f)});
+    return next_id++;
+}
+
+void Window::remove_event(EventId id) {
+    if (!id) return;
+    if (erase_from(key_events, id))          return;
+    if (erase_from(mouse_pos_events, id))    return;
+    if (erase_from(mouse_button_events, id)) return;
+    if (erase_from(mouse_scroll_events, id)) return;
+    erase_from(time_passed_events, id);
 }
 
 void Window::event_handling() {
@@ -75,10 +107,8 @@ void Window::event_handling() {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    if (dt != 0.0f)
-    for (auto &f : time_passed_events) {
-        f({t, dt});
-    }
+    if (dt != 0.0)
+        dispatch(time_passed_events, TimePassedEventInformation{t, dt});
     glfwPollEvents();
 
     double now = glfwGetTime();
@@ -86,8 +116,9 @@ void Window::event_handling() {
     t = now;
 }
 
-void Window::add_time_passed_event(TimePassedEvent &&f) {
-    time_passed_events.push_back(std::move(f));
+EventId Window::add_time_passed_event(TimePassedEvent &&f) {
+    time_passed_events.push_back({next_id, std::move(f)});
+    return next_id++;
 }
 
 MousePosEventInformation Window::get_mouse_info() {

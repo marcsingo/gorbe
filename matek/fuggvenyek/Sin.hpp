@@ -16,6 +16,8 @@ namespace Matek {
             std::shared_ptr<Kifejezes const> get_fd() const override;
 
             const char * get_name() const override { return "sin"; }
+
+            Op get_op() const override { return Op::Sin; }
         public:
             explicit Sin(std::shared_ptr<Kifejezes const> kif)
                 : Fuggveny([](float x) { return std::sin(x); }, std::move(kif)) {}
