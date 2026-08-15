@@ -164,6 +164,45 @@ int main() {
     ok("kicsit kint (turesen belul) sem",     !Domain::is_outside(-0.1f, 0.5f));
     ok("erdemben kint igen",                   Domain::is_outside(-0.5f, 0.5f));
 
+    std::printf("\n=== 8. Globalis + lokalis tartomany OSSZEKAPCSOLASA ===\n");
+    {
+        // Ezt a format allitja elo a main.cpp:  "(globalis) and (lokalis)"
+        char const* GLOB = "x > 0 - 8 and x < 8 and y > 0 - 8 and y < 8 and z > 0 - 8 and z < 8";
+        char const* LOC  = "z > 0";
+        std::string combined = std::string("(") + GLOB + ") and (" + LOC + ")";
+        Kif c = make_kif(combined);
+
+        // igaz = pozitiv;  a ket feltetel ES-kapcsolata
+        ok("mindketto teljesul -> bent",      c.at({1.0f, 1.0f, 1.0f}) > 0.0f,  "p=(1,1,1)");
+        ok("csak a globalis (z<0) -> kint",   c.at({1.0f, 1.0f, -1.0f}) < 0.0f, "p=(1,1,-1)");
+        ok("csak a lokalis (x>8) -> kint",    c.at({20.0f, 0.0f, 1.0f}) < 0.0f, "p=(20,0,1)");
+        ok("egyik sem -> kint",               c.at({20.0f, 0.0f, -1.0f}) < 0.0f, "p=(20,0,-1)");
+        // az ES a szigorubb feltetel erteket viszi tovabb (min)
+        near("min-szemantika: a szukebb dont", c.at({7.0f, 0.0f, 0.5f}), 0.5f, 1e-5f);
+
+        // gomb alaku munkater (a masik gyorsgomb)
+        Kif g = make_kif("x^2 + y^2 + z^2 < 64");
+        ok("gomb-munkater: origo bent",  g.at({0, 0, 0}) > 0.0f);
+        ok("gomb-munkater: r=10 kint",   g.at({10, 0, 0}) < 0.0f);
+        near("gomb-munkater erteke r=6-nal", g.at({6, 0, 0}), 28.0f, 1e-4f);
+    }
+
+    std::printf("\n=== 9. Vegtelen sik globalis munkaterben ===\n");
+    {
+        // F = z (vegtelen sik), tartomany = csak a globalis doboz |x|,|y| < 8
+        Sim sim("z", "(x > 0 - 8 and x < 8 and y > 0 - 8 and y < 8) and (z > 0 - 8 and z < 8)");
+        glm::vec3 p{-20.0f, 0.0f, 0.0f};      // a feluleten, de a munkateren kivul
+        float max_z = 0.0f;
+        for (int k = 0; k < 3000; ++k) { p = sim.step(p); max_z = std::max(max_z, std::abs(p.z)); }
+        ok("becsuszott a munkaterbe", p.x > -8.05f && p.x < 8.05f,
+           "x = " + std::to_string(p.x));
+        ok("kozben a feluleten maradt", max_z < 1e-4f, "max |z| = " + std::to_string(max_z));
+
+        // kifele nyomva sem lep ki a dobozbol
+        for (int k = 0; k < 2000; ++k) p = sim.step(p, glm::vec3{-4.0f, 0.0f, 0.0f});
+        ok("a doboz fala tart", p.x > -8.05f, "x = " + std::to_string(p.x));
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);
     return failures != 0;
 }

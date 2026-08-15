@@ -122,7 +122,7 @@ A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakz
 |---|---|
 | **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
 | **Tulajdonságok** | a kijelölt alakzat neve, `F(x,y,z) =` képlete, opcionális **tartomány-feltétele** és a **lokális** paraméterei (név = érték). |
-| **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték). |
+| **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték), és a **globális tartomány**. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
 
 ### Tájékozódás a térben
@@ -169,6 +169,24 @@ Tartomany:   x > -3 and x < 3 and y > -3 and y < 3
 |---|---|
 | `>` `<` `>=` `<=` | összehasonlítás |
 | `and` `or` `not` (`&&` `\|\|` `!`) | logikai műveletek |
+
+#### Globális tartomány (munkatér)
+
+A `Globális paraméterek` panelen megadható egy **globális tartomány** is: az a térrész,
+amiben egyáltalán értelmezzük az alakzatokat. Ez **minden** alakzatra érvényes, a saját
+tartomány-feltételével `and` kapcsolatban — a program a két feltételt
+`(globális) and (saját)` alakban fűzi össze. Üresen hagyva korlátlan.
+
+Két gyorsgomb tölti ki a szokásos munkatereket (a `±8`-as talajrácshoz igazítva):
+
+| gomb | feltétel |
+|---|---|
+| Doboz | `x > -8 and x < 8 and y > -8 and y < 8 and z > -8 and z < 8` |
+| Gömb | `x^2 + y^2 + z^2 < 64` |
+
+Ez a legegyszerűbb védelem a végtelen alakzatok ellen: a sík vagy a henger a
+munkatér határáig mintavételeződik, és nem termel korlátlanul részecskét. A globális
+tartomány csak **globális paramétert** használhat (alakzatnevet nem — az körkörös lenne).
 
 **Miért nem `metszet`?** Mert a CSG *testeken* dolgozik: a `metszet(z, 2-x)` nullhalmaza
 nem csak a levágott sík, hanem az `x=2` vágólap `z<0`-ba eső darabja is — vagyis egy éket

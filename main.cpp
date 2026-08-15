@@ -167,6 +167,12 @@ int main() {
     std::vector<App::EqSurface*> pool;
 
     std::list<Param> globals;
+
+    // Globális tartomány: az a térrész, amiben egyáltalán értelmezzük az alakzatokat.
+    // Minden alakzatra érvényes, a saját tartomány-feltételével ÉS-kapcsolatban.
+    // Üresen hagyva korlátlan. Csak globális paramétereket használhat (alakzatnevet
+    // nem — az körkörös lenne).
+    char global_domain[256] = "";
     std::list<Shape> shapes;
     Shape* selected = nullptr;   // a Tulajdonságok ablakban szerkesztett alakzat
 
@@ -272,21 +278,50 @@ int main() {
         return nullptr;                                // ismeretlen név -> a parser hibát dob
     };
 
+    // A globális tartomány CSAK globális paramétert láthat.
+    auto resolve_global = [&](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+        for (auto& g : globals)
+            if (g.name[0] && nm == g.name) return Kif(&g.value).get();
+        return nullptr;
+    };
+
     // Az összes alakzat beparseolása és elindítása (a lista sorrendjében, hogy a
     // későbbiek hivatkozhassanak a korábbiak már kész fájára).
     auto build_all = [&] {
         error.clear();
         sync_pool();
         try {
+            // A globális tartományt előbb ÖNMAGÁBAN is beparseoljuk: így az itteni hiba
+            // nem egy véletlenszerű alakzat nevével jelenik meg, és egyben ellenőrizzük,
+            // hogy tényleg csak globális paramétert használ.
+            if (global_domain[0]) {
+                try {
+                    make_kif(global_domain, resolve_global);
+                } catch (std::exception const& e) {
+                    throw std::runtime_error(std::string("globalis tartomany: ") + e.what());
+                }
+            }
+
             int i = 0;
             for (auto& s : shapes) {
                 try {
                     s.tree = make_kif(s.formula,
                                       [&](std::string const& nm) { return resolve(s, nm); }).get();
                     pool[i]->get_surface().set_tree(s.tree);
-                    // A tartomány-feltétel ugyanazokat a neveket látja, mint a képlet.
-                    if (s.domain[0]) {
-                        auto dom = make_kif(s.domain,
+
+                    // Tartomány = GLOBÁLIS és SAJÁT feltétel ÉS-kapcsolata. A két
+                    // részt szövegszinten kötjük össze, és egyben parseoljuk az alakzat
+                    // névfeloldójával — ez azért biztonságos, mert a névellenőrzés tiltja,
+                    // hogy egy lokális paraméter neve megegyezzen egy globáliséval, tehát
+                    // a globális rész nevei itt sem tudnak mást jelenteni.
+                    std::string dom_src;
+                    if (global_domain[0] && s.domain[0])
+                        dom_src = std::string("(") + global_domain + ") and (" + s.domain + ")";
+                    else if (global_domain[0]) dom_src = global_domain;
+                    else if (s.domain[0])      dom_src = s.domain;
+
+                    if (!dom_src.empty()) {
+                        auto dom = make_kif(dom_src,
                                             [&](std::string const& nm) { return resolve(s, nm); }).get();
                         pool[i]->get_surface().set_domain(dom);
                     } else {
@@ -582,6 +617,27 @@ int main() {
                            "lokalis parameter vagy alakzat nevevel sem.");
         ImGui::Separator();
         if (draw_params(globals, "g")) { drop_all(); error.clear(); }
+
+        // --- Globális tartomány: a "munkatér", amiben az alakzatokat értelmezzük ---
+        ImGui::SeparatorText("Globalis tartomany");
+        ImGui::TextWrapped("Az a terresz, amiben egyaltalan ertelmezzuk az alakzatokat. "
+                           "Minden alakzatra ervenyes, a sajat tartomanyaval ES-kapcsolatban. "
+                           "Ures = korlatlan.");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##gdom", global_domain, sizeof(global_domain));
+
+        // Gyorsgombok: a rács ±8 kiterjedéséhez igazodnak, hogy a beallitas lathato legyen.
+        if (ImGui::SmallButton("Doboz")) {
+            std::snprintf(global_domain, sizeof(global_domain),
+                          "x > 0 - 8 and x < 8 and y > 0 - 8 and y < 8 and z > 0 - 8 and z < 8");
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Gomb")) {
+            std::snprintf(global_domain, sizeof(global_domain), "x^2 + y^2 + z^2 < 64");
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Torol")) global_domain[0] = '\0';
+        ImGui::TextDisabled("Csak globalis parametert hasznalhat.");
         ImGui::End();
     });
 

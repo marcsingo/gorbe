@@ -72,7 +72,16 @@ namespace Domain {
         if (dom_dist < 0.0f) {
             float max_speed = max_slide * sigma / std::max(dt, 1e-4f);
             float speed     = std::min(pull * (-dom_dist), max_speed);
-            return p_dot + speed * (dom_g / gl);
+            glm::vec3 v = p_dot + speed * (dom_g / gl);
+
+            // A visszahúzás önmagában csak ARÁNYOS szabályzó, ezért egy tartós kifelé
+            // ható erővel (taszítás, vonszolás) egyensúlyba kerülne, és a részecske a
+            // peremen KÍVÜL állna meg. Ezért kívül is kivesszük a maradék kifelé mutató
+            // komponenst: így a perem mindkét oldalról kemény fal, a részecske legfeljebb
+            // rááll, de nem tolható tovább kifelé.
+            float out = glm::dot(dom_x, v);
+            if (out < 0.0f) v -= (out / g2) * dom_g;
+            return v;
         }
 
         float d_dot     = glm::dot(dom_x, p_dot);   // d(dom)/dt
