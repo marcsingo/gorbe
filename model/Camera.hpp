@@ -37,6 +37,13 @@ public:
     virtual glm::vec3 get_right() const { return glm::vec3(1.0f, 0.0f, 0.0f); }
     virtual glm::vec3 get_up()    const { return glm::vec3(0.0f, 1.0f, 0.0f); }
 
+    // A szemponthoz és a látószöghöz azoknak a segédelemeknek kell hozzáférni, amik
+    // ÁLLANDÓ KÉPERNYŐ-MÉRETŰEK akarnak lenni (tengelyvastagság, nyílhegy, felirat):
+    // egy d távolságra lévő pontnál 1 képpont ennyi világegység:
+    //     2 * tan(fov/2) * d / ablakmagasság
+    virtual glm::vec3 get_eye()     const { return glm::vec3(0.0f); }
+    virtual float     get_fov_deg() const { return 45.0f; }
+
     virtual ~Camera() = default;
 
 };
@@ -116,7 +123,14 @@ public:
     glm::vec3 get_front() const override { return front; }
     glm::vec3 get_right() const override { return right; }
     glm::vec3 get_up()    const override { return up; }
+    glm::vec3 get_position() const { return position; }
+    glm::vec3 get_eye()     const override { return position; }
+    float     get_fov_deg() const override { return fov; }
     glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;
+
+    // A kamerát az `eye` pontba teszi és a `target` felé fordítja. A yaw/pitch szögeket
+    // az irányvektorból számolja vissza, hogy az egeres forgatás onnan folytatódjon.
+    void look_at(glm::vec3 eye, glm::vec3 target = glm::vec3(0.0f));
 
     // A nyomva-tartás állapotát állítja (PRESS -> true, RELEASE -> false).
     void process_keyboard(int key, bool pressed);

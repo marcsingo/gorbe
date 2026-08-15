@@ -354,8 +354,8 @@ int main() {
         // ------------------------------------------------------------------
         // 1. ablak: a jelenet alakzatai (lista + kijelölés) és a futtatás.
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({20, 20}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({320, 420}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({330, 400}, ImGuiCond_FirstUseEver);
         ImGui::Begin("Alakzatok");
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Separator();
@@ -452,8 +452,8 @@ int main() {
         // ------------------------------------------------------------------
         // 2. ablak: a kijelölt alakzat adatai (képlet + lokális paraméterek).
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({360, 20}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({420, 300}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos({16, 428}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({330, 356}, ImGuiCond_FirstUseEver);
         ImGui::Begin("Tulajdonsagok");
         if (selected == nullptr) {
             ImGui::TextDisabled("Valassz egy alakzatot az \"Alakzatok\" listabol.");
@@ -489,10 +489,94 @@ int main() {
         ImGui::End();
 
         // ------------------------------------------------------------------
-        // 3. ablak: globális paraméterek (minden alakzat látja őket).
+        // 3. ablak: nézet, jelmagyarázat és irányítás — a program használata
+        //    közben végig látható súgó.
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({360, 340}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({420, 220}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos({824, 16}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({360, 530}, ImGuiCond_FirstUseEver);
+        ImGui::Begin("Nezet es sugo");
+
+        auto swatch = [](ImVec4 c, char const* text) {
+            ImGui::ColorButton("##sw", c,
+                               ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop,
+                               ImVec2(14, 14));
+            ImGui::SameLine();
+            ImGui::TextUnformatted(text);
+        };
+
+        if (ImGui::CollapsingHeader("Jelmagyarazat", ImGuiTreeNodeFlags_DefaultOpen)) {
+            swatch(ImVec4(0.85f, 0.22f, 0.26f, 1.0f), "X tengely");
+            swatch(ImVec4(0.20f, 0.62f, 0.28f, 1.0f), "Y tengely");
+            swatch(ImVec4(0.20f, 0.42f, 0.85f, 1.0f), "Z tengely  (ez a 'fuggoleges')");
+            ImGui::Spacing();
+            swatch(ImVec4(0.00f, 0.00f, 1.00f, 1.0f), "mintavetelezo reszecskek");
+            swatch(ImVec4(1.00f, 0.00f, 0.00f, 1.0f), "kontrollpontok");
+            ImGui::Spacing();
+            ImGui::TextDisabled("A racs a z = 0 sikban van, 1 egyseg osztassal");
+            ImGui::TextDisabled("(minden 5. vonal es osztas hangsulyos).");
+            ImGui::Checkbox("Racs mutatasa", &app.get_axes().show_grid);
+        }
+
+        if (ImGui::CollapsingHeader("Nezet", ImGuiTreeNodeFlags_DefaultOpen)) {
+            auto& cam = app.get_camera();
+            // A nézetváltás a kamera aktuális origótól mért távolságát megtartja.
+            float dist = glm::length(cam.get_position());
+            if (dist < 1.0f) dist = 15.0f;
+
+            // Z-up kameranal a SZINTE FUGGOLEGES nezes a hatareset (pitch -> -90), ezert a
+            // felulnezet kap egy pici y-eltolast: igy a kepernyon +x jobbra, +y felfele all.
+            if (ImGui::Button("Felulnezet")) cam.look_at({0.0f, -0.02f * dist, dist});
+            ImGui::SameLine();
+            if (ImGui::Button("3/4 nezet"))  cam.look_at(glm::normalize(App::DEFAULT_EYE) * dist);
+            ImGui::SameLine();
+            if (ImGui::Button("Oldalrol"))   cam.look_at({dist, 0.0f, 0.0f});
+
+            if (ImGui::Button("Elolrol"))    cam.look_at({0.0f, -dist, 0.0f});
+            ImGui::SameLine();
+            if (ImGui::Button("Alapnezet"))  cam.look_at(App::DEFAULT_EYE);
+
+            ImGui::SetNextItemWidth(150.0f);
+            if (ImGui::SliderFloat("tavolsag", &dist, 3.0f, 60.0f))
+                cam.look_at(glm::normalize(cam.get_position()) * dist);
+        }
+
+        if (ImGui::CollapsingHeader("Iranyitas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            struct Row { char const* input; char const* effect; };
+            static Row const camera_rows[] = {
+                {"jobb egergomb + huzas", "nezet forgatasa"},
+                {"Alt + bal gomb + huzas", "nezet forgatasa"},
+                {"W / S",                  "kamera elore / hatra"},
+                {"A / D",                  "kamera balra / jobbra"},
+                {"egergorgo",              "zoom (latoszog 1-45 fok)"},
+                {"Esc",                    "kilepes"},
+            };
+            static Row const point_rows[] = {
+                {"Shift + bal kattintas",  "uj kontrollpont"},
+                {"bal kattintas + huzas",  "pont mozgatasa"},
+                {"bal gomb elengedese",    "pont elengedese"},
+            };
+            // Fix oszlop-eltolás, nem ImGui-tábla: a monospace alapfonttal így biztosan
+            // nem vágódik el a hosszabb bevitel-leírás (a táblás arányos osztás elvágta).
+            auto table = [](char const*, Row const* rows, int n) {
+                for (int i = 0; i < n; ++i) {
+                    ImGui::TextUnformatted(rows[i].input);
+                    ImGui::SameLine(178.0f);
+                    ImGui::TextDisabled("%s", rows[i].effect);
+                }
+            };
+            ImGui::SeparatorText("Kamera");
+            table("##cam", camera_rows, IM_ARRAYSIZE(camera_rows));
+            ImGui::SeparatorText("Kontrollpontok");
+            table("##pts", point_rows, IM_ARRAYSIZE(point_rows));
+            ImGui::TextDisabled("A UI folott az eger/billentyu a panelt vezerli.");
+        }
+        ImGui::End();
+
+        // ------------------------------------------------------------------
+        // 4. ablak: globális paraméterek (minden alakzat látja őket).
+        // ------------------------------------------------------------------
+        ImGui::SetNextWindowPos({824, 558}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({360, 226}, ImGuiCond_FirstUseEver);
         ImGui::Begin("Globalis parameterek");
         ImGui::TextWrapped("Minden alakzat lathatja oket. A nevuk nem egyezhet meg egyetlen "
                            "lokalis parameter vagy alakzat nevevel sem.");

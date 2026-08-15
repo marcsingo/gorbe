@@ -4,6 +4,9 @@
 
 #include "Camera.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 glm::mat4 Camera::get_matrix() const {
     return this->get_projection() * this->get_view();
 }
@@ -58,7 +61,7 @@ glm::mat4 Camera2D::get_projection() const {
 
 Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_yaw, float initial_pitch)
     : Camera(viewport), position(start_position), front(glm::vec3(0.0f, 0.0f, -1.0f)),
-      world_up(glm::vec3(0.0f, 1.0f, 0.0f)), yaw(initial_yaw), pitch(initial_pitch),
+      world_up(glm::vec3(0.0f, 0.0f, 1.0f)), yaw(initial_yaw), pitch(initial_pitch),
       movement_speed(5.0f), mouse_sensitivity(0.1f), fov(45.0f),
       first_mouse(true), last_x(viewport.z / 2.0f), last_y(viewport.w / 2.0f) {
 
@@ -132,11 +135,15 @@ glm::mat4 Camera3D::get_projection() const {
 }
 
 void Camera3D::update_camera_vectors() {
-    // Új front vektor kiszámítása az Euler-szögekből
+    // Z-UP konvenció: a jelenetben a z a függőleges (a sík-sablon z=0, a henger a z
+    // mentén áll), ezért a kamera is a z-t tartja a képernyőn függőlegesen. Így a
+    // talajrács vízszintesnek látszik, és forgatáskor sem billen el a horizont.
+    //   yaw   = azimut az xy síkban (0 = +x felé)
+    //   pitch = emelkedés az xy sík fölött (negatív = lefelé nézünk)
     glm::vec3 new_front;
     new_front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    new_front.y = sin(glm::radians(pitch));
-    new_front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    new_front.y = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    new_front.z = sin(glm::radians(pitch));
     front = glm::normalize(new_front);
 
     // Új right és up vektorok (a normalizálás fontos, mert ha felfelé/lefelé nézünk, a vektorok hossza változhat)
@@ -184,6 +191,23 @@ void Camera3D::process_mouse_movement(float xpos, float ypos) {
 
     if (pitch >  89.0f) pitch =  89.0f;
     if (pitch < -89.0f) pitch = -89.0f;
+
+    update_camera_vectors();
+}
+
+void Camera3D::look_at(glm::vec3 eye, glm::vec3 target) {
+    position = eye;
+    glm::vec3 d = target - eye;
+    if (glm::dot(d, d) < 1e-12f) return;
+    d = glm::normalize(d);
+
+    // A Z-up front vektor felépítése (lásd update_camera_vectors):
+    //   x = cos(yaw)cos(pitch),  y = sin(yaw)cos(pitch),  z = sin(pitch)
+    // ezt fordítjuk vissza szögekre.
+    pitch = glm::degrees(std::asin(std::clamp(d.z, -1.0f, 1.0f)));
+    if (pitch >  89.0f) pitch =  89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
+    yaw = glm::degrees(std::atan2(d.y, d.x));
 
     update_camera_vectors();
 }

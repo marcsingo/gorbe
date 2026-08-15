@@ -99,6 +99,23 @@ A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakz
 | **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
 | **Tulajdonságok** | a kijelölt alakzat neve, `F(x,y,z) =` képlete, opcionális **tartomány-feltétele** és a **lokális** paraméterei (név = érték). |
 | **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték). |
+| **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
+
+### Tájékozódás a térben
+
+A jelenetben a **z a függőleges** (a sík-sablon `z = 0`, a henger a z tengely mentén
+áll), és a kamera is ehhez igazodik: forgatáskor a horizont vízszintes marad.
+
+- **Talajrács** a `z = 0` síkban, 1 egység osztással; minden 5. vonal hangsúlyos.
+- **Tengelyek**: piros = x, zöld = y, kék = z. A pozitív fél telített, a negatív
+  halványabb, a távoli szakaszok pedig a háttérbe fakulnak — így hosszan is
+  mutatják az irányt anélkül, hogy elnyomnák a modellt.
+- Nyílhegy és `X` / `Y` / `Z` felirat a pozitív végeken, egész értékeknél osztások.
+- A tengelyek vastagsága, a nyílhegyek és a feliratok **állandó képernyő-méretűek**,
+  tehát zoomtól függetlenül ugyanúgy néznek ki. (Nem `glLineWidth`-tel: a core
+  profil csak az 1.0 vastagságot garantálja, a többit a driver elnyelheti.)
+- A **Nézet** szakasz gombjai: felülnézet, 3/4 nézet, oldalról, elölről, alapnézet,
+  plusz egy távolság-csúszka. A nézetváltás megtartja az origótól mért távolságot.
 
 A képlet beírása után az **Indít** parseolja az összes alakzatot és újraindítja a
 mintavételezést. Változók: `x`, `y`, `z`; a `^` precedenciája a szokásos (nem kell

@@ -48,14 +48,25 @@ class App {
     glm::vec3 background{1.0f, 1.0f, 1.0f};
 
 public:
+    // A jelenetben a z a "függőleges" (a sík-sablon z=0, a henger a z mentén áll),
+    // ezért az alapnézet felülről néz az origóra: így a z=0 talajrács és a rajta álló
+    // alakzat is jól látszik.
+    //
+    // A szempont SZÁNDÉKOSAN nincs rajta az YZ síkon: onnan nézve a +Y és a +Z tengely
+    // pontosan ugyanabba a képernyő-irányba (felfelé) vetülne, tehát fedné egymást.
+    // A (-,-,+) oktánsból viszont mindhárom tengely külön irányba mutat.
+    static constexpr glm::vec3 DEFAULT_EYE{-14.0f, -14.0f, 16.0f};
+
     explicit App(int width = 800, int height = 800, char const *title = "Particle sampling")
         : gl_context(width, height, title),
           camera(glm::vec4(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
-                 glm::vec3(0.0f, -8.0f, 8.0f), -90.0f, 45.0f) {
+                 DEFAULT_EYE, -90.0f, 45.0f) {
+        camera.look_at(DEFAULT_EYE, glm::vec3(0.0f));
         Gui::init(Window::handle());
     }
 
     Camera3D &get_camera() { return camera; }
+    Axes     &get_axes()   { return axes; }
     void set_background(glm::vec3 color) { background = color; }
 
     // Saját ImGui UI: a megadott függvény minden frame-ben lefut (ImGui::Begin/End hívásokkal).
