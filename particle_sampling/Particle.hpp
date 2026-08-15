@@ -73,7 +73,9 @@ protected:
         // CPU-oldalon korong-háromszögek generálása minden részecskéhez.
         // Minden korong 16 háromszögből áll (fan), összesen 48 csúcs/részecske.
         this->vertices.clear();
+        this->normals.clear();
         this->vertices.reserve(particles.size() * DISK_SEGS * 3);
+        this->normals.reserve(particles.size() * DISK_SEGS * 3);
 
         for (auto& p : particles) {
             // A tartomány-feltételen kívüli részecskék még "úton vannak" a jó térrész
@@ -96,6 +98,11 @@ protected:
                 this->vertices.push_back(p.p);
                 this->vertices.push_back(p.p + p.sigma / 2.0f * (std::cos(a0) * T + std::sin(a0) * B));
                 this->vertices.push_back(p.p + p.sigma / 2.0f * (std::cos(a1) * T + std::sin(a1) * B));
+                // A korong lapos, tehát mindhárom csúcsához a felület normálisa
+                // (a már kiszámolt N) tartozik — ettől olvasható térben az alak.
+                this->normals.push_back(N);
+                this->normals.push_back(N);
+                this->normals.push_back(N);
             }
         }
 

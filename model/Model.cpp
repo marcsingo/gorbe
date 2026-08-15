@@ -10,12 +10,14 @@ Model::Model()
     // Adatot nem töltünk fel, hiszen a 'vertices' vektor itt még teljesen üres.
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    glGenBuffers(1, &VBO_N);
 }
 
 Model::~Model() {
     // RAII elv: amikor a C++ objektum megszűnik, takarítunk a GPU-n is
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &VBO_N);
 }
 
 void Model::update_buffers() {
@@ -41,6 +43,24 @@ void Model::update_buffers() {
     // 0. index: pozíció (vec3)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
     glEnableVertexAttribArray(0);
+
+    // 1. index: normális (opcionális). Ha nincs (vagy nem stimmel a darabszám),
+    // LETILTJUK az attribútumot — a letiltott attribútum konstans (0,0,0,1) értéket
+    // ad, és a fragment shader ebből tudja, hogy árnyalás nélkül kell rajzolnia.
+    if (normals.size() == vertices.size()) {
+        GLsizeiptr const nbytes = static_cast<GLsizeiptr>(normals.size() * sizeof(glm::vec3));
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_N);
+        if (nbytes > nbo_capacity) {
+            glBufferData(GL_ARRAY_BUFFER, nbytes, normals.data(), GL_DYNAMIC_DRAW);
+            nbo_capacity = nbytes;
+        } else {
+            glBufferSubData(GL_ARRAY_BUFFER, 0, nbytes, normals.data());
+        }
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(1);
+    } else {
+        glDisableVertexAttribArray(1);
+    }
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     // VAO intentionally left bound so render() can safely add more attributes after this call

@@ -56,8 +56,11 @@ class ImplicitSurface {
     bool  visible   = true;
 public:
     explicit ImplicitSurface( Camera const &camera, SimParams params = {}) :
-        floaters{5, {0, 0, 1}, camera},
-        controls{10, {1, 0, 0}, camera},
+        // Nem a tiszta (0,0,1) / (1,0,0): a telített alapszínen az árnyalás alig
+        // olvasható (a kék csatorna egyedül nem ad elég kontrasztot). Egy kissé
+        // világosabb, kevertebb szín viszont szépen mutatja a formát.
+        floaters{5, {0.20f, 0.45f, 0.90f}, camera},
+        controls{10, {0.90f, 0.27f, 0.25f}, camera},
         sphere_mesh{surface, {0.85f, 0.85f, 0.85f}, camera},
         rng(std::random_device{}()),
         dist_R(0.0f, 1.0f),

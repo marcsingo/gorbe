@@ -11,8 +11,10 @@
 class Model {
 private:
     GLuint VAO, VBO;
+    GLuint VBO_N = 0;              // normálisok (opcionális, 1. attribútum)
     GLuint shaderProgram;
     GLsizeiptr vbo_capacity = 0;   // a GPU-n lefoglalt méret (bájt)
+    GLsizeiptr nbo_capacity = 0;
 
     // A uniform-helyek nevenkénti gyorsítótára. Enélkül minden set_uniform hívás
     // string szerinti glGetUniformLocation-t csinál — frame-enként, modellenként,
@@ -24,6 +26,12 @@ protected:
     bool update_buffers_on_draw = true;
     // Ebben tároljuk a csúcspontokat. A leszármazottak tudják módosítani.
     std::vector<glm::vec3> vertices;
+
+    // Opcionális csúcs-normálisok az árnyaláshoz. Ha ugyanannyi elemű, mint a
+    // `vertices`, feltöltjük az 1. attribútumba; egyébként azt LETILTJUK, és a
+    // shader ilyenkor a (0,0,0) alapértékből tudja, hogy árnyalás nélkül,
+    // egyszínűen kell rajzolnia (ezt használják a tengelyek és a rács).
+    std::vector<glm::vec3> normals;
 
     // Transzformációs adatok
     glm::vec3 position;

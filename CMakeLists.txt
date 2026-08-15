@@ -120,9 +120,17 @@ if(GORBE_BUILD_TESTS)
     endforeach()
 endif()
 
-add_custom_command(TARGET gorbe POST_BUILD
+# 8. Shaderek másolása a bináris mellé.
+#
+# Ez SZÁNDÉKOSAN külön, mindig lefutó target — nem a gorbe POST_BUILD lépése.
+# Utóbbi ugyanis csak akkor fut, ha a gorbe újralinkelődik: ha CSAK egy .glsl-t
+# szerkesztesz, a build "no work to do"-t mond, a bináris mellett viszont a RÉGI
+# shader marad, és a változás némán nem érvényesül.
+# A copy_if_different olcsó, ezért nyugodtan futhat minden buildnél.
+add_custom_target(shaders ALL
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/vertex.vert"
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/fragment.glsl"
             "$<TARGET_FILE_DIR:gorbe>"
         COMMENT "Shaderek masolasa a binaris melle")
+add_dependencies(gorbe shaders)

@@ -126,6 +126,21 @@ A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakz
 | **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték), és a **globális tartomány**. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
 
+### Árnyalás
+
+A részecske-korongok árnyalva rajzolódnak, hogy a felület formája térben olvasható
+legyen. A normálishoz nem kell külön számítás: az a felület gradiense (`∇F`), amit a
+szimuláció amúgy is kiszámol, és a korong forgatásához már eddig is használt.
+
+- `Model` kapott egy **opcionális** normál-attribútumot (1-es hely). Ha egy modell nem
+  tölt fel normálisokat, az attribútum **letiltva** marad — a letiltott attribútum
+  konstans `(0,0,0,1)`, és a fragment shader ebből tudja, hogy árnyalás nélkül,
+  egyszínűen kell rajzolnia. Így a tengelyek, a rács és a feliratok ugyanazt a
+  shadert használhatják, mint a részecskék.
+- A megvilágítás „half-Lambert": a `dot` `[0,1]`-re képződik le a szokásos
+  `max(0,dot)` helyett, így a fénytől elforduló korongok sem esnek egyetlen
+  egyenletes sötét foltba, és a forma végig olvasható marad.
+
 ### Tájékozódás a térben
 
 A jelenetben a **z a függőleges** (a sík-sablon `z = 0`, a henger a z tengely mentén
