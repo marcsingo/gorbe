@@ -27,6 +27,30 @@ cmake --build build --target gorbe
 > a *Settings → Build → CMake* alatt vegyél fel egy `RelWithDebInfo` profilt, és
 > mérésnél/használatnál azt futtasd.
 
+### Linux
+
+A kód fordul Linuxon (ellenőrizve: g++ 13.3 / libstdc++, kis-nagybetű-érzékeny
+fájlrendszeren minden fordítási egység és mind a négy teszt lefordul és lefut).
+Az ablakkezeléshez viszont kellenek a GLFW szokásos rendszer-függőségei — Ubuntu/Debian:
+
+```bash
+sudo apt install build-essential cmake ninja-build pkg-config libgl1-mesa-dev \
+     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+     libwayland-dev wayland-protocols libxkbcommon-dev extra-cmake-modules
+```
+
+A beépített GLFW 3.4 alapból **X11 és Wayland háttérrel is** épül. Ha csak az egyik
+kell, a másik kikapcsolható és a hozzá tartozó csomagok elhagyhatók:
+
+```bash
+cmake -S . -B build -DGLFW_BUILD_WAYLAND=OFF   # csak X11
+cmake -S . -B build -DGLFW_BUILD_X11=OFF       # csak Wayland
+```
+
+> A fájlnevek kis-nagybetűje számít: a `CMakeLists.txt` forrásfájl-listája és minden
+> `#include` pontosan egyezik a lemezen lévő nevekkel. Windowson egy elírás elmenne,
+> Linuxon nem — ezért ez ellenőrzött.
+
 A build a shadereket a bináris mellé másolja, és a program onnan tölti, így
 **tetszőleges munkakönyvtárból indítható**.
 
