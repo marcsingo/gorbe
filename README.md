@@ -70,6 +70,7 @@ ctest --test-dir build --output-on-failure
 | `test_csg` | halmazműveletek értéke és deriváltja, szimbolikus vs. numerikus gradiens, hibás hívások |
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
+| `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), a csúcsfény fehérsége (műanyag), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
@@ -122,10 +123,38 @@ A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakz
 
 | ablak | mi van benne |
 |---|---|
-| **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
+| **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, a **`Fenykep keszitese`** gomb, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
 | **Tulajdonságok** | a kijelölt alakzat neve, és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
 | **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték), és a **globális tartomány**. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
+
+### Fénykép (sugárkövetés)
+
+Az `Alakzatok` panelen a **`Fenykep keszitese`** gomb a **kamera aktuális állásából**
+kirenderel egy képet, elmenti, és megnyitja a rendszer képnézegetőjében (ez az „új
+ablak"). Mellette a felbontás és az árnyék kapcsolható.
+
+- **Metszés közelítéssel**, ahogy egy implicit felületnél kell: a sugár mentén
+  lépkedünk, amíg elég közel nem kerülünk a felülethez. A lépés nem fix, hanem a
+  felülettől mért becsült geometriai távolságból (`|F|/|∇F|`) adódik — üres térben
+  nagyot lép, a felület közelében aprót. Előjelváltásnál 24 felezéssel finomítunk.
+- **Irányfény** (vektorszerű, mint a napfény): párhuzamos sugarak, nincs helye és
+  nincs távolság-csökkenés.
+- **Műanyag anyag**: színes diffúz + **fehér** csúcsfény (Blinn-Phong). A fehér
+  csúcsfény az, amitől műanyagnak látszik — fémeknél a csúcsfény is felvenné az
+  anyag színét. Emellett féggömb-ambiens (ég/föld) és vetett árnyék.
+- Az alakzat **színe előre megadott listából** választható (Tulajdonságok → `szin`);
+  új alakzat automatikusan a következő palettaszínt kapja.
+- A tartomány-feltétel a képen is érvényes, tehát a levágott rész ott sem látszik.
+- A render több szálon fut (minden szál saját másolatot kap a lefordított
+  programokból, mert egy `Program` közös munkaterületre ír). 900×600 + árnyék,
+  4 alakzat: ~1–3,5 s.
+
+**Leválasztás:** töröld a `raytrace/` mappát, a `CMakeLists.txt`-ből a `raytrace/*`
+sorokat és a `test_raytrace`-t, a `main.cpp`-ből a két `#include "raytrace/..."`
+sort, a `Fenykep` gombot kezelő blokkot, a `Shape::color_idx`/`dom_tree` mezőket és
+a `szin` lenyílót. Semmi más nem hivatkozik rá — a komponens nem függ sem OpenGL-től,
+sem az ablaktól, sem a jelenet-modelltől, csak a `matek/` kifejezésrendszertől.
 
 ### Árnyalás
 
@@ -617,6 +646,7 @@ minden kimenetre.
 | `model/`, `utils/` | OpenGL-réteg (kamera, ablak, shader, Model) |
 | `model/Gui.{hpp,cpp}` | Dear ImGui wrapper (init/frame/render, input-szűrés) |
 | `model/CameraBasis.hpp` | a kamera Z-up bázisa és az egérkezelés előjel-konvenciója (GL nélkül, tesztelhetően) |
+| `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
 

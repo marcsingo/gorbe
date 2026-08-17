@@ -1,4 +1,5 @@
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <list>
@@ -13,6 +14,10 @@
 // globális `using namespace`-e miatt közvetlenül elérhető).
 #include "particle_sampling/Surface.hpp"
 #include "particle_sampling/Transform.hpp"
+
+// --- Sugarkoveto komponens (onallo, levalaszthato: lasd raytrace/Raytracer.hpp) ---
+#include "raytrace/Raytracer.hpp"
+#include "raytrace/Image.hpp"
 
 #include "imgui.h"
 
@@ -78,6 +83,13 @@ struct Shape {
     // affin transzformáció, tehát a warpok az alakzat SAJÁT terében dolgoznak,
     // és a kész, deformált alakzatot helyezi el a pozíció/forgatás/méret.
     std::vector<Warp> warps;
+
+    // --- a sugárkövető komponenshez ---
+    // Szín a paletta-listából (Raytrace::PALETTE) és az Indításkor felépített,
+    // KÉSZ tartomány-fa (globális ÉS saját, transzformálva) — hogy a fénykép
+    // pontosan azt lássa, amit a szimuláció.
+    int color_idx = 0;
+    std::shared_ptr<Kifejezes const> dom_tree;
 };
 
 // ---------------------------------------------------------------------------
@@ -272,6 +284,13 @@ int main() {
     float       d_ui      = 2.0f;  // közös méretskála minden samplerre
     float       curv_ui   = 1.0f;  // görbület-adaptív taszítás erőssége (0 = egyenletes)
     int         preset_idx = 0;    // a sablon-lenyílóban kiválasztott alakzat
+
+    // A sugárkövető komponens állapota (a gomb csak jelez; a render a GUI után fut,
+    // hogy ne egy félig felépített ImGui-frame közben blokkoljuk a programot).
+    bool        photo_requested = false;
+    int         photo_size_idx  = 1;
+    bool        photo_shadows   = true;
+    std::string photo_status;
     std::string error;             // parse-hiba az utolsó Indításból
 
     std::vector<std::string> problems;  // névütközések emberi olvasásra
@@ -292,7 +311,7 @@ int main() {
             p->get_surface().set_tree(Kif(0.0f).get());
             p->get_surface().clear_domain();
         }
-        for (auto& s : shapes) s.tree.reset();
+        for (auto& s : shapes) { s.tree.reset(); s.dom_tree.reset(); }
     };
 
     // Névellenőrzés. Minden frame-ben lefut (néhány tucat név, elhanyagolható), így a
@@ -446,6 +465,7 @@ int main() {
 
                     if (has_dom) pool[i]->get_surface().set_domain(dom.get());
                     else         pool[i]->get_surface().clear_domain();
+                    s.dom_tree = has_dom ? dom.get() : nullptr;   // a fénykép ezt használja
                 } catch (std::exception const& e) {
                     throw std::runtime_error(std::string(s.name[0] ? s.name : "(nevtelen)")
                                              + ": " + e.what());
@@ -464,6 +484,7 @@ int main() {
     auto add_preset = [&](Preset const& pr) {
         auto& s = shapes.emplace_back();
         next_name(shapes, pr.base_name, s.name, sizeof(s.name));
+        s.color_idx = (static_cast<int>(shapes.size()) - 1) % Raytrace::PALETTE_COUNT;
         std::snprintf(s.formula, sizeof(s.formula), "%s", pr.formula);
         std::snprintf(s.domain,  sizeof(s.domain),  "%s", pr.domain);
         for (auto const& pp : pr.params) {
@@ -601,6 +622,7 @@ int main() {
         if (ImGui::Button("Uj alakzat")) {
             auto& s = shapes.emplace_back();
             next_name(shapes, "f", s.name, sizeof(s.name));
+            s.color_idx = (static_cast<int>(shapes.size()) - 1) % Raytrace::PALETTE_COUNT;
             selected = &s;
         }
         ImGui::SameLine();
@@ -673,6 +695,22 @@ int main() {
         ImGui::SameLine();
         if (ImGui::Button("Torol")) { drop_all(); error.clear(); }
 
+        // --- Sugárkövetett fénykép (a leválasztható raytrace/ komponens) ---
+        ImGui::BeginDisabled(shapes.empty());
+        if (ImGui::Button("Fenykep keszitese")) photo_requested = true;
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        // Kulon tomb, NEM a NUL-lal elvalasztott string-tulterhelest hasznaljuk:
+        // ott a nulla-escape utani szamjegyek oktalis escape-pe olvadnanak, es
+        // a lista nemaan elromlana.
+        static char const* const RES_LABELS[] = {"640x420", "900x600", "1280x850", "1920x1280"};
+        ImGui::Combo("##felbontas", &photo_size_idx, RES_LABELS, IM_ARRAYSIZE(RES_LABELS));
+        ImGui::SameLine();
+        ImGui::Checkbox("arnyek", &photo_shadows);
+        if (!photo_status.empty())
+            ImGui::TextDisabled("%s", photo_status.c_str());
+
         if (!error.empty())
             ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.40f, 1.0f), "%s", error.c_str());
         for (auto& p : problems)
@@ -714,6 +752,20 @@ int main() {
             ImGui::TextDisabled("Eles: unio(a,b) metszet(a,b) kulonbseg(a,b) min max");
             ImGui::TextDisabled("Sima: sunio(a,b,k) smetszet(a,b,k) skulonbseg(a,b,k)");
             ImGui::TextDisabled("Hivatkozhatsz a listaban ELOTTE allo alakzatok nevere is.");
+            }
+
+            // Szín a paletta-listából (a sugárkövetett fényképhez).
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::BeginCombo("szin", Raytrace::palette_name(s.color_idx))) {
+                for (int k = 0; k < Raytrace::PALETTE_COUNT; ++k) {
+                    glm::vec3 c = Raytrace::palette_color(k);
+                    ImGui::ColorButton("##c", ImVec4(c.r, c.g, c.b, 1.0f),
+                                       ImGuiColorEditFlags_NoTooltip, ImVec2(14, 14));
+                    ImGui::SameLine();
+                    if (ImGui::Selectable(Raytrace::palette_name(k), k == s.color_idx))
+                        s.color_idx = k;
+                }
+                ImGui::EndCombo();
             }
 
             if (ImGui::CollapsingHeader("Tartomany")) {
@@ -872,6 +924,60 @@ int main() {
         ImGui::End();
 
         if (needs_rebuild) build_all();
+
+        // ------------------------------------------------------------------
+        // Sugárkövetett fénykép (leválasztható komponens — raytrace/).
+        //
+        // A gomb csak jelez, a render itt fut: így nem egy félig felépített
+        // ImGui-frame közben blokkoljuk a programot. A render szinkron (az ablak
+        // addig áll), ezért van több szálon és mérsékelt alapfelbontással.
+        // ------------------------------------------------------------------
+        if (photo_requested) {
+            photo_requested = false;
+            photo_status.clear();
+
+            std::vector<Raytrace::ObjectDesc> objs;
+            for (auto& s : shapes) {
+                if (!s.visible || !s.tree) continue;
+                Raytrace::ObjectDesc o;
+                o.F = Kif(s.tree);
+                if (s.dom_tree) { o.domain = Kif(s.dom_tree); o.has_domain = true; }
+                o.color = Raytrace::palette_color(s.color_idx);
+                objs.push_back(std::move(o));
+            }
+
+            if (objs.empty()) {
+                photo_status = "Nincs mit fenykepezni (nyomj Indit-ot).";
+            } else {
+                auto& cam = app.get_camera();
+                Raytrace::CameraDesc rc;
+                rc.eye     = cam.get_position();
+                rc.front   = cam.get_front();
+                rc.right   = cam.get_right();
+                rc.up      = cam.get_up();
+                rc.fov_deg = cam.get_fov_deg();
+
+                static int const RES_W[] = {640, 900, 1280, 1920};
+                static int const RES_H[] = {420, 600,  850, 1280};
+                Raytrace::Settings rs;
+                rs.width   = RES_W[photo_size_idx];
+                rs.height  = RES_H[photo_size_idx];
+                rs.shadows = photo_shadows;
+
+                auto t0  = std::chrono::steady_clock::now();
+                auto img = Raytrace::render(objs, rc, rs);
+                auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - t0).count();
+
+                std::string path = Raytrace::temp_image_path();
+                if (Raytrace::write_bmp(path, rs.width, rs.height, img)) {
+                    Raytrace::open_in_viewer(path);
+                    photo_status = "Kesz (" + std::to_string(ms) + " ms): " + path;
+                } else {
+                    photo_status = "A kep mentese nem sikerult: " + path;
+                }
+            }
+        }
     });
 
     app.run();
