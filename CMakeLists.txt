@@ -92,6 +92,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         particle_sampling/Occluders.hpp
         particle_sampling/DomainConstraint.hpp
         particle_sampling/Transform.hpp
+        particle_sampling/WarpPresets.hpp
         particle_sampling/SpatialGrid.hpp
         matek/Program.hpp
         matek/Kif.hpp

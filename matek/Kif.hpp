@@ -329,6 +329,9 @@ namespace Matek {
                     // változó: egyetlen x / y / z betű
                     if (name.size() == 1 && (name[0] == 'x' || name[0] == 'y' || name[0] == 'z'))
                         return Kif(name[0]);
+                    // beépített állandó — a fok/radián váltáshoz (pl. `a*pi/180`)
+                    // elengedhetetlen, mert a sin/cos radiánnal dolgozik
+                    if (name == "pi") return Kif(3.14159265358979f);
                     // egyébként a resolver oldja fel: paraméter (skalár) vagy elnevezett
                     // alakzat (részkifejezés). A visszakapott fát beágyazzuk ide.
                     if (resolver)

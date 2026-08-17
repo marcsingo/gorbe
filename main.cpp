@@ -14,6 +14,7 @@
 // globális `using namespace`-e miatt közvetlenül elérhető).
 #include "particle_sampling/Surface.hpp"
 #include "particle_sampling/Transform.hpp"
+#include "particle_sampling/WarpPresets.hpp"
 
 // --- Sugarkoveto komponens (onallo, levalaszthato: lasd raytrace/Raytracer.hpp) ---
 #include <filesystem>
@@ -165,74 +166,6 @@ static std::vector<Preset> const PRESETS = {
     {"Sima muveletek", "Sima kulonbseg",        "skulonbseg", "skulonbseg(f1, f2, k)", {{"k", 0.5f}}},
 };
 
-// ---------------------------------------------------------------------------
-// Warp-sablonok
-//
-// A három kifejezés a VISSZAFELÉ (tér -> alakzat) leképezés, ezért az itt szereplő
-// képletek az adott deformáció INVERZEI (lásd Transform.hpp). Például a `+a` szöggel
-// csavaró warphoz a `-a`-val forgató kifejezés tartozik.
-//
-// A `$1`, `$2` helyére a hozzáadáskor generált (ütközésmentes) paraméternevek
-// kerülnek, és a paraméterek az alakzat lokálisai közé kerülnek — így csúszkával
-// állíthatók, és élőben hatnak.
-// ---------------------------------------------------------------------------
-struct WarpPreset {
-    char const* label;
-    char const* fx;
-    char const* fy;
-    char const* fz;
-    std::vector<PresetParam> params;   // a NÉV itt csak alap (pl. "tw" -> tw1, tw2, ...)
-    char const* hint = "";
-};
-
-static std::vector<WarpPreset> const WARP_PRESETS = {
-    {"Csavaras (twist) z korul",
-     "x*cos($1*z) + y*sin($1*z)",
-     "0 - x*sin($1*z) + y*cos($1*z)",
-     "z",
-     {{"tw", 0.30f}},
-     "a z tengely menten csavarja; $1 = szog/egyseg"},
-
-    {"Kuposítás (taper) z menten",
-     "x/(1 + $1*z)",
-     "y/(1 + $1*z)",
-     "z",
-     {{"tp", 0.15f}},
-     "FIGYELEM: 1 + k*z = 0 helyen szingularis"},
-
-    {"Nyiras (shear) x-ben, z szerint",
-     "x - $1*z",
-     "y",
-     "z",
-     {{"sh", 0.30f}},
-     "a magassaggal aranyosan tolja x-ben"},
-
-    {"Hullam (wave) z-ben, x szerint",
-     "x",
-     "y",
-     "z - $1*sin($2*x)",
-     {{"wa", 0.30f}, {"wf", 1.00f}},
-     "$1 = amplitudo, $2 = frekvencia"},
-
-    {"Egyedi (ures)", "x", "y", "z", {}, "irj sajatot: a ter -> alakzat lekepezest"},
-};
-
-// A "$1", "$2" helyettesítése a tényleges paraméternevekkel.
-static void fill_warp_template(char* out, size_t n, char const* tpl,
-                               std::vector<std::string> const& names) {
-    std::string r;
-    for (char const* c = tpl; *c; ++c) {
-        if (*c == '$' && c[1] >= '1' && c[1] <= '9') {
-            size_t idx = static_cast<size_t>(c[1] - '1');
-            if (idx < names.size()) r += names[idx];
-            ++c;
-        } else {
-            r += *c;
-        }
-    }
-    std::snprintf(out, n, "%s", r.c_str());
-}
-
 // A parser által lefoglalt nevek: a térbeli változók és a beépített függvények.
 static bool is_reserved(char const* n) {
     static char const* const R[] = {
@@ -240,7 +173,7 @@ static bool is_reserved(char const* n) {
         "sin", "cos", "tan", "tg", "ctg", "cot", "ln", "log", "sqrt", "abs", "sign",
         "min", "max", "unio", "union", "metszet", "intersect", "kulonbseg", "subtract",
         "smin", "smax", "sunio", "sunion", "smetszet", "sintersect", "skulonbseg", "ssubtract",
-        "and", "or", "not"};
+        "and", "or", "not", "pi"};
     for (auto r : R)
         if (std::strcmp(n, r) == 0) return true;
     return false;
@@ -512,19 +445,19 @@ int main() {
             return;
 
         ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::BeginCombo("##warpsablon", WARP_PRESETS[warp_preset_idx].label)) {
-            for (int k = 0; k < static_cast<int>(WARP_PRESETS.size()); ++k) {
+        if (ImGui::BeginCombo("##warpsablon", WarpPresets::ALL[warp_preset_idx].label)) {
+            for (int k = 0; k < static_cast<int>(WarpPresets::ALL.size()); ++k) {
                 bool sel = (k == warp_preset_idx);
-                if (ImGui::Selectable(WARP_PRESETS[k].label, sel)) warp_preset_idx = k;
+                if (ImGui::Selectable(WarpPresets::ALL[k].label, sel)) warp_preset_idx = k;
                 if (sel) ImGui::SetItemDefaultFocus();
-                if (ImGui::IsItemHovered() && WARP_PRESETS[k].hint[0])
-                    ImGui::SetTooltip("%s", WARP_PRESETS[k].hint);
+                if (ImGui::IsItemHovered() && WarpPresets::ALL[k].hint[0])
+                    ImGui::SetTooltip("%s", WarpPresets::ALL[k].hint);
             }
             ImGui::EndCombo();
         }
         ImGui::SameLine();
         if (ImGui::Button("Warp hozzaad")) {
-            auto const& wp = WARP_PRESETS[warp_preset_idx];
+            auto const& wp = WarpPresets::ALL[warp_preset_idx];
             Warp w;
             std::snprintf(w.name, sizeof(w.name), "%s", wp.label);
             // A sablon paraméterei az alakzat lokálisai közé kerülnek, ütközésmentes
@@ -536,9 +469,9 @@ int main() {
                 p.value = pp.value;
                 names.emplace_back(p.name);
             }
-            fill_warp_template(w.fx, sizeof(w.fx), wp.fx, names);
-            fill_warp_template(w.fy, sizeof(w.fy), wp.fy, names);
-            fill_warp_template(w.fz, sizeof(w.fz), wp.fz, names);
+            WarpPresets::fill_template(w.fx, sizeof(w.fx), wp.fx, names);
+            WarpPresets::fill_template(w.fy, sizeof(w.fy), wp.fy, names);
+            WarpPresets::fill_template(w.fz, sizeof(w.fz), wp.fz, names);
             s.warps.push_back(w);
             rebuild = true;
         }

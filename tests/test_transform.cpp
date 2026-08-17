@@ -2,11 +2,15 @@
 // lekepezest helyettesitjuk be F-be. A derivaltakat a szimbolikus derivalas intezi.
 #include <cmath>
 #include <cstdio>
+#include <array>
+#include <cstdlib>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "matek/Kif.hpp"
 #include "particle_sampling/Transform.hpp"
+#include "particle_sampling/WarpPresets.hpp"
 
 using namespace Matek::Analizis;
 
@@ -302,6 +306,108 @@ int main() {
         for (int n = 0; n <= 3; ++n) {
             std::printf("  %-28d %10zu %10zu\n", n, tsize(f), prog_size(f));
             f = apply_warp(f, wx, wy, wz);
+        }
+    }
+
+    std::printf("\n=== 14. `pi` allando a parserben ===\n");
+    {
+        near("pi",        make_kif("pi").at({0, 0, 0}),        3.14159265f, 1e-5f);
+        near("90*pi/180", make_kif("90*pi/180").at({0, 0, 0}), 1.5707963f,  1e-5f);
+        near("cos(180*pi/180)", make_kif("cos(180*pi/180)").at({0, 0, 0}), -1.0f, 1e-5f);
+    }
+
+    std::printf("\n=== 15. A WARP-SABLONOK (pontosan azok, amiket a program hasznal) ===\n");
+    {
+        // Egy sablon felepitese ugyanugy, ahogy a GUI teszi: parameternevek
+        // behelyettesitese a $1/$2/... helyere, majd parseolas.
+        struct Built { Kif fx, fy, fz; std::vector<float> vals; };
+        auto build = [](WarpPresets::Preset const& p, std::vector<float> const& values,
+                        std::vector<float>& storage) {
+            storage = values;
+            std::vector<std::string> names;
+            for (std::size_t i = 0; i < storage.size(); ++i) names.push_back("p" + std::to_string(i));
+            char bx[256], by[256], bz[256];
+            WarpPresets::fill_template(bx, sizeof(bx), p.fx, names);
+            WarpPresets::fill_template(by, sizeof(by), p.fy, names);
+            WarpPresets::fill_template(bz, sizeof(bz), p.fz, names);
+            auto res = [&](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+                for (std::size_t i = 0; i < storage.size(); ++i)
+                    if (nm == "p" + std::to_string(i)) return Kif(&storage[i]).get();
+                return nullptr;
+            };
+            return std::array<Kif, 3>{make_kif(bx, res), make_kif(by, res), make_kif(bz, res)};
+        };
+        auto find = [](char const* label) -> WarpPresets::Preset const& {
+            for (auto const& p : WarpPresets::ALL)
+                if (std::string(p.label).rfind(label, 0) == 0) return p;
+            std::printf("  NINCS ILYEN SABLON: %s\n", label);
+            std::exit(1);
+        };
+
+        Kif gomb2 = make_kif("x^2 + y^2 + z^2 - 1");
+        Kif sikx  = make_kif("x - 1");     // az x=1 sik
+        Kif siky  = make_kif("y - 1");
+        Kif sikz  = make_kif("z - 1");
+
+        // --- Eltolas ---
+        {
+            std::vector<float> v;
+            auto w = build(find("Eltolas"), {3.0f, -2.0f, 1.0f}, v);
+            Kif f = apply_warp(gomb2, w[0], w[1], w[2]);
+            near("eltolas: kozeppont (3,-2,1)", f.at({3, -2, 1}), -1.0f);
+            near("eltolas: felszin (4,-2,1)",   f.at({4, -2, 1}),  0.0f);
+            v[0] = 10.0f;    // eloben kovesse az erteket
+            near("eltolas: eloben all (10,-2,1)", f.at({10, -2, 1}), -1.0f);
+        }
+        // --- Skalazas ---
+        {
+            std::vector<float> v;
+            auto w = build(find("Skalazas"), {2.0f, 1.0f, 0.5f}, v);
+            Kif f = apply_warp(gomb2, w[0], w[1], w[2]);
+            near("skalazas: (2,0,0) a feluleten",   f.at({2.0f, 0, 0}), 0.0f);
+            near("skalazas: (0,1,0) a feluleten",   f.at({0, 1.0f, 0}), 0.0f);
+            near("skalazas: (0,0,0.5) a feluleten", f.at({0, 0, 0.5f}), 0.0f);
+        }
+        // --- Forgatasok, FOKBAN ---
+        {
+            std::vector<float> v;
+            auto w = build(find("Forgatas z"), {90.0f}, v);
+            Kif f = apply_warp(sikx, w[0], w[1], w[2]);
+            near("forgatas z, +90 fok: x=1 sik -> y=1", f.at({0, 1, 0}), 0.0f);
+            near("... es (1,0,0) mar nem a feluleten",   f.at({1, 0, 0}), -1.0f);
+            // a gomb forgatasra invarians
+            near("forgatott gomb valtozatlan",
+                 apply_warp(gomb2, w[0], w[1], w[2]).at({1, 0, 0}), 0.0f);
+        }
+        {
+            std::vector<float> v;
+            auto w = build(find("Forgatas x"), {90.0f}, v);
+            Kif f = apply_warp(siky, w[0], w[1], w[2]);
+            near("forgatas x, +90 fok: y=1 sik -> z=1", f.at({0, 0, 1}), 0.0f);
+        }
+        {
+            std::vector<float> v;
+            auto w = build(find("Forgatas y"), {90.0f}, v);
+            Kif f = apply_warp(sikz, w[0], w[1], w[2]);
+            near("forgatas y, +90 fok: z=1 sik -> x=1", f.at({1, 0, 0}), 0.0f);
+        }
+        // --- Minden sablon alapertekkel is ertelmes (nincs 0-val osztas, NaN) ---
+        {
+            for (auto const& p : WarpPresets::ALL) {
+                std::vector<float> vals;
+                for (auto const& pd : p.params) vals.push_back(pd.value);
+                std::vector<float> v;
+                auto w = build(p, vals, v);
+                Kif f = apply_warp(gomb2, w[0], w[1], w[2]);
+                bool fin = true;
+                glm::vec3 pts[] = {{0,0,0}, {1,0,0}, {0.5f,-0.5f,0.7f}, {2,3,-1}};
+                for (auto q : pts) {
+                    if (!std::isfinite(f.at(q))) fin = false;
+                    auto g = grad(f, q);
+                    if (!std::isfinite(g.x) || !std::isfinite(g.y) || !std::isfinite(g.z)) fin = false;
+                }
+                ok(std::string("alapertekkel veges: ") + std::string(p.label).substr(0, 24), fin);
+            }
         }
     }
 

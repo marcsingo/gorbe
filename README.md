@@ -201,6 +201,7 @@ zárójelezni). Függvények:
 | kategória | függvények |
 |---|---|
 | egyváltozós | `sin cos tan`/`tg` `ctg`/`cot` `ln log sqrt abs sign` |
+| állandó | `pi` |
 | éles halmazműveletek | `unio(a,b)` `metszet(a,b)` `kulonbseg(a,b)` `min(a,b)` `max(a,b)` |
 | sima halmazműveletek | `sunio(a,b[,k])` `smetszet(a,b[,k])` `skulonbseg(a,b[,k])` `smin` `smax` |
 
@@ -265,11 +266,30 @@ bekerülnek az alakzat lokálisai közé, ütközésmentes néven, tehát csúsz
 
 | sablon | `x'` | `y'` | `z'` |
 |---|---|---|---|
+| **Eltolás** | `x − tx` | `y − ty` | `z − tz` |
+| **Forgatás z körül** | `x·cos(r) + y·sin(r)` | `−x·sin(r) + y·cos(r)` | `z` |
+| **Forgatás x körül** | `x` | `y·cos(r) + z·sin(r)` | `−y·sin(r) + z·cos(r)` |
+| **Forgatás y körül** | `x·cos(r) − z·sin(r)` | `y` | `x·sin(r) + z·cos(r)` |
+| **Skálázás** | `x/sx` | `y/sy` | `z/sz` |
 | Csavarás (twist) z körül | `x·cos(a·z) + y·sin(a·z)` | `−x·sin(a·z) + y·cos(a·z)` | `z` |
 | Kúposítás (taper) z mentén | `x/(1+k·z)` | `y/(1+k·z)` | `z` |
 | Nyírás (shear) x-ben | `x − k·z` | `y` | `z` |
 | Hullám (wave) z-ben | `x` | `y` | `z − a·sin(w·x)` |
 | Egyedi (üres) | `x` | `y` | `z` |
+
+Az **eltolás / forgatás / skálázás** ugyanaz, mint a `Transzformacio` szekció — de a
+**láncba illeszthető**, tehát tetszőleges sorrendben keverhető a deformációkkal
+(pl. csavarás → eltolás → újabb csavarás). Amelyiket mikor érdemes:
+
+| | `Transzformacio` szekció | warp-sablonként |
+|---|---|---|
+| élő (nincs újraparseolás) | ✔ | ✔ |
+| kényelmes vezérlők (fokos csúszka, `DragFloat3`) | ✔ | — |
+| sorrend a deformációk közé | — | ✔ |
+
+A forgatás-sablonok **fokban** várják a szöget (a képletben `pi/180` váltja radiánra;
+a `pi` a parser beépített állandója). A skálázás alapértéke `1` — **`0` nem lehet**,
+mert osztás van benne.
 
 Megjegyzések:
 
@@ -650,6 +670,7 @@ minden kimenetre.
 | `matek/fuggvenyek/{Abs,Elojel}.hpp` | `abs` / `sign` — ezekre épül a min/max deriváltja |
 | `particle_sampling/DomainConstraint.hpp` | a tartomány-feltétel matematikája (felület menti csúsztatás + perem-fal) |
 | `particle_sampling/Transform.hpp` | tér-transzformáció: a világ→lokális leképezés behelyettesítése |
+| `particle_sampling/WarpPresets.hpp` | a warp-sablonok (a teszt pontosan ezt az adatot ellenőrzi) |
 | `model/`, `utils/` | OpenGL-réteg (kamera, ablak, shader, Model) |
 | `model/Gui.{hpp,cpp}` | Dear ImGui wrapper (init/frame/render, input-szűrés) |
 | `model/CameraBasis.hpp` | a kamera Z-up bázisa és az egérkezelés előjel-konvenciója (GL nélkül, tesztelhetően) |
