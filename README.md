@@ -134,6 +134,13 @@ Az `Alakzatok` panelen a **`Fenykep keszitese`** gomb a **kamera aktuális áll�
 kirenderel egy képet, elmenti, és megnyitja a rendszer képnézegetőjében (ez az „új
 ablak"). Mellette a felbontás és az árnyék kapcsolható.
 
+A képek a **bináris melletti `kepek/` mappába** kerülnek (nem a munkakönyvtárba, mert
+az indítástól függően bárhol lehet), **időbélyeges** néven — `kep_20260817_161517.bmp` —,
+tehát semmi nem íródik felül. A pontos útvonalat a gomb alatt is kiírja a program.
+
+> A `kepek/` a build könyvtárban van, amit egy `rebuild --clean-first` vagy a
+> könyvtár törlése elvisz. Ha egy kép hosszabb távon kell, mentsd el máshova.
+
 - **Metszés közelítéssel**, ahogy egy implicit felületnél kell: a sugár mentén
   lépkedünk, amíg elég közel nem kerülünk a felülethez. A lépés nem fix, hanem a
   felülettől mért becsült geometriai távolságból (`|F|/|∇F|`) adódik — üres térben

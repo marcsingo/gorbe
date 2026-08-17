@@ -106,9 +106,14 @@ add_executable(gorbe ${SOURCE_FILES}
 find_package(OpenGL REQUIRED)
 target_link_libraries(gorbe glfw OpenGL::GL imgui)
 
-# 6. Shaderek a binárís mellé. A SHADER_DIR makró a bináris könyvtárára mutat, a kód
-#    onnan tölti a shadereket -> a program tetszőleges munkakönyvtárból indítható.
-target_compile_definitions(gorbe PRIVATE "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\"")
+# 6. A bináris könyvtárának átadása a kódnak.
+#    SHADER_DIR: innen tölti a shadereket (lásd a másolást lentebb).
+#    BINARY_DIR: ide kerülnek a mentett fájlok (pl. a sugárkövetett fényképek a
+#                `kepek/` almappába) — így "a futtatás mellé", nem a munkakönyvtárba.
+#    Mindkettő ugyanaz az útvonal, de külön néven, hogy a jelentésük egyértelmű legyen.
+target_compile_definitions(gorbe PRIVATE
+        "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\""
+        "BINARY_DIR=\"$<TARGET_FILE_DIR:gorbe>\"")
 
 # 7. Tesztek (ctest). A matek/ és a részecske-kényszerek rétege GL nélkül,
 #    fejlécből tesztelhető — ez a projekt legkockázatosabb, legnehezebben

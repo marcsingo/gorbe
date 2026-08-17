@@ -1,11 +1,14 @@
 #ifndef GORBE_RAYTRACE_IMAGE_HPP
 #define GORBE_RAYTRACE_IMAGE_HPP
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include <glm.hpp>
@@ -67,12 +70,30 @@ namespace Raytrace {
         return std::fclose(f) == 0;
     }
 
-    // Egyedi fájlnév a rendszer ideiglenes könyvtárában.
-    inline std::string temp_image_path() {
-        static int counter = 0;
-        auto dir = std::filesystem::temp_directory_path();
-        auto name = "gorbe_render_" + std::to_string(counter++) + ".bmp";
-        return (dir / name).string();
+    // Új képfájl útvonala a megadott könyvtárban (létrehozza, ha nincs).
+    //
+    // A HELYET a hívó dönti el — a komponens nem tudja (és nem is akarja tudni),
+    // hol van a program. A NÉV időbélyeges, ezért két kép sosem írja felül egymást,
+    // még a program újraindítása után sem. Ha egy másodpercen belül több kép
+    // készül, egy sorszám kerül a végére.
+    inline std::string image_path(std::filesystem::path const& dir) {
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);   // hiba esetén az fopen bukik majd
+
+        std::time_t t = std::time(nullptr);
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &t);
+#else
+        localtime_r(&t, &tm);
+#endif
+        char stamp[32];
+        std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &tm);
+
+        std::filesystem::path p = dir / ("kep_" + std::string(stamp) + ".bmp");
+        for (int i = 2; std::filesystem::exists(p) && i < 1000; ++i)
+            p = dir / ("kep_" + std::string(stamp) + "_" + std::to_string(i) + ".bmp");
+        return p.string();
     }
 
     // Megnyitás a rendszer alapértelmezett képnézegetőjében — ez adja az "új ablakot".

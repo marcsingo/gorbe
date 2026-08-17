@@ -16,8 +16,14 @@
 #include "particle_sampling/Transform.hpp"
 
 // --- Sugarkoveto komponens (onallo, levalaszthato: lasd raytrace/Raytracer.hpp) ---
+#include <filesystem>
 #include "raytrace/Raytracer.hpp"
 #include "raytrace/Image.hpp"
+
+// A bináris könyvtára (a CMake adja meg); ide mentjük a fényképeket.
+#ifndef BINARY_DIR
+#define BINARY_DIR "."
+#endif
 
 #include "imgui.h"
 
@@ -969,7 +975,10 @@ int main() {
                 auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::steady_clock::now() - t0).count();
 
-                std::string path = Raytrace::temp_image_path();
+                // A képek a BINÁRIS mellé, a `kepek/` almappába kerülnek — nem a
+                // munkakönyvtárba, mert az indítástól függően bárhol lehet.
+                std::string path = Raytrace::image_path(
+                    std::filesystem::path(BINARY_DIR) / "kepek");
                 if (Raytrace::write_bmp(path, rs.width, rs.height, img)) {
                     Raytrace::open_in_viewer(path);
                     photo_status = "Kesz (" + std::to_string(ms) + " ms): " + path;

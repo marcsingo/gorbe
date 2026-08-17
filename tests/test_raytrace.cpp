@@ -2,6 +2,8 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <filesystem>
+#include <system_error>
 #include <vector>
 
 #include "raytrace/Raytracer.hpp"
@@ -160,7 +162,8 @@ int main() {
 
     std::printf("\n=== 6. BMP mentes ===\n");
     {
-        std::string path = Raytrace::temp_image_path();
+        auto dir = std::filesystem::temp_directory_path() / "gorbe_test_kepek";
+        std::string path = Raytrace::image_path(dir);
         bool w = Raytrace::write_bmp(path, W, H, img);
         ok("sikeres iras", w, path);
         if (w) {
@@ -179,8 +182,25 @@ int main() {
                 ok("a fajlmeret a fejleccel egyezik", size == 54 + row * H,
                    "meret=" + std::to_string(size) + " vart=" + std::to_string(54 + row * H));
                 std::remove(path.c_str());
+                std::error_code ec; std::filesystem::remove_all(dir, ec);
             }
         }
+        // Ket egymas utani kep NEM irhatja felul egymast.
+        {
+            auto d2 = std::filesystem::temp_directory_path() / "gorbe_test_kepek2";
+            std::string p1 = Raytrace::image_path(d2);
+            Raytrace::write_bmp(p1, W, H, img);
+            std::string p2 = Raytrace::image_path(d2);
+            ok("ket kep neve kulonbozik (nincs felulirás)", p1 != p2,
+               "p1=" + std::filesystem::path(p1).filename().string() +
+               " p2=" + std::filesystem::path(p2).filename().string());
+            ok("a nev idobelyeges (kep_ eloteggel)",
+               std::filesystem::path(p1).filename().string().rfind("kep_", 0) == 0,
+               std::filesystem::path(p1).filename().string());
+            ok("a konyvtar letrejott", std::filesystem::exists(d2));
+            std::error_code ec; std::filesystem::remove_all(d2, ec);
+        }
+
         // gamma: a 0.5 linearis vilagosabb legyen a felenel (sRGB)
         ok("gamma-korrekcio (0.5 linearis -> ~188)",
            Raytrace::to_srgb_byte(0.5f) > 170 && Raytrace::to_srgb_byte(0.5f) < 200,
