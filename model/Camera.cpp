@@ -3,6 +3,7 @@
 //
 
 #include "Camera.hpp"
+#include "CameraBasis.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -61,7 +62,7 @@ glm::mat4 Camera2D::get_projection() const {
 
 Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_yaw, float initial_pitch)
     : Camera(viewport), position(start_position), front(glm::vec3(0.0f, 0.0f, -1.0f)),
-      world_up(glm::vec3(0.0f, 0.0f, 1.0f)), yaw(initial_yaw), pitch(initial_pitch),
+      yaw(initial_yaw), pitch(initial_pitch),
       movement_speed(5.0f), mouse_sensitivity(0.1f), fov(45.0f),
       first_mouse(true), last_x(viewport.z / 2.0f), last_y(viewport.w / 2.0f) {
 
@@ -135,20 +136,11 @@ glm::mat4 Camera3D::get_projection() const {
 }
 
 void Camera3D::update_camera_vectors() {
-    // Z-UP konvenció: a jelenetben a z a függőleges (a sík-sablon z=0, a henger a z
-    // mentén áll), ezért a kamera is a z-t tartja a képernyőn függőlegesen. Így a
-    // talajrács vízszintesnek látszik, és forgatáskor sem billen el a horizont.
-    //   yaw   = azimut az xy síkban (0 = +x felé)
-    //   pitch = emelkedés az xy sík fölött (negatív = lefelé nézünk)
-    glm::vec3 new_front;
-    new_front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    new_front.y = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    new_front.z = sin(glm::radians(pitch));
-    front = glm::normalize(new_front);
-
-    // Új right és up vektorok (a normalizálás fontos, mert ha felfelé/lefelé nézünk, a vektorok hossza változhat)
-    right = glm::normalize(glm::cross(front, world_up));
-    up = glm::normalize(glm::cross(right, front));
+    // A konvenció és a képletek a CameraBasis-ban vannak (GL nélkül, tesztelhetően).
+    auto b = CameraBasis::from_angles(yaw, pitch);
+    front = b.front;
+    right = b.right;
+    up    = b.up;
 }
 
 void Camera3D::process_keyboard(int key, bool pressed) {
@@ -176,22 +168,16 @@ void Camera3D::process_mouse_movement(float xpos, float ypos) {
         return;
     }
 
-    float xoffset = xpos - last_x;
-    float yoffset = last_y - ypos;
+    // Képernyő-koordinátás elmozdulás (dy lefelé pozitív); az előjelek és a
+    // pitch-levágás a CameraBasis-ban, egy helyen vannak.
+    float dx = xpos - last_x;
+    float dy = ypos - last_y;
     last_x = xpos;
     last_y = ypos;
 
     if (!right_mouse_down && !left_mouse_down) return;
 
-    xoffset *= mouse_sensitivity;
-    yoffset *= mouse_sensitivity;
-
-    yaw   += xoffset;
-    pitch += yoffset;
-
-    if (pitch >  89.0f) pitch =  89.0f;
-    if (pitch < -89.0f) pitch = -89.0f;
-
+    CameraBasis::apply_mouse_delta(dx, dy, mouse_sensitivity, yaw, pitch);
     update_camera_vectors();
 }
 

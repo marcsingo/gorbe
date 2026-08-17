@@ -82,6 +82,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         model/Gui.cpp
         model/Gui.hpp
         model/Axes.hpp
+        model/CameraBasis.hpp
         App.hpp
         particle_sampling/ImplicitSurface.hpp
         particle_sampling/Surface.hpp
@@ -113,7 +114,7 @@ target_compile_definitions(gorbe PRIVATE "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})

@@ -84,7 +84,6 @@ private:
     glm::vec3 front;
     glm::vec3 up;
     glm::vec3 right;
-    glm::vec3 world_up;
 
     // Euler-szögek a nézet irányításához
     float yaw;

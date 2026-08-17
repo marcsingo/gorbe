@@ -70,6 +70,7 @@ ctest --test-dir build --output-on-failure
 | `test_csg` | halmazműveletek értéke és deriváltja, szimbolikus vs. numerikus gradiens, hibás hívások |
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
+| `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
 Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
@@ -615,6 +616,7 @@ minden kimenetre.
 | `particle_sampling/Transform.hpp` | tér-transzformáció: a világ→lokális leképezés behelyettesítése |
 | `model/`, `utils/` | OpenGL-réteg (kamera, ablak, shader, Model) |
 | `model/Gui.{hpp,cpp}` | Dear ImGui wrapper (init/frame/render, input-szűrés) |
+| `model/CameraBasis.hpp` | a kamera Z-up bázisa és az egérkezelés előjel-konvenciója (GL nélkül, tesztelhetően) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
 
