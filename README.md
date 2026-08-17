@@ -70,7 +70,7 @@ ctest --test-dir build --output-on-failure
 | `test_csg` | halmazműveletek értéke és deriváltja, szimbolikus vs. numerikus gradiens, hibás hívások |
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
-| `test_transform` | eltolás/forgatás/méret és összetételük, a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
+| `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
 Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
 
@@ -122,7 +122,7 @@ A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakz
 | ablak | mi van benne |
 |---|---|
 | **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
-| **Tulajdonságok** | a kijelölt alakzat neve, `F(x,y,z) =` képlete, opcionális **tartomány-feltétele**, **tér-transzformációja** és a **lokális** paraméterei (név = érték). |
+| **Tulajdonságok** | a kijelölt alakzat neve, és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
 | **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték), és a **globális tartomány**. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
 
@@ -204,6 +204,58 @@ Néhány következmény:
 | gömb | 15 | 153 |
 | tórusz | 45 | 203 |
 | sima unió | 106 | 271 |
+
+### Warpok (tér-deformációk, láncban)
+
+A fenti affin transzformáció mellé alakzatonként megadható egy **warp-lánc**. Egy warp
+**három kifejezés** — `x'`, `y'`, `z'` —, amiket `x`, `y`, `z` helyére helyettesítünk:
+
+```
+F_warpolt(p) = F( x'(p), y'(p), z'(p) )
+```
+
+Semmi több: ugyanaz a `substitute` gépezet, mint a transzformációnál, tehát a
+deriváltakat itt sem kell külön kezelni.
+
+**A jelentés fontos:** a három kifejezés a **visszafelé** (tér → alakzat) leképezés —
+„hol keressük ki az alakzatot ehhez a térbeli ponthoz". A tér warpolásához mindig az
+inverz leképezés kell (Barr 1984; BlobTree 3.4: *„we wish to warp space, thus we use the
+inverse warp function"*). Ezért a sablonok a deformáció **inverzét** tartalmazzák.
+
+Sablonok a `Warpok (lancban)` szekció lenyílójából — a paramétereik automatikusan
+bekerülnek az alakzat lokálisai közé, ütközésmentes néven, tehát csúszkával
+állíthatók és **élőben** hatnak:
+
+| sablon | `x'` | `y'` | `z'` |
+|---|---|---|---|
+| Csavarás (twist) z körül | `x·cos(a·z) + y·sin(a·z)` | `−x·sin(a·z) + y·cos(a·z)` | `z` |
+| Kúposítás (taper) z mentén | `x/(1+k·z)` | `y/(1+k·z)` | `z` |
+| Nyírás (shear) x-ben | `x − k·z` | `y` | `z` |
+| Hullám (wave) z-ben | `x` | `y` | `z − a·sin(w·x)` |
+| Egyedi (üres) | `x` | `y` | `z` |
+
+Megjegyzések:
+
+- A lánc **első** eleme hat először az alakzatra; a `^` / `v` gombokkal átrendezhető,
+  a pipával egyenként ki-be kapcsolható. A sorrend számít.
+- A lánc **után** jön az affin transzformáció, tehát a warpok az alakzat **saját**
+  terében dolgoznak, és a kész, deformált alakzatot mozgatja a pozíció/forgatás/méret.
+- Az alakzat saját tartomány-feltétele ugyanezt a láncot kapja, tehát a levágott rész
+  együtt deformálódik.
+- A kúposításnál `1 + k·z = 0` helyen a kifejezés szinguláris — ezt a csúszka
+  tartományával kerüld el.
+- A **bend** (hajlítás) szándékosan nincs a sablonok között: az inverze `atan2`-t
+  igényelne, ami a kifejezésrendszerben még nincs meg.
+
+A lánc a fát gyorsan növeli, a **lefordított program viszont csak lineárisan** — a
+közös részkifejezés-kiemelés visszaszedi a nagy részét (mérve, gömbre):
+
+| lánc hossza | fa (karakter) | program (utasítás) |
+|---|---|---|
+| 0 | 43 | 15 |
+| 1 | 137 | 94 |
+| 2 | 325 | 181 |
+| 3 | 701 | 274 |
 
 ### Tartomány-feltétel — végtelen alakzatok véges darabon
 

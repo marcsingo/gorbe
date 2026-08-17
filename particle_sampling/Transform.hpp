@@ -94,4 +94,27 @@ inline Matek::Analizis::Kif apply_transform(Matek::Analizis::Kif const& f,
     return Matek::Analizis::substitute(f, make_inverse_warp(t).as_map());
 }
 
+// --- Általános warp: három tetszőleges kifejezés -----------------------------
+//
+// Egy warp három kifejezés (`wx`, `wy`, `wz`), amiket `x`, `y`, `z` helyére
+// helyettesítünk. Semmi több: F_warpolt(p) = F( wx(p), wy(p), wz(p) ).
+//
+// FONTOS a jelentés: ezek a kifejezések a VISSZAFELÉ (world -> shape) leképezést
+// írják le — "hol keressük ki az alakzatot ehhez a térbeli ponthoz". Ez nem
+// szőrszálhasogatás: a tér warpolásához mindig az inverz leképezés kell (Barr
+// 1984; BlobTree-cikk 3.4: "we wish to warp space, thus we use the inverse warp
+// function"). A beépített sablonok már így vannak felírva; egyedi warpnál erre
+// figyelni kell. Egy csavarás `+a` szöggel tehát a `-a`-val forgató kifejezés.
+//
+// Láncolásnál a lista ELSŐ eleme hat először az alakzatra (a behelyettesítések
+// egymásba ágyazódnak, ami a visszafelé-leképezéseknél épp ezt a sorrendet adja).
+inline Matek::Analizis::Kif apply_warp(Matek::Analizis::Kif const& f,
+                                       Matek::Analizis::Kif const& wx,
+                                       Matek::Analizis::Kif const& wy,
+                                       Matek::Analizis::Kif const& wz) {
+    return Matek::Analizis::substitute(f, {{'x', wx.get()},
+                                           {'y', wy.get()},
+                                           {'z', wz.get()}});
+}
+
 #endif //GORBE_TRANSFORM_HPP

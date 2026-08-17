@@ -79,7 +79,7 @@ public:
         controls.set_surface(&surface);
         // A felület mostantól folyamatosan a saját átmérőjét írja a d-be.
         surface.bind_diameter(&d);
-        spawn_random_particles(2, 3);
+        spawn_random_particles(INITIAL_PARTICLES, 3);
 
         tick_sub = Window::Subscription(Window::add_time_passed_event([this](auto p) {
             if (!running) return;            // leállított állapotban nem szimulálunk
@@ -121,7 +121,7 @@ public:
         floaters.ps().clear();
         controls.ps().clear();
         sim_accum = 0.0f;
-        spawn_random_particles(2, 3);
+        spawn_random_particles(INITIAL_PARTICLES, 3);
         running = true;
     }
 
@@ -145,6 +145,15 @@ public:
     // A plafon elérésekor a fisszió leáll, és a szigmát is meg kell fogni: különben
     // korlátlanul nőne (D < E_v marad), és a korongok gigantikusra hízva jelennének meg.
     int max_particles = 4000;
+
+    // Ennyi kezdő részecskét szórunk. Kettő KEVÉS volt: a ráhúzó ág (masik) a
+    // gradiens mentén repíti a részecskét a felületre, a gradiens viszont a felület
+    // "tengelyénél" (kritikus pontoknál) eltűnik, és az i.delta lépésköz minden
+    // átlövéskor feleződik, sosem nő vissza. Így egy szerencsétlenül induló részecske
+    // csigalassúsággal csordogál — ha mind a kettő ilyen, a jelenet üres marad, és a
+    // fisszió sem indul be (ahhoz felületi részecske kell). Mérve: ez ritkán, de
+    // előfordult. Nyolccal a "mind beragad" esély elhanyagolható.
+    static constexpr int INITIAL_PARTICLES = 8;
 
     // A görbület-adaptív taszítás erőssége (futásidőben állítható, pl. GUI-csúszka).
     // 0 = kikapcsolva (egyenletes mintavétel); nagyobb érték = a görbült helyek erősebben
@@ -397,6 +406,7 @@ public:
         //                 });
         // is_particle_on_surface = false;
         rebuild_grid();   // a taszítás szomszédkeresése ezen megy (O(n) a O(n²) helyett)
+
 
         std::vector<Particle<L>> particles;
         auto& ps = floaters.ps();

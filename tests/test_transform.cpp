@@ -191,6 +191,120 @@ int main() {
         }
     }
 
+    std::printf("\n=== 9. Warp: csavaras (twist) ===\n");
+    {
+        // A warp-sablon a VISSZAFELE lekepezes, ezert a "+a"-val csavaro deformacio
+        // inverze szerepel benne. Teszteljuk az egyseghengert (x^2+y^2-1): a csavaras
+        // z korul forgat, tehat a hengert VALTOZATLANUL kell hagynia.
+        float a = 0.3f;
+        Kif henger = make_kif("x^2 + y^2 - 1");
+        Kif wx = make_kif("x*cos(0.3*z) + y*sin(0.3*z)");
+        Kif wy = make_kif("0 - x*sin(0.3*z) + y*cos(0.3*z)");
+        Kif wz = make_kif("z");
+        Kif f = apply_warp(henger, wx, wy, wz);
+        near("csavart henger valtozatlan (1,0,0)",  f.at({1, 0, 0}), 0.0f);
+        near("csavart henger valtozatlan (1,0,5)",  f.at({1, 0, 5}), 0.0f);
+        near("csavart henger valtozatlan (0,1,-3)", f.at({0, 1, -3}), 0.0f);
+
+        // Egy z-tol fuggo alakzaton viszont LATSZIK a csavaras: a "sik" x=0 (az yz sik)
+        // z magassagban a*z szoggel elfordul.
+        Kif sik = make_kif("x");
+        Kif g = apply_warp(sik, wx, wy, wz);
+        float zz = 2.0f, th = a * zz;             // ennyivel fordul el
+        // az elfordult sikon rajta van a (sin(th)*t, ... ) irany: ellenorizzuk, hogy
+        // a (-sin(th), cos(th)) irany a feluleten van z=zz-nel
+        near("csavart sik: elfordult irany rajta van",
+             g.at({-std::sin(th), std::cos(th), zz}), 0.0f, 1e-4f);
+        ok("csavart sik: az eredeti y irany MAR NEM rajta", std::abs(g.at({0, 1, zz})) > 1e-3f,
+           "F=" + std::to_string(g.at({0, 1, zz})));
+    }
+
+    std::printf("\n=== 10. Warp: nyiras es hullam (egyszeru inverzek) ===\n");
+    {
+        // nyiras: a forward x' = x + k*z, tehat az inverz x -> x - k*z
+        float k = 0.5f;
+        Kif sik = make_kif("x");                       // az x=0 sik
+        Kif f = apply_warp(sik, make_kif("x - 0.5*z"), make_kif("y"), make_kif("z"));
+        near("nyirt sik z=0-nal x=0",  f.at({0.0f, 0, 0}), 0.0f);
+        near("nyirt sik z=2-nel x=1",  f.at({k * 2.0f, 0, 2}), 0.0f);
+        near("nyirt sik z=-2-nel x=-1", f.at({-k * 2.0f, 0, -2}), 0.0f);
+
+        // hullam: forward z' = z + a*sin(w*x); inverz z -> z - a*sin(w*x)
+        Kif zsik = make_kif("z");                      // a z=0 sik
+        Kif h = apply_warp(zsik, make_kif("x"), make_kif("y"), make_kif("z - 0.3*sin(1.0*x)"));
+        near("hullamos sik x=0-nal z=0", h.at({0, 0, 0.0f}), 0.0f);
+        float xx = 1.2f;
+        near("hullamos sik a hullamhegyen", h.at({xx, 0, 0.3f * std::sin(xx)}), 0.0f);
+    }
+
+    std::printf("\n=== 11. Warp-LANC: a sorrend szamit ===\n");
+    {
+        // Ket warp: (A) eltolas x-ben 1-gyel, (B) ketszerezo skalazas x-ben.
+        // A behelyettesitesek egymasba agyazodnak: az elso elem hat eloszor az alakzatra.
+        Kif gomb0 = make_kif("x^2 + y^2 + z^2 - 1");
+        Kif A_x = make_kif("x - 1"), Iy = make_kif("y"), Iz = make_kif("z");
+        Kif B_x = make_kif("x/2");
+
+        // lanc: A, majd B
+        Kif ab = apply_warp(apply_warp(gomb0, A_x, Iy, Iz), B_x, Iy, Iz);
+        // lanc: B, majd A
+        Kif ba = apply_warp(apply_warp(gomb0, B_x, Iy, Iz), A_x, Iy, Iz);
+
+        // ab(p) = F((p/2) - 1)  -> kozeppont ott, ahol p/2 - 1 = 0, azaz p = 2
+        near("A majd B: kozeppont x=2", ab.at({2, 0, 0}), -1.0f);
+        // ba(p) = F((p-1)/2)    -> kozeppont ott, ahol (p-1)/2 = 0, azaz p = 1
+        near("B majd A: kozeppont x=1", ba.at({1, 0, 0}), -1.0f);
+        ok("a ket sorrend KULONBOZO eredmenyt ad",
+           std::abs(ab.at({2, 0, 0}) - ba.at({2, 0, 0})) > 1e-3f);
+    }
+
+    std::printf("\n=== 12. Warp + affin transzformacio egyutt ===\n");
+    {
+        // A program eloszor a warp-lancot alkalmazza (az alakzat SAJAT tereben),
+        // utana az affin transzformaciot. Igy a mar deformalt alakzatot helyezi el.
+        Kif henger = make_kif("x^2 + y^2 - 1");
+        Kif wx = make_kif("x*cos(0.3*z) + y*sin(0.3*z)");
+        Kif wy = make_kif("0 - x*sin(0.3*z) + y*cos(0.3*z)");
+        Kif wz = make_kif("z");
+
+        TransformParams t; t.pos[0] = 5.0f;
+        Kif f = apply_transform(apply_warp(henger, wx, wy, wz), t);
+
+        near("eltolt csavart henger palastja (6,0,0)", f.at({6, 0, 0}), 0.0f);
+        near("eltolt csavart henger palastja (4,0,2)", f.at({4, 0, 2}), 0.0f);
+        near("eltolt csavart henger tengelye",         f.at({5, 0, 0}), -1.0f);
+
+        // gradiens ellenorzes a deformalt+elhelyezett alakon
+        glm::vec3 p{6, 0, 1};
+        float err = norm(grad(f, p) - num_grad(f, p));
+        ok("gradiens egyezik a warp+transzformacio utan is",
+           std::isfinite(err) && err < 5e-2f, "elteres=" + std::to_string(err));
+    }
+
+    std::printf("\n=== 13. Warp-lanc merete (a CSE mennyit szed vissza) ===\n");
+    {
+        Kif gomb1 = make_kif("x^2 + y^2 + z^2 - 1");
+        Kif wx = make_kif("x*cos(0.3*z) + y*sin(0.3*z)");
+        Kif wy = make_kif("0 - x*sin(0.3*z) + y*cos(0.3*z)");
+        Kif wz = make_kif("z");
+        auto prog_size = [](Kif const& k) {
+            Kif fx = k.derrive('x'), fy = k.derrive('y'), fz = k.derrive('z');
+            Kif all[10] = {k, fx, fy, fz,
+                           fx.derrive('x'), fx.derrive('y'), fx.derrive('z'),
+                           fy.derrive('y'), fy.derrive('z'), fz.derrive('z')};
+            Program p;
+            for (auto& e : all) e.get()->compile(p);
+            p.finish();
+            return p.size();
+        };
+        std::printf("  %-28s %10s %10s\n", "lanc hossza", "fa (kar.)", "program");
+        Kif f = gomb1;
+        for (int n = 0; n <= 3; ++n) {
+            std::printf("  %-28d %10zu %10zu\n", n, tsize(f), prog_size(f));
+            f = apply_warp(f, wx, wy, wz);
+        }
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);
     return failures != 0;
 }

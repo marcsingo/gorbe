@@ -44,6 +44,16 @@ struct Param {
     float value    = 0.0f;
 };
 
+// Egy tér-warp: három kifejezés, amiket x, y, z helyére helyettesítünk.
+// A jelentésük a VISSZAFELÉ (tér -> alakzat) leképezés — lásd Transform.hpp.
+struct Warp {
+    char name[32] = "";
+    char fx[192]  = "x";
+    char fy[192]  = "y";
+    char fz[192]  = "z";
+    bool enabled  = true;
+};
+
 struct Shape {
     char name[32]     = "";
     char formula[256] = "";
@@ -63,6 +73,11 @@ struct Shape {
     // (hogy az egyszerű alakzatok olcsók maradjanak), ezért az első hozzányúláskor
     // újra kell építeni — különben a csúszka némán nem csinálna semmit.
     bool warped = false;
+
+    // Warp-lánc. Az ELSŐ elem hat először az alakzatra; a lánc után jön a fenti
+    // affin transzformáció, tehát a warpok az alakzat SAJÁT terében dolgoznak,
+    // és a kész, deformált alakzatot helyezi el a pozíció/forgatás/méret.
+    std::vector<Warp> warps;
 };
 
 // ---------------------------------------------------------------------------
@@ -131,6 +146,74 @@ static std::vector<Preset> const PRESETS = {
     {"Sima muveletek", "Sima metszet",          "smetszet",   "smetszet(f1, f2, k)",   {{"k", 0.5f}}},
     {"Sima muveletek", "Sima kulonbseg",        "skulonbseg", "skulonbseg(f1, f2, k)", {{"k", 0.5f}}},
 };
+
+// ---------------------------------------------------------------------------
+// Warp-sablonok
+//
+// A három kifejezés a VISSZAFELÉ (tér -> alakzat) leképezés, ezért az itt szereplő
+// képletek az adott deformáció INVERZEI (lásd Transform.hpp). Például a `+a` szöggel
+// csavaró warphoz a `-a`-val forgató kifejezés tartozik.
+//
+// A `$1`, `$2` helyére a hozzáadáskor generált (ütközésmentes) paraméternevek
+// kerülnek, és a paraméterek az alakzat lokálisai közé kerülnek — így csúszkával
+// állíthatók, és élőben hatnak.
+// ---------------------------------------------------------------------------
+struct WarpPreset {
+    char const* label;
+    char const* fx;
+    char const* fy;
+    char const* fz;
+    std::vector<PresetParam> params;   // a NÉV itt csak alap (pl. "tw" -> tw1, tw2, ...)
+    char const* hint = "";
+};
+
+static std::vector<WarpPreset> const WARP_PRESETS = {
+    {"Csavaras (twist) z korul",
+     "x*cos($1*z) + y*sin($1*z)",
+     "0 - x*sin($1*z) + y*cos($1*z)",
+     "z",
+     {{"tw", 0.30f}},
+     "a z tengely menten csavarja; $1 = szog/egyseg"},
+
+    {"Kuposítás (taper) z menten",
+     "x/(1 + $1*z)",
+     "y/(1 + $1*z)",
+     "z",
+     {{"tp", 0.15f}},
+     "FIGYELEM: 1 + k*z = 0 helyen szingularis"},
+
+    {"Nyiras (shear) x-ben, z szerint",
+     "x - $1*z",
+     "y",
+     "z",
+     {{"sh", 0.30f}},
+     "a magassaggal aranyosan tolja x-ben"},
+
+    {"Hullam (wave) z-ben, x szerint",
+     "x",
+     "y",
+     "z - $1*sin($2*x)",
+     {{"wa", 0.30f}, {"wf", 1.00f}},
+     "$1 = amplitudo, $2 = frekvencia"},
+
+    {"Egyedi (ures)", "x", "y", "z", {}, "irj sajatot: a ter -> alakzat lekepezest"},
+};
+
+// A "$1", "$2" helyettesítése a tényleges paraméternevekkel.
+static void fill_warp_template(char* out, size_t n, char const* tpl,
+                               std::vector<std::string> const& names) {
+    std::string r;
+    for (char const* c = tpl; *c; ++c) {
+        if (*c == '$' && c[1] >= '1' && c[1] <= '9') {
+            size_t idx = static_cast<size_t>(c[1] - '1');
+            if (idx < names.size()) r += names[idx];
+            ++c;
+        } else {
+            r += *c;
+        }
+    }
+    std::snprintf(out, n, "%s", r.c_str());
+}
 
 // A parser által lefoglalt nevek: a térbeli változók és a beépített függvények.
 static bool is_reserved(char const* n) {
@@ -295,6 +378,19 @@ int main() {
         return nullptr;
     };
 
+    // Egy kifejezés "elhelyezése": előbb a warp-lánc (a lista sorrendjében, tehát az
+    // első elem hat először az alakzatra), utána az affin transzformáció. Így a warpok
+    // az alakzat SAJÁT terében dolgoznak, és a kész, deformált alakzatot mozgatja a
+    // pozíció/forgatás/méret — ez az, amit egy modellezőtől elvárunk.
+    auto place = [&](Kif f, Shape const& s) {
+        for (auto const& w : s.warps) {
+            if (!w.enabled) continue;
+            auto r = [&](std::string const& nm) { return resolve(s, nm); };
+            f = apply_warp(f, make_kif(w.fx, r), make_kif(w.fy, r), make_kif(w.fz, r));
+        }
+        return apply_transform(f, s.xform);
+    };
+
     // Az összes alakzat beparseolása és elindítása (a lista sorrendjében, hogy a
     // későbbiek hivatkozhassanak a korábbiak már kész fájára).
     auto build_all = [&] {
@@ -327,16 +423,19 @@ int main() {
                     // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
                     // (két elhelyezett gömb uniója a helyükön legyen).
                     s.warped = !s.xform.is_identity();
-                    s.tree = apply_transform(Kif(s.tree), s.xform).get();
+                    s.tree = place(Kif(s.tree), s).get();
                     pool[i]->get_surface().set_tree(s.tree);
 
                     // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.
                     Kif dom;
                     bool has_dom = false;
                     if (s.domain[0]) {
-                        dom = apply_transform(
+                        // A tartomány UGYANAZT a warp-láncot és transzformációt kapja,
+                        // mint a képlet — így a levágott rész együtt mozog/deformálódik
+                        // az alakzattal (a "véges hosszú henger" végei a hengerrel).
+                        dom = place(
                             make_kif(s.domain, [&](std::string const& nm) { return resolve(s, nm); }),
-                            s.xform);
+                            s);
                         has_dom = true;
                     }
                     if (global_domain[0]) {
@@ -373,6 +472,87 @@ int main() {
             p.value = pp.value;
         }
         selected = &s;
+    };
+
+    // --- Warp-lánc szerkesztő ------------------------------------------------
+    // A `rebuild`-et akkor állítja igazra, ha a lánc SZERKEZETE vagy egy kifejezés
+    // szövege változott: ilyenkor újra kell parseolni. A warp PARAMÉTEREI viszont az
+    // alakzat lokálisai, tehát cím szerint épülnek be — azokat a csúszka élőben
+    // állítja, újraépítés nélkül.
+    int warp_preset_idx = 0;
+    auto draw_warps = [&](Shape& s, bool& rebuild) {
+        if (!ImGui::CollapsingHeader("Warpok (lancban)", ImGuiTreeNodeFlags_DefaultOpen))
+            return;
+
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::BeginCombo("##warpsablon", WARP_PRESETS[warp_preset_idx].label)) {
+            for (int k = 0; k < static_cast<int>(WARP_PRESETS.size()); ++k) {
+                bool sel = (k == warp_preset_idx);
+                if (ImGui::Selectable(WARP_PRESETS[k].label, sel)) warp_preset_idx = k;
+                if (sel) ImGui::SetItemDefaultFocus();
+                if (ImGui::IsItemHovered() && WARP_PRESETS[k].hint[0])
+                    ImGui::SetTooltip("%s", WARP_PRESETS[k].hint);
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Warp hozzaad")) {
+            auto const& wp = WARP_PRESETS[warp_preset_idx];
+            Warp w;
+            std::snprintf(w.name, sizeof(w.name), "%s", wp.label);
+            // A sablon paraméterei az alakzat lokálisai közé kerülnek, ütközésmentes
+            // néven; a $1/$2 helyére ezek a nevek kerülnek a kifejezésekbe.
+            std::vector<std::string> names;
+            for (auto const& pp : wp.params) {
+                auto& p = s.locals.emplace_back();
+                next_name(s.locals, pp.name, p.name, sizeof(p.name));
+                p.value = pp.value;
+                names.emplace_back(p.name);
+            }
+            fill_warp_template(w.fx, sizeof(w.fx), wp.fx, names);
+            fill_warp_template(w.fy, sizeof(w.fy), wp.fy, names);
+            fill_warp_template(w.fz, sizeof(w.fz), wp.fz, names);
+            s.warps.push_back(w);
+            rebuild = true;
+        }
+        if (s.warps.empty())
+            ImGui::TextDisabled("Nincs warp. A lancban az ELSO hat eloszor.");
+
+        int move_from = -1, move_to = -1, erase = -1;
+        for (int i = 0; i < static_cast<int>(s.warps.size()); ++i) {
+            Warp& w = s.warps[i];
+            ImGui::PushID(i);
+            if (ImGui::Checkbox("##on", &w.enabled)) rebuild = true;
+            ImGui::SameLine();
+            bool open = ImGui::TreeNodeEx("##w", ImGuiTreeNodeFlags_DefaultOpen,
+                                          "%d. %s", i + 1, w.name);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("^") && i > 0)                        { move_from = i; move_to = i - 1; }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("v") && i + 1 < (int)s.warps.size())  { move_from = i; move_to = i + 1; }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X")) erase = i;
+
+            if (open) {
+                ImGui::SetNextItemWidth(-40.0f);
+                ImGui::InputText("x' =", w.fx, sizeof(w.fx));
+                if (ImGui::IsItemDeactivatedAfterEdit()) rebuild = true;
+                ImGui::SetNextItemWidth(-40.0f);
+                ImGui::InputText("y' =", w.fy, sizeof(w.fy));
+                if (ImGui::IsItemDeactivatedAfterEdit()) rebuild = true;
+                ImGui::SetNextItemWidth(-40.0f);
+                ImGui::InputText("z' =", w.fz, sizeof(w.fz));
+                if (ImGui::IsItemDeactivatedAfterEdit()) rebuild = true;
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        if (move_from >= 0) { std::swap(s.warps[move_from], s.warps[move_to]); rebuild = true; }
+        if (erase >= 0)     { s.warps.erase(s.warps.begin() + erase);          rebuild = true; }
+
+        ImGui::TextDisabled("A harom kifejezes a ter -> alakzat lekepezes:");
+        ImGui::TextDisabled("'hol keressuk ki az alakzatot ehhez a ponthoz'.");
+        ImGui::TextDisabled("Ezert a sablonok a deformacio INVERZET tartalmazzak.");
     };
 
     // Egy paramétertábla (név | érték | törlés). A globális és a lokális lista UI-ja
@@ -524,6 +704,9 @@ int main() {
             ImGui::InputText("nev", s.name, sizeof(s.name));
             if (name_warn) ImGui::PopStyleColor();
 
+            // A panel szekcioi osszecsukhatok: kulonben a lentebbi reszek (warpok,
+            // parameterek) lelognanak a panel aljarol es eszrevehetetlenek lennenek.
+            if (ImGui::CollapsingHeader("Keplet", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Text("F(x, y, z) =");
             ImGui::InputTextMultiline("##keplet", s.formula, sizeof(s.formula),
                                       ImVec2(-1.0f, ImGui::GetTextLineHeight() * 3.5f));
@@ -531,17 +714,20 @@ int main() {
             ImGui::TextDisabled("Eles: unio(a,b) metszet(a,b) kulonbseg(a,b) min max");
             ImGui::TextDisabled("Sima: sunio(a,b,k) smetszet(a,b,k) skulonbseg(a,b,k)");
             ImGui::TextDisabled("Hivatkozhatsz a listaban ELOTTE allo alakzatok nevere is.");
+            }
 
-            ImGui::Separator();
-            ImGui::Text("Tartomany (opcionalis) - csak itt jelenjen meg:");
+            if (ImGui::CollapsingHeader("Tartomany")) {
+            ImGui::Text("Csak itt jelenjen meg (opcionalis):");
+            ImGui::SetNextItemWidth(-1.0f);
             ImGui::InputText("##tartomany", s.domain, sizeof(s.domain));
             ImGui::TextDisabled("pl. x > 2 and x < 6 and y > -2 and y < 2");
             ImGui::TextDisabled("Operatorok: > < >= <= and or not (&& || ! is jo)");
             ImGui::TextDisabled("A reszecskek a FELULETEN csusznak be a jo terreszbe,");
             ImGui::TextDisabled("es a peremen nem lepnek at. Ures = korlatlan.");
+            }
 
             // --- Tér-transzformáció ---------------------------------------------
-            ImGui::SeparatorText("Transzformacio");
+            if (ImGui::CollapsingHeader("Transzformacio", ImGuiTreeNodeFlags_DefaultOpen)) {
             bool xf_edited = false;
             xf_edited |= ImGui::DragFloat3("pozicio", s.xform.pos, 0.05f);
             xf_edited |= ImGui::SliderAngle("forgatas x", &s.xform.rot[0], -180.0f, 180.0f);
@@ -557,10 +743,14 @@ int main() {
             // Ezért amikor ELŐSZÖR nyúlsz a vezérlőkhöz, újra kell építeni — utána
             // a paraméterek címe már benne van, és a csúszkák élőben hatnak.
             if (xf_edited && !s.warped && !s.xform.is_identity()) needs_rebuild = true;
+            }
 
-            ImGui::Separator();
-            ImGui::Text("Lokalis parameterek (csak ez az alakzat latja):");
+            draw_warps(s, needs_rebuild);
+
+            if (ImGui::CollapsingHeader("Lokalis parameterek", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextDisabled("Csak ez az alakzat latja oket.");
             if (draw_params(s.locals, "p")) { drop_all(); error.clear(); }
+            }
         }
         ImGui::End();
 
