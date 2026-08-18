@@ -11,6 +11,7 @@
 #include "matek/Kif.hpp"
 #include "particle_sampling/Transform.hpp"
 #include "particle_sampling/WarpPresets.hpp"
+#include "scene/Time.hpp"
 
 using namespace Matek::Analizis;
 
@@ -409,6 +410,70 @@ int main() {
                 ok(std::string("alapertekkel veges: ") + std::string(p.label).substr(0, 24), fin);
             }
         }
+    }
+
+    std::printf("\n=== 16. A `t` IDO a warpokban ===\n");
+    {
+        // A warp-kifejezesek UGYANAZT a nevfeloldot hasznaljak, mint a keplet, tehat
+        // a `t` bennuk is mukodik. A lenyeges kerdes, hogy a dF/dt a warpon KERESZTUL
+        // is helyes-e — a szimbolikus derivalas ehhez a lancszabalyt kell alkalmazza.
+        auto res = [](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+            if (nm == "t") return Kif(SceneTime::ptr()).get();
+            return nullptr;
+        };
+
+        // Idoben csavarodo, ellipszis keresztmetszetu cso. A csavaras szoge a*t*z,
+        // tehat a warp maga fugg az idotol.
+        Kif henger = make_kif("x^2/4 + y^2 - 1");
+        Kif wx = make_kif("x*cos(0.3*t*z) + y*sin(0.3*t*z)", res);
+        Kif wy = make_kif("0 - x*sin(0.3*t*z) + y*cos(0.3*t*z)", res);
+        Kif wz = make_kif("z", res);
+        Kif f  = apply_warp(henger, wx, wy, wz);
+
+        // t=0-nal a csavaras szoge 0 -> az eredeti alakzat.
+        SceneTime::value = 0.0f;
+        near("t=0: (2,0,3) a feluleten (nincs csavarodas)", f.at({2, 0, 3}), 0.0f);
+        near("t=0: (0,1,3) a feluleten",                    f.at({0, 1, 3}), 0.0f);
+
+        // t>0-nal a z=3 magassagban a keresztmetszet 0.3*t*3 szoggel fordul el.
+        SceneTime::value = 2.0f;
+        float const th = 0.3f * 2.0f * 3.0f;
+        near("t=2: az ELFORDULT hossztengely a feluleten",
+             f.at({2.0f * std::cos(th), 2.0f * std::sin(th), 3.0f}), 0.0f, 1e-3f);
+        ok("t=2: az eredeti irany mar NEM a feluleten",
+           std::abs(f.at({2, 0, 3})) > 1e-2f, "F=" + std::to_string(f.at({2, 0, 3})));
+
+        // A LENYEG: dF/dt a warpon keresztul is helyes (lancszabaly).
+        Kif ft = f.derrive(SceneTime::ptr());
+        float const h = 1e-3f;
+        glm::vec3 pts[] = {{1.6f, 0.5f, 2.0f}, {0.3f, -0.9f, -1.5f}, {2.0f, 0.0f, 3.0f}};
+        float worst = 0.0f;
+        for (auto q : pts) {
+            SceneTime::value = 2.0f + h; float fp = f.at(q);
+            SceneTime::value = 2.0f - h; float fm = f.at(q);
+            SceneTime::value = 2.0f;
+            worst = std::max(worst, std::abs(ft.at(q) - (fp - fm) / (2.0f * h)));
+        }
+        ok("dF/dt a warpon keresztul: szimbolikus == numerikus",
+           std::isfinite(worst) && worst < 5e-2f, "max elteres=" + std::to_string(worst));
+
+        // Warp-LANC: idofuggo csavaras + idofuggo eltolas egyutt.
+        Kif tx = make_kif("x - 1.5*t", res);
+        Kif f2 = apply_warp(f, tx, make_kif("y"), make_kif("z"));
+        SceneTime::value = 2.0f;
+        near("lancban az eltolas is kovet (kozeppont x=3)", f2.at({3.0f, 0.0f, 0.0f}), -1.0f);
+        Kif f2t = f2.derrive(SceneTime::ptr());
+        {
+            glm::vec3 q{3.4f, 0.3f, 1.0f};
+            SceneTime::value = 2.0f + h; float fp = f2.at(q);
+            SceneTime::value = 2.0f - h; float fm = f2.at(q);
+            SceneTime::value = 2.0f;
+            ok("dF/dt a teljes LANCON keresztul is helyes",
+               std::abs(f2t.at(q) - (fp - fm) / (2.0f * h)) < 5e-2f,
+               "elteres=" + std::to_string(std::abs(f2t.at(q) - (fp - fm) / (2.0f * h))));
+        }
+
+        SceneTime::value = 0.0f;
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);
