@@ -127,6 +127,11 @@ public:
     float     get_fov_deg() const override { return fov; }
     glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;
 
+    // Csak az AKTIV jelenet kameraja reagaljon a bevitelre. Fulenkent sajat kamera
+    // van, es mind feliratkozik az ablak esemenyeire — enelkul a hatterben levo
+    // jelenetek kameraja is egyutt mozogna, es a nezetuk elcsuszna.
+    bool input_enabled = true;
+
     // A kamerát az `eye` pontba teszi és a `target` felé fordítja. A yaw/pitch szögeket
     // az irányvektorból számolja vissza, hogy az egeres forgatás onnan folytatódjon.
     void look_at(glm::vec3 eye, glm::vec3 target = glm::vec3(0.0f));

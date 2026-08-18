@@ -2,6 +2,7 @@
 
 #include "../utils/init.hpp"
 #include "Gui.hpp"
+#include "Viewport.hpp"
 
 void Window::init(int width, int height, char const * text) {
 
@@ -32,13 +33,19 @@ void Window::destroy_window() {
 }
 
 
-// A UI fölött történő beviteltől a jelenetnek nem szabad reagálnia — DE a gomb- és
-// billentyű-ELENGEDÉST akkor is tovább kell adni, különben az beragad. Tipikus eset:
-// megfogsz egy kontrollpontot, a húzás közben az egér az ImGui-panel fölé ér, ott
-// engeded el — a RELEASE elveszne, és a pont örökre követné az egeret. Ugyanez a
-// kamera Alt+bal gombjával és a shift állapotával.
-static bool gui_swallows(int action) {
-    return action != GLFW_RELEASE;
+// A JELENET akkor kap bevitelt, ha az egér a 3D nézet fölött van (Vp::scene_mouse),
+// illetve amíg nem egy UI-mezőbe gépelünk (Vp::scene_keyboard). Ezeket a main állítja
+// be frame-enként.
+//
+// FIGYELEM, a szabály MEGFORDULT: amíg a jelenet a teljes ablakra rajzolódott, "a UI
+// fölött ne reagáljon" volt az elv. Most a nézet MAGA IS egy ImGui-ablakban van, tehát
+// a Gui::wants_mouse() épp a képen állva IGAZ — arra szűrve a kamera megnémulna.
+//
+// Az ELENGEDÉST viszont mindig tovább kell adni, különben beragad: ha a húzást a képen
+// kívül engeded el, a RELEASE elveszne, és a kontrollpont örökre követné az egeret.
+// Ugyanez a kamera Alt+bal gombjával és a shift állapotával.
+static bool is_release(int action) {
+    return action == GLFW_RELEASE;
 }
 
 // Egy eseménylista bejárása. Indexeléssel megy (nem tartomány-ciklussal), mert egy
@@ -52,7 +59,7 @@ static void dispatch(V& slots, Info const& info) {
 }
 
 void Window::key_callback(GLFWwindow *window, int key, int scancode, int action, int mode) {
-    if (Gui::wants_keyboard() && gui_swallows(action)) return; // a UI épp gépel
+    if (!Vp::scene_keyboard() && !is_release(action)) return; // a UI épp gépel
     dispatch(key_events, KeyEventInformation{key, scancode, action, mode});
 }
 
@@ -62,7 +69,7 @@ EventId Window::add_key_event(KeyEvent&& f) {
 }
 
 void Window::mouse_pos_callback(GLFWwindow *window, double x, double y) {
-    if (Gui::wants_mouse()) return; // a UI fölött vagyunk
+    if (!Vp::scene_mouse()) return; // nem a 3D nézet fölött vagyunk
     dispatch(mouse_pos_events, MousePosEventInformation{x, y});
 }
 
@@ -72,7 +79,7 @@ EventId Window::add_mouse_pos_event(MousePosEvent&& f) {
 }
 
 void Window::mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
-    if (Gui::wants_mouse() && gui_swallows(action)) return; // a UI kapja a kattintást
+    if (!Vp::scene_mouse() && !is_release(action)) return; // a UI kapja a kattintást
     dispatch(mouse_button_events, MouseButtonEventInformation{button, action, mods});
 }
 
@@ -82,7 +89,7 @@ EventId Window::add_mouse_button_event(MouseButtonEvent&& f) {
 }
 
 void Window::mouse_scroll_callback(GLFWwindow *window, double x, double y) {
-    if (Gui::wants_mouse()) return; // a UI fölött görgetünk
+    if (!Vp::scene_mouse()) return; // a UI fölött görgetünk
     dispatch(mouse_scroll_events, MouseScrollEventInformation{x, y});
 }
 

@@ -111,6 +111,13 @@ public:
     bool is_running() const { return running; }
     void stop()  { running = false; }
 
+    // A hatterben levo fulek szimulacioja all, de a reszecskek allapota megmarad —
+    // fulvaltaskor onnan folytatodik.
+    void set_running(bool v) { running = v; if (!v) sim_accum = 0.0f; }
+
+    // Csak az aktiv jelenet kontrollpontjai reagaljanak a bevitelre.
+    void set_input_enabled(bool v) { controls.input_enabled = v; }
+
     // Megjelenítés ki/be (a szimulációt nem állítja le, csak a rajzolást hagyja ki).
     void set_visible(bool v) { visible = v; }
     bool is_visible() const  { return visible; }

@@ -4,11 +4,17 @@
 
 #ifndef GORBE_PARTICLE_HPP
 #define GORBE_PARTICLE_HPP
+// FIGYELEM: itt NEM includoljuk a Surface.hpp-t — az includol MINKET, tehat korkoros
+// lenne. (Eddig csak a veletlen include-sorrend takarta el; a Viewport bevezetesekor
+// megvaltozott a sorrend, es elojott.) A ControlPoints csak MUTATOT tart a feluletre,
+// ahhoz eleg az elore-deklaracio: a tagfuggvenyek torzse ugyis csak akkor
+// peldanyosodik, amikor a Surface mar teljes.
 #include "../model/Include.hpp"
-#include "Surface.hpp"
 #include "DomainConstraint.hpp"
 #include <algorithm>
 #include <vector>
+
+template<size_t L> struct Surface;
 
 enum ParticleState {
     ramozog,
@@ -46,14 +52,6 @@ struct Particle {
 
     bool detah = false;
 
-    void update_surface_data(const Surface<L>& surface) {
-        this->F = surface.F.at(this->p);
-        this->F_x = surface.grad(this->p);
-
-        if (glm::dot(this->F_x, this->F_x) < 0.00001f) {
-            this->F_x = glm::vec3{0};
-        }
-    }
 };
 
 template<size_t L>
@@ -175,6 +173,9 @@ private:
 public:
     void set_surface(Surface<L>* s) { surface = s; }
 
+    // Csak az AKTIV jelenet kontrollpontjai reagaljanak (lasd Camera3D::input_enabled).
+    bool input_enabled = true;
+
     // A `this`-t kapó eseménykezelők élettartama a példányhoz kötve.
     Window::Subscription btn_sub, key_sub, tick_sub;
 
@@ -182,6 +183,7 @@ public:
         : Particles<L>(size, color, camera) {
 
         btn_sub = Window::Subscription(Window::add_mouse_button_event([this, &camera](auto p) {
+            if (!input_enabled) return;
             if (p.button == GLFW_MOUSE_BUTTON_LEFT && !(p.mods & GLFW_MOD_ALT)) {
                 if (p.action == GLFW_PRESS) {
                     if (shift_is_on) {
@@ -206,11 +208,13 @@ public:
         }));
 
         key_sub = Window::Subscription(Window::add_key_event([this](auto p) {
+            if (!input_enabled) { shift_is_on = false; return; }
             if (p.key == GLFW_KEY_LEFT_SHIFT || p.key == GLFW_KEY_RIGHT_SHIFT)
                 shift_is_on = (p.action == GLFW_PRESS);
         }));
 
         tick_sub = Window::Subscription(Window::add_time_passed_event([this, &camera](auto ev) {
+            if (!input_enabled) return;
             // 1. Mozgatott pont sebességének és pozíciójának frissítése
             if (selected_idx >= 0 && selected_idx < (int)this->particles.size()) {
                 auto& sel = this->particles[selected_idx];

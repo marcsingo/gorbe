@@ -4,6 +4,7 @@
 
 #include "Camera.hpp"
 #include "CameraBasis.hpp"
+#include "Viewport.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -13,15 +14,12 @@ glm::mat4 Camera::get_matrix() const {
 }
 
 glm::vec3 Camera::get_mouse_pos_in_world() const {
-    // 1. Ablak méreteinek lekérése (a Window osztályból)
-    int width = Window::get_width();
-    int height = Window::get_height();
-
-    // 2. Normalizált Eszközkoordináták (NDC) kiszámítása [-1.0, 1.0] tartományra
-    // Figyelem: Az Y-tengelyt invertáljuk, mert a GLFW 0-ja fent van, az OpenGL 0-ja lent!
+    // Az NDC-t a 3D NEZET teglalapjahoz kell szamolni, nem a teljes ablakhoz: a
+    // jelenet egy ImGui-panel belsejebe rajzolodik (lasd model/Viewport.hpp).
     auto minfo = Window::get_mouse_info();
-    float x_ndc = (2.0f * static_cast<float>(minfo.x)) / width - 1.0f;
-    float y_ndc = 1.0f - (2.0f * static_cast<float>(minfo.y)) / height;
+    glm::vec2 ndc = Vp::to_ndc(Vp::current(), minfo.x, minfo.y);
+    float x_ndc = ndc.x;
+    float y_ndc = ndc.y;
 
     // 3. Inverz kamera mátrix
     glm::mat4 inverse_mat = glm::inverse(this->get_matrix());
@@ -70,11 +68,13 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
 
     // 1. Egér mozgás (csak jobb gomb lenyomva esetén forgat)
     subs.push_back(Window::Subscription(Window::add_mouse_pos_event([this](auto p) {
+        if (!input_enabled) return;
         this->process_mouse_movement(static_cast<float>(p.x), static_cast<float>(p.y));
     })));
 
     // 2. Egérgomb figyelése: jobb gomb VAGY Alt+bal gomb = forgás mód
     subs.push_back(Window::Subscription(Window::add_mouse_button_event([this](auto p) {
+        if (!input_enabled) return;
         if (p.button == GLFW_MOUSE_BUTTON_RIGHT) {
             if (p.action == GLFW_PRESS) {
                 right_mouse_down = true;
@@ -95,6 +95,7 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
 
     // 3. Görgő (FOV / Zoom)
     subs.push_back(Window::Subscription(Window::add_mouse_scroll_event([this](auto p) {
+        if (!input_enabled) return;
         this->process_mouse_scroll(static_cast<float>(p.offsetY));
     })));
 
@@ -102,6 +103,7 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
     // A REPEAT-et szándékosan figyelmen kívül hagyjuk: a folyamatos mozgást
     // a frame-enkénti update() adja, nem az OS billentyű-ismétlése.
     subs.push_back(Window::Subscription(Window::add_key_event([this](auto p) {
+        if (!input_enabled) { move_forward = move_backward = move_left = move_right = false; return; }
         if (p.action == GLFW_PRESS)   this->process_keyboard(p.key, true);
         if (p.action == GLFW_RELEASE) this->process_keyboard(p.key, false);
         if ((p.key == GLFW_KEY_LEFT_ALT || p.key == GLFW_KEY_RIGHT_ALT)
@@ -112,6 +114,7 @@ Camera3D::Camera3D(glm::vec4 viewport, glm::vec3 start_position, float initial_y
 
     // 5. Frame-enkénti mozgatás a held billentyűk alapján, dt-vel skálázva.
     subs.push_back(Window::Subscription(Window::add_time_passed_event([this](auto p) {
+        if (!input_enabled) return;
         this->update(static_cast<float>(p.dt));
     })));
 
@@ -126,13 +129,9 @@ glm::mat4 Camera3D::get_view() const {
 }
 
 glm::mat4 Camera3D::get_projection() const {
-    // Az aspect-et az AKTUÁLIS ablakméretből számoljuk, így resize-kor (a glViewport
-    // frissítésével együtt) a kép arányhelyes marad, nem nyúlik szét. (h==0: minimalizálva.)
-    int h = Window::get_height();
-    float aspect_ratio = (h > 0)
-        ? static_cast<float>(Window::get_width()) / static_cast<float>(h)
-        : 1.0f;
-    return glm::perspective(glm::radians(fov), aspect_ratio, 0.1f, 100.0f);
+    // A kepararany a 3D NEZET teglalapjabol jon (nem a teljes ablakbol), kulonben a
+    // panelek melletti keskenyebb nezetben megnyulna a kep.
+    return glm::perspective(glm::radians(fov), Vp::aspect(Vp::current()), 0.1f, 100.0f);
 }
 
 void Camera3D::update_camera_vectors() {
@@ -205,12 +204,10 @@ void Camera3D::process_mouse_scroll(float yoffset) {
 }
 
 glm::vec3 Camera3D::get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const {
-    int width  = Window::get_width();
-    int height = Window::get_height();
     auto minfo = Window::get_mouse_info();
-
-    float x_ndc = (2.0f * static_cast<float>(minfo.x)) / static_cast<float>(width)  - 1.0f;
-    float y_ndc = 1.0f - (2.0f * static_cast<float>(minfo.y)) / static_cast<float>(height);
+    glm::vec2 ndc = Vp::to_ndc(Vp::current(), minfo.x, minfo.y);
+    float x_ndc = ndc.x;
+    float y_ndc = ndc.y;
 
     // NDC → eye space irány, majd → world space irány
     glm::vec4 ray_eye = glm::inverse(get_projection()) * glm::vec4(x_ndc, y_ndc, -1.0f, 1.0f);

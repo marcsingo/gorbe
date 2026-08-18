@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -12,12 +13,15 @@
 
 // A Kif / make_kif / Kifejezes a Matek::Analizis névtérből jön (a Surface.hpp
 // globális `using namespace`-e miatt közvetlenül elérhető).
+#include "scene/Scope.hpp"
 #include "particle_sampling/Surface.hpp"
+#include "particle_sampling/ImplicitSurface.hpp"
 #include "particle_sampling/Transform.hpp"
 #include "particle_sampling/WarpPresets.hpp"
 
 // --- Sugarkoveto komponens (onallo, levalaszthato: lasd raytrace/Raytracer.hpp) ---
 #include <filesystem>
+#include "model/Viewport.hpp"
 #include "raytrace/Raytracer.hpp"
 #include "raytrace/Image.hpp"
 
@@ -51,10 +55,6 @@
 // beszúráskor/törléskor), és ezért kell minden beparseolt képletet eldobni, ha
 // egy paraméter vagy egy alakzat (a lokálisaival együtt) törlődik.
 // ---------------------------------------------------------------------------
-struct Param {
-    char  name[32] = "";
-    float value    = 0.0f;
-};
 
 // Egy tér-warp: három kifejezés, amiket x, y, z helyére helyettesítünk.
 // A jelentésük a VISSZAFELÉ (tér -> alakzat) leképezés — lásd Transform.hpp.
@@ -201,27 +201,78 @@ static void next_name(Container const& items, char const* prefix, char* out, siz
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Egy JELENET = egy fül. Önálló: saját alakzatok, saját paraméterek, saját munkatér,
+// saját kamera és saját mintavételezők.
+//
+// A háttérben lévő fülek szimulációja ÁLL (a részecskék állapota megmarad, tehát
+// visszaváltáskor onnan folytatódik), és a bevitelt sem kapják meg — enélkül minden
+// fül kamerája együtt mozogna.
+// ---------------------------------------------------------------------------
+struct Scene {
+    using EqSurface = ImplicitSurface<StringSurface>;
+
+    char name[32] = "";
+
+    // JELENET-szintű paraméterek. A hatókör kívülről befelé: program -> jelenet ->
+    // alakzat; a belső ELFEDI a külsőt (mint C++-ban).
+    std::list<Param> params;
+
+    // A jelenet munkatere: az a térrész, amiben egyáltalán értelmezzük az alakzatokat.
+    // Minden alakzatra érvényes, a saját tartomány-feltételével ÉS-kapcsolatban.
+    char domain[256] = "";
+
+    std::list<Shape> shapes;
+    Shape* selected = nullptr;
+
+    float d_ui    = 2.0f;   // közös méretskála minden samplerre
+    float curv_ui = 1.0f;   // görbület-adaptív taszítás (0 = egyenletes)
+
+    std::string error;      // parse-hiba az utolsó Indításból
+
+    // Fülönként saját kamera: a nézet megmarad fülváltáskor.
+    Camera3D camera{glm::vec4(0.0f, 0.0f, 1200.0f, 800.0f), App::DEFAULT_EYE, -90.0f, 45.0f};
+
+    // Alakzatonként egy önálló mintavételező. A lista i-edik alakzata a pool i-edik
+    // felületére kerül; a méret együtt mozog (az ImplicitSurface a destruktorában
+    // leiratkozik az ablak eseményeiről, ezért szabadon megszüntethető).
+    std::vector<std::unique_ptr<EqSurface>> pool;
+
+    Scene() { camera.look_at(App::DEFAULT_EYE, glm::vec3(0.0f)); }
+
+    // Aktív fül: fut a szimuláció és megkapja a bevitelt.
+    void set_active(bool a) {
+        camera.input_enabled = a;
+        for (auto& p : pool) {
+            p->set_running(a);
+            p->set_input_enabled(a);
+        }
+    }
+
+    void draw() {
+        for (auto& p : pool) p->draw(camera);
+    }
+};
+
 int main() {
     App app{1200, 800, "Particle sampling"};
 
-    // MINDEN alakzat egy önálló ImplicitSurface-t kap, saját kezdő részecskékkel
-    // (külön mintavételezve). A lista i-edik alakzata a pool i-edik felületére kerül;
-    // a pool mérete együtt mozog az alakzatokéval (az ImplicitSurface a destruktorában
-    // leiratkozik az ablak eseményeiről, ezért szabadon megszüntethető).
-    std::vector<App::EqSurface*> pool;
+    // PROGRAM-szintű paraméterek: minden jelenet (fül) látja őket. Ez a legkülső
+    // hatókör; a jelenet- és az alakzat-szintű nevek elfedhetik (mint C++-ban).
+    std::list<Param> program_params;
 
-    std::list<Param> globals;
+    // A jelenetek (fülek) és az éppen aktív. std::list, mert a Scene címe stabil kell
+    // legyen: a mintavételezők és a kamera eseménykezelői rá mutatnak.
+    std::list<Scene> scenes;
+    Scene* cur = nullptr;
+    {
+        auto& s0 = scenes.emplace_back();
+        std::snprintf(s0.name, sizeof(s0.name), "Jelenet 1");
+        cur = &s0;
+        cur->set_active(true);
+    }
 
-    // Globális tartomány: az a térrész, amiben egyáltalán értelmezzük az alakzatokat.
-    // Minden alakzatra érvényes, a saját tartomány-feltételével ÉS-kapcsolatban.
-    // Üresen hagyva korlátlan. Csak globális paramétereket használhat (alakzatnevet
-    // nem — az körkörös lenne).
-    char global_domain[256] = "";
-    std::list<Shape> shapes;
-    Shape* selected = nullptr;   // a Tulajdonságok ablakban szerkesztett alakzat
-
-    float       d_ui      = 2.0f;  // közös méretskála minden samplerre
-    float       curv_ui   = 1.0f;  // görbület-adaptív taszítás erőssége (0 = egyenletes)
     int         preset_idx = 0;    // a sablon-lenyílóban kiválasztott alakzat
 
     // A sugárkövető komponens állapota (a gomb csak jelez; a render a GUI után fut,
@@ -230,22 +281,100 @@ int main() {
     int         photo_size_idx  = 1;
     bool        photo_shadows   = true;
     std::string photo_status;
-    std::string error;             // parse-hiba az utolsó Indításból
 
-    std::vector<std::string> problems;  // névütközések emberi olvasásra
-    std::set<void const*>    bad;       // a hibás sorok (Param*/Shape*) a piros jelzéshez
+    // ---------------------------------------------------------------------
+    // Fix elrendezes: a panelek nem lebegnek, hanem a foablak meretehez igazodnak.
+    // A ket oldalso sav szelessege es a bennuk levo vizszintes osztas huzhato.
+    // ---------------------------------------------------------------------
+    struct Layout {
+        float left_w   = 340.0f;   // bal sav szelessege
+        float right_w  = 340.0f;   // jobb sav szelessege
+        float left_top = 0.46f;    // a bal sav felso paneljenek aranya
+        float right_top= 0.52f;
+    } layout;
+
+    constexpr float PAD   = 6.0f;   // panelek kozti res (ez egyben az elvalaszto is)
+    constexpr float MINW  = 220.0f;
+
+    // Egy vekony, huzhato elvalaszto sav. Sajat, keret nelkuli ImGui-ablak a resben:
+    // igy pontosan ott fogja az egeret, ahol a hezag van, es nem zavarja a paneleket.
+    auto splitter = [&](char const* id, ImVec2 pos, ImVec2 size, bool vertical,
+                        float* value, float lo, float hi, float sign) {
+        if (size.x < 1.0f || size.y < 1.0f) return;
+        ImGui::SetNextWindowPos(pos);
+        ImGui::SetNextWindowSize(size);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin(id, nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
+        ImGui::InvisibleButton("##grip", size);
+        bool const hot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        if (hot) ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW
+                                                : ImGuiMouseCursor_ResizeNS);
+        if (ImGui::IsItemActive()) {
+            float d = vertical ? ImGui::GetIO().MouseDelta.x : ImGui::GetIO().MouseDelta.y;
+            *value = std::clamp(*value + d * sign, lo, hi);
+        }
+        ImU32 col = hot ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
+                        : ImGui::GetColorU32(ImGuiCol_Separator);
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            pos, ImVec2(pos.x + size.x, pos.y + size.y), col, 2.0f);
+        ImGui::End();
+        ImGui::PopStyleVar();
+    };
+
+    // Fix panel: nem mozgathato, nem atmeretezheto, nem csukhato ossze.
+    auto fixed_panel = [](char const* title, ImVec2 pos, ImVec2 size) {
+        ImGui::SetNextWindowPos(pos);
+        ImGui::SetNextWindowSize(size);
+        ImGui::Begin(title, nullptr,
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoBringToFrontOnFocus);
+    };
+
+    // A rajzolas mindig az AKTUALIS ful tartalmat mutatja, a sajat kamerajaval.
+    app.set_draw([&] {
+        app.get_axes().draw(cur->camera);
+        cur->draw();
+    });
+
+    app.set_gui([&] {
+        // Az AKTUALIS jelenet allapota. A lenti kod ezeken a neveken dolgozik, tehat
+        // mindig a kivalasztott ful adatait szerkeszti.
+        Scene& sc = *cur;
+        auto& shapes        = sc.shapes;
+        auto& selected      = sc.selected;
+        auto& pool          = sc.pool;
+        auto& scene_params  = sc.params;
+        auto& scene_domain  = sc.domain;
+        auto& d_ui          = sc.d_ui;
+        auto& curv_ui       = sc.curv_ui;
+        auto& error         = sc.error;
+
+        std::vector<std::string> problems;  // névütközések emberi olvasásra
+        std::set<void const*>    bad;       // a hibás sorok (Param*/Shape*) a piros jelzéshez
 
     // Minden képlet eldobása + a szimuláció leállítása. Akkor is KÖTELEZŐ hívni, ha
     // egy paraméter vagy alakzat törlődik: a már beparseolt fák a törölt float
     // CÍMÉT tárolják, onnantól felszabadított memóriára mutatnának.
     // A samplerek számát az alakzatokéhoz igazítja (kell-e új, vagy elhagyható egy).
-    auto sync_pool = [&] {
-        if (pool.size() != shapes.size())
-            pool = app.resize_equation_surfaces(shapes.size());
-    };
+        auto sync_pool = [&] {
+            while (pool.size() > shapes.size()) pool.pop_back();
+            while (pool.size() < shapes.size()) {
+                // A jelenet SAJAT kameraja: a mintavetelezok kontrollpontjai ehhez
+                // vetitenek vissza, tehat fulenkent kulon kell.
+                auto p = std::make_unique<Scene::EqSurface>(sc.camera);
+                p->set_manual_diameter(true);  // a d-t a GUI allitja
+                p->clear();                    // indulaskor ures, allo
+                pool.push_back(std::move(p));
+            }
+        };
 
-    auto drop_all = [&] {
-        for (auto* p : pool) {
+        auto drop_all = [&] {
+            for (auto& p : pool) {
             p->clear();
             p->get_surface().set_tree(Kif(0.0f).get());
             p->get_surface().clear_domain();
@@ -253,88 +382,109 @@ int main() {
         for (auto& s : shapes) { s.tree.reset(); s.dom_tree.reset(); }
     };
 
-    // Névellenőrzés. Minden frame-ben lefut (néhány tucat név, elhanyagolható), így a
-    // piros jelzés azonnal követi a gépelést, az Indít pedig tiltva marad, amíg baj van.
-    auto validate = [&] {
-        problems.clear();
-        bad.clear();
+        // Névellenőrzés. Minden frame-ben lefut (néhány tucat név, elhanyagolható), így a
+        // piros jelzés azonnal követi a gépelést, az Indít pedig tiltva marad, amíg baj van.
+        //
+        // HIBA csak azonos hatókörön BELÜL van (két azonos nevű paraméter ugyanabban a
+        // listában, két azonos nevű alakzat). A hatókörök KÖZÖTTI azonos név nem hiba,
+        // hanem ELFEDÉS — a belső nyer, mint C++-ban; ezt a panelen jelezzük.
+        auto validate = [&] {
+            problems.clear();
+            bad.clear();
 
-        auto check = [&](char const* n, void const* row, std::string const& where) {
-            if (bad_ident(n)) {
-                problems.push_back(where + ": ervenytelen nev (betuvel kezdodjon, utana betu/szam/_)");
-                bad.insert(row);
-                return false;
-            }
-            if (is_reserved(n)) {
-                problems.push_back(where + ": a(z) '" + n + "' foglalt nev (valtozo vagy fuggveny)");
-                bad.insert(row);
-                return false;
-            }
-            return true;
-        };
-        auto clash = [&](void const* a, void const* b, std::string const& msg) {
-            problems.push_back(msg);
-            bad.insert(a);
-            bad.insert(b);
-        };
+            auto check = [&](char const* n, void const* row, std::string const& where) {
+                if (bad_ident(n)) {
+                    problems.push_back(where + ": ervenytelen nev (betuvel kezdodjon, utana betu/szam/_)");
+                    bad.insert(row);
+                    return false;
+                }
+                if (is_reserved(n)) {
+                    problems.push_back(where + ": a(z) '" + std::string(n) + "' foglalt nev (valtozo vagy fuggveny)");
+                    bad.insert(row);
+                    return false;
+                }
+                return true;
+            };
+            auto clash = [&](void const* a, void const* b, std::string const& msg) {
+                problems.push_back(msg);
+                bad.insert(a);
+                bad.insert(b);
+            };
+            // Egy listán belüli ismétlődés keresése.
+            auto unique_within = [&](std::list<Param>& list, char const* what) {
+                for (auto a = list.begin(); a != list.end(); ++a) {
+                    if (!check(a->name, &*a, what)) continue;
+                    for (auto b = std::next(a); b != list.end(); ++b)
+                        if (std::strcmp(a->name, b->name) == 0)
+                            clash(&*a, &*b, std::string(what) + ": a(z) '" + a->name + "' ketszer szerepel");
+                }
+            };
 
-        // Globális paraméterek: érvényes név, egymás közt egyediek.
-        for (auto a = globals.begin(); a != globals.end(); ++a) {
-            if (!check(a->name, &*a, "globalis parameter")) continue;
-            for (auto b = std::next(a); b != globals.end(); ++b)
-                if (std::strcmp(a->name, b->name) == 0)
-                    clash(&*a, &*b, std::string("ket globalis parameter neve azonos: ") + a->name);
-        }
+            unique_within(program_params, "program-szintu parameter");
+            unique_within(scene_params,   "jelenet parametere");
 
-        // Alakzatnevek: egyediek, és nem ütköznek globális paraméterrel.
-        for (auto a = shapes.begin(); a != shapes.end(); ++a) {
-            if (!check(a->name, &*a, "alakzat")) continue;
-            for (auto b = std::next(a); b != shapes.end(); ++b)
-                if (std::strcmp(a->name, b->name) == 0)
-                    clash(&*a, &*b, std::string("ket alakzat neve azonos: ") + a->name);
-            for (auto& g : globals)
-                if (std::strcmp(a->name, g.name) == 0)
-                    clash(&*a, &g, std::string("alakzat es globalis parameter neve azonos: ") + a->name);
-        }
-
-        // Lokális paraméterek: alakzaton BELÜL egyediek, és nem ütköznek globális
-        // paraméterrel vagy alakzatnévvel. Alakzatok KÖZÖTT viszont ütközhetnek.
-        for (auto& s : shapes) {
-            std::string sn = s.name[0] ? s.name : "(nevtelen)";
-            for (auto a = s.locals.begin(); a != s.locals.end(); ++a) {
-                if (!check(a->name, &*a, sn + " lokalis parametere")) continue;
-                for (auto b = std::next(a); b != s.locals.end(); ++b)
+            // Alakzatnevek: a jeleneten belül egyediek.
+            for (auto a = shapes.begin(); a != shapes.end(); ++a) {
+                if (!check(a->name, &*a, "alakzat")) continue;
+                for (auto b = std::next(a); b != shapes.end(); ++b)
                     if (std::strcmp(a->name, b->name) == 0)
-                        clash(&*a, &*b, sn + ": a(z) '" + a->name + "' lokalis parameter ketszer szerepel");
-                for (auto& g : globals)
-                    if (std::strcmp(a->name, g.name) == 0)
-                        clash(&*a, &g, sn + "." + a->name + ": lokalis es globalis parameter neve nem egyezhet meg");
-                for (auto& o : shapes)
-                    if (std::strcmp(a->name, o.name) == 0)
-                        clash(&*a, &o, sn + "." + a->name + ": ez mar egy alakzat neve");
+                        clash(&*a, &*b, std::string("ket alakzat neve azonos: ") + a->name);
             }
-        }
-    };
+
+            // Lokális paraméterek: alakzaton BELÜL egyediek. (Alakzatok között, és a
+            // külső hatókörökkel szemben szabadon egyezhetnek — az elfedés.)
+            for (auto& s : shapes) {
+                std::string sn = s.name[0] ? s.name : "(nevtelen)";
+                unique_within(s.locals, (sn + " lokalis parametere").c_str());
+            }
+        };
+
+        // Egy név elfed-e egy KÜLSŐBB hatókört? Csak jelzésre, nem hiba.
+        // (A paraméterek előbb oldódnak fel, mint az alakzatnevek, ezért egy paraméter
+        //  egy azonos nevű alakzatot is elfed — ezt is kiírjuk.)
+        // `level`: 0 = program, 1 = jelenet, 2 = alakzat. A Scope kifele varja a
+        // szinteket, ezert megforditva adjuk at (legbelso eloszor).
+        auto shadows = [&](char const* name, int level) -> char const* {
+            std::vector<std::list<Param> const*> levels;
+            if (level >= 2) levels.push_back(selected ? &selected->locals : nullptr);
+            if (level >= 1) levels.push_back(&scene_params);
+            levels.push_back(&program_params);
+            int const from = (level >= 2) ? 0 : (level >= 1 ? 0 : 0);
+            int const hit  = Scope::shadowed(levels, name, from);
+            if (hit >= 0) {
+                bool const outer_is_scene = (level >= 2 && hit == 1);
+                return outer_is_scene ? "elfedi: jelenet" : "elfedi: program";
+            }
+            // A parameterek ELOBB oldodnak fel, mint az alakzatnevek, tehat egy
+            // azonos nevu alakzatot is elfednek.
+            for (auto& sh : shapes)
+                if (sh.name[0] && std::strcmp(sh.name, name) == 0) return "elfedi: alakzat";
+            return nullptr;
+        };
 
     // Névfeloldó a parsernek: lokális paraméter -> globális paraméter -> korábbi alakzat.
-    auto resolve = [&](Shape const& owner, std::string const& nm) -> std::shared_ptr<Kifejezes const> {
-        for (auto& p : owner.locals)
-            if (p.name[0] && nm == p.name) return Kif(&p.value).get();
-        for (auto& g : globals)
-            if (g.name[0] && nm == g.name) return Kif(&g.value).get();
-        for (auto& s : shapes) {
-            if (&s == &owner) break;                   // csak a nála korábbiakra hivatkozhat
-            if (s.name[0] && nm == s.name && s.tree) return s.tree;
-        }
-        return nullptr;                                // ismeretlen név -> a parser hibát dob
-    };
+        // HAROM HATOKOR, kifele haladva; az elso talalat nyer, tehat a belso ELFEDI
+        // a kulsot (mint C++-ban):
+        //     alakzat lokalisai -> jelenet parameterei -> program-szintuek
+        // A vegen a NALA KORABBI alakzatok neve (igy lehet oket egymasbol epiteni).
+        auto resolve = [&](Shape const& owner, std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+            if (float const* v = Scope::find({&owner.locals, &scene_params, &program_params},
+                                             nm.c_str()))
+                return Kif(v).get();
+            for (auto& s : shapes) {
+                if (&s == &owner) break;               // csak a nála korábbiakra hivatkozhat
+                if (s.name[0] && nm == s.name && s.tree) return s.tree;
+            }
+            return nullptr;                            // ismeretlen név -> a parser hibát dob
+        };
 
-    // A globális tartomány CSAK globális paramétert láthat.
-    auto resolve_global = [&](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
-        for (auto& g : globals)
-            if (g.name[0] && nm == g.name) return Kif(&g.value).get();
-        return nullptr;
-    };
+        // A jelenet munkatere alakzat-lokalist nem lathat (nincs "sajat" alakzata),
+        // de a jelenet- es program-szintu parametereket igen.
+        auto resolve_global = [&](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+            if (float const* v = Scope::find({&scene_params, &program_params}, nm.c_str()))
+                return Kif(v).get();
+            return nullptr;
+        };
 
     // Egy kifejezés "elhelyezése": előbb a warp-lánc (a lista sorrendjében, tehát az
     // első elem hat először az alakzatra), utána az affin transzformáció. Így a warpok
@@ -358,9 +508,9 @@ int main() {
             // A globális tartományt előbb ÖNMAGÁBAN is beparseoljuk: így az itteni hiba
             // nem egy véletlenszerű alakzat nevével jelenik meg, és egyben ellenőrizzük,
             // hogy tényleg csak globális paramétert használ.
-            if (global_domain[0]) {
+            if (scene_domain[0]) {
                 try {
-                    make_kif(global_domain, resolve_global);
+                    make_kif(scene_domain, resolve_global);
                 } catch (std::exception const& e) {
                     throw std::runtime_error(std::string("globalis tartomany: ") + e.what());
                 }
@@ -396,8 +546,8 @@ int main() {
                             s);
                         has_dom = true;
                     }
-                    if (global_domain[0]) {
-                        Kif g = make_kif(global_domain, resolve_global);
+                    if (scene_domain[0]) {
+                        Kif g = make_kif(scene_domain, resolve_global);
                         dom = has_dom ? kif_and(g, dom) : g;   // ÉS = min
                         has_dom = true;
                     }
@@ -518,33 +668,55 @@ int main() {
     // Egy paramétertábla (név | érték | törlés). A globális és a lokális lista UI-ja
     // ugyanaz. Igazat ad vissza, ha törölt sort — ilyenkor a hívónak drop_all()-t KELL
     // hívnia, mert a beparseolt fák a felszabadított float címét tárolják.
-    auto draw_params = [&](std::list<Param>& list, char const* prefix) -> bool {
-        if (ImGui::Button("Uj parameter")) {
-            auto& p = list.emplace_back();
-            next_name(list, prefix, p.name, sizeof(p.name));
-        }
-        bool erased = false;
-        for (auto it = list.begin(); it != list.end();) {
-            ImGui::PushID(&*it);
-            bool warn = bad.count(&*it) != 0;
-            if (warn) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.45f, 0.12f, 0.12f, 1.0f));
-            ImGui::SetNextItemWidth(90.0f);
-            ImGui::InputText("##nev", it->name, sizeof(it->name));
-            if (warn) ImGui::PopStyleColor();
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(110.0f);
-            ImGui::InputFloat("##ertek", &it->value);
-            ImGui::SameLine();
-            bool del = ImGui::Button("X");
-            ImGui::PopID();
-            if (del) { it = list.erase(it); erased = true; }
-            else     { ++it; }
-        }
-        return erased;
-    };
+        // `level`: 1 = jelenet, 2 = alakzat (a kulsobb hatokorok elfedesenek jelzesehez);
+        // 0 = program-szint, ott nincs mit elfedni.
+        auto draw_params = [&](std::list<Param>& list, char const* prefix, int level) -> bool {
+            if (ImGui::Button("Uj parameter")) {
+                auto& p = list.emplace_back();
+                next_name(list, prefix, p.name, sizeof(p.name));
+            }
+            bool erased = false;
+            for (auto it = list.begin(); it != list.end();) {
+                ImGui::PushID(&*it);
+                bool warn = bad.count(&*it) != 0;
+                if (warn) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.45f, 0.12f, 0.12f, 1.0f));
+                ImGui::SetNextItemWidth(90.0f);
+                ImGui::InputText("##nev", it->name, sizeof(it->name));
+                if (warn) ImGui::PopStyleColor();
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(90.0f);
+                ImGui::InputFloat("##ertek", &it->value);
+                ImGui::SameLine();
+                bool del = ImGui::Button("X");
+                // Elfedes-jelzes: nem hiba, de ne legyen nema meglepetes.
+                if (char const* sh = shadows(it->name, level)) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("%s", sh);
+                }
+                ImGui::PopID();
+                if (del) { it = list.erase(it); erased = true; }
+                else     { ++it; }
+            }
+            return erased;
+        };
 
-    app.set_gui([&] {
+
         validate();
+
+        // --- az elrendezes kiszamitasa a foablak meretebol ---
+        ImGuiViewport const* vp = ImGui::GetMainViewport();
+        ImVec2 const O = vp->WorkPos;
+        ImVec2 const S = vp->WorkSize;
+        float  const max_side = std::max(MINW, (S.x - 3.0f * PAD - 320.0f) * 0.5f);
+        layout.left_w  = std::clamp(layout.left_w,  MINW, max_side);
+        layout.right_w = std::clamp(layout.right_w, MINW, max_side);
+
+        float const inner_h = S.y - 3.0f * PAD;
+        float const cx = O.x + PAD + layout.left_w + PAD;                 // kozep bal szele
+        float const cw = S.x - layout.left_w - layout.right_w - 4.0f * PAD;
+        float const lt_h = inner_h * layout.left_top;
+        float const rt_h = inner_h * layout.right_top;
+
         // Ha a transzformacios vezerlokhoz eloszor nyulunk hozza, az alakzatot
         // ujra kell epiteni (lasd a Tulajdonsagok panelnel).
         bool needs_rebuild = false;
@@ -552,9 +724,7 @@ int main() {
         // ------------------------------------------------------------------
         // 1. ablak: a jelenet alakzatai (lista + kijelölés) és a futtatás.
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({16, 16}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({330, 400}, ImGuiCond_FirstUseEver);
-        ImGui::Begin("Alakzatok");
+        fixed_panel("Alakzatok", {O.x + PAD, O.y + PAD}, {layout.left_w, lt_h});
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Separator();
 
@@ -658,7 +828,7 @@ int main() {
         ImGui::Separator();
         ImGui::SliderFloat("d (meretskala)", &d_ui, 0.5f, 10.0f);
         ImGui::SliderFloat("gorbulet-taszitas", &curv_ui, 0.0f, 5.0f);
-        for (auto* p : pool) {
+        for (auto& p : pool) {
             p->d = d_ui;
             p->curvature_repulsion = curv_ui;
         }
@@ -667,9 +837,8 @@ int main() {
         // ------------------------------------------------------------------
         // 2. ablak: a kijelölt alakzat adatai (képlet + lokális paraméterek).
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({16, 428}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({330, 356}, ImGuiCond_FirstUseEver);
-        ImGui::Begin("Tulajdonsagok");
+        fixed_panel("Tulajdonsagok", {O.x + PAD, O.y + PAD + lt_h + PAD},
+                    {layout.left_w, inner_h - lt_h});
         if (selected == nullptr) {
             ImGui::TextDisabled("Valassz egy alakzatot az \"Alakzatok\" listabol.");
         } else {
@@ -740,7 +909,7 @@ int main() {
 
             if (ImGui::CollapsingHeader("Lokalis parameterek", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::TextDisabled("Csak ez az alakzat latja oket.");
-            if (draw_params(s.locals, "p")) { drop_all(); error.clear(); }
+            if (draw_params(s.locals, "p", 2)) { drop_all(); error.clear(); }
             }
         }
         ImGui::End();
@@ -749,9 +918,8 @@ int main() {
         // 3. ablak: nézet, jelmagyarázat és irányítás — a program használata
         //    közben végig látható súgó.
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({824, 16}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({360, 530}, ImGuiCond_FirstUseEver);
-        ImGui::Begin("Nezet es sugo");
+        float const rx = O.x + S.x - PAD - layout.right_w;
+        fixed_panel("Nezet es sugo", {rx, O.y + PAD}, {layout.right_w, rt_h});
 
         auto swatch = [](ImVec4 c, char const* text) {
             ImGui::ColorButton("##sw", c,
@@ -775,7 +943,7 @@ int main() {
         }
 
         if (ImGui::CollapsingHeader("Nezet", ImGuiTreeNodeFlags_DefaultOpen)) {
-            auto& cam = app.get_camera();
+            auto& cam = cur->camera;
             // A nézetváltás a kamera aktuális origótól mért távolságát megtartja.
             float dist = glm::length(cam.get_position());
             if (dist < 1.0f) dist = 15.0f;
@@ -830,37 +998,160 @@ int main() {
         ImGui::End();
 
         // ------------------------------------------------------------------
-        // 4. ablak: globális paraméterek (minden alakzat látja őket).
+        // 4. ablak: paraméterek — jelenet- és program-szinten.
         // ------------------------------------------------------------------
-        ImGui::SetNextWindowPos({824, 558}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({360, 226}, ImGuiCond_FirstUseEver);
-        ImGui::Begin("Globalis parameterek");
-        ImGui::TextWrapped("Minden alakzat lathatja oket. A nevuk nem egyezhet meg egyetlen "
-                           "lokalis parameter vagy alakzat nevevel sem.");
-        ImGui::Separator();
-        if (draw_params(globals, "g")) { drop_all(); error.clear(); }
+        fixed_panel("Parameterek", {rx, O.y + PAD + rt_h + PAD},
+                    {layout.right_w, inner_h - rt_h});
 
-        // --- Globális tartomány: a "munkatér", amiben az alakzatokat értelmezzük ---
-        ImGui::SeparatorText("Globalis tartomany");
+        ImGui::TextDisabled("Hatokor kifele: alakzat -> jelenet -> program.");
+        ImGui::TextDisabled("A belso ELFEDI a kulsot (mint C++-ban).");
+
+        ImGui::SeparatorText("Jelenet parameterei");
+        ImGui::TextDisabled("Ebben a fulben minden alakzat latja.");
+        if (draw_params(scene_params, "s", 1)) { drop_all(); error.clear(); }
+
+        ImGui::SeparatorText("Program-szintu parameterek");
+        ImGui::TextDisabled("MINDEN fulben lathatok.");
+        if (draw_params(program_params, "g", 0)) {
+            // Program-szintu valtozas MINDEN jelenetet erint: a mar beparseolt fak a
+            // torolt float CIMET tartjak, ezert mindenhol el kell dobni oket.
+            for (auto& other : scenes) {
+                for (auto& p : other.pool) {
+                    p->clear();
+                    p->get_surface().set_tree(Kif(0.0f).get());
+                    p->get_surface().clear_domain();
+                }
+                for (auto& sh : other.shapes) { sh.tree.reset(); sh.dom_tree.reset(); }
+                other.error.clear();
+            }
+        }
+
+        // --- A jelenet munkatere ---
+        ImGui::SeparatorText("Jelenet munkatere");
         ImGui::TextWrapped("Az a terresz, amiben egyaltalan ertelmezzuk az alakzatokat. "
-                           "Minden alakzatra ervenyes, a sajat tartomanyaval ES-kapcsolatban. "
-                           "Ures = korlatlan.");
+                           "Ebben a fulben minden alakzatra ervenyes, a sajat "
+                           "tartomanyaval ES-kapcsolatban. Ures = korlatlan.");
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputText("##gdom", global_domain, sizeof(global_domain));
+        ImGui::InputText("##gdom", scene_domain, sizeof(scene_domain));
 
         // Gyorsgombok: a rács ±8 kiterjedéséhez igazodnak, hogy a beallitas lathato legyen.
         if (ImGui::SmallButton("Doboz")) {
-            std::snprintf(global_domain, sizeof(global_domain),
+            std::snprintf(scene_domain, sizeof(scene_domain),
                           "x > 0 - 8 and x < 8 and y > 0 - 8 and y < 8 and z > 0 - 8 and z < 8");
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("Gomb")) {
-            std::snprintf(global_domain, sizeof(global_domain), "x^2 + y^2 + z^2 < 64");
+            std::snprintf(scene_domain, sizeof(scene_domain), "x^2 + y^2 + z^2 < 64");
         }
         ImGui::SameLine();
-        if (ImGui::SmallButton("Torol")) global_domain[0] = '\0';
-        ImGui::TextDisabled("Csak globalis parametert hasznalhat.");
+        if (ImGui::SmallButton("Torol")) scene_domain[0] = '\0';
+        ImGui::TextDisabled("Jelenet- es program-szintu parametert hasznalhat.");
         ImGui::End();
+
+        // ------------------------------------------------------------------
+        // Kozepso ablak: a 3D nezet (a jelenet texturaja), fulekkel.
+        // ------------------------------------------------------------------
+        ImGui::SetNextWindowPos({cx, O.y + PAD});
+        ImGui::SetNextWindowSize({cw, inner_h + PAD});
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin("##nezet", nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+        bool image_hovered = false;
+        Scene* want_scene = cur;        // a fulvaltast a ciklus UTAN hajtjuk vegre
+        Scene* close_scene = nullptr;
+
+        if (ImGui::BeginTabBar("##jelenetek", ImGuiTabBarFlags_Reorderable |
+                                              ImGuiTabBarFlags_AutoSelectNewTabs)) {
+            for (auto& one : scenes) {
+                bool open = true;
+                // Csak akkor adunk bezaro gombot, ha van mit bezarni.
+                bool* p_open = (scenes.size() > 1) ? &open : nullptr;
+                ImGui::PushID(&one);
+                if (ImGui::BeginTabItem(one.name, p_open)) {
+                    want_scene = &one;
+
+                    ImVec2 avail = ImGui::GetContentRegionAvail();
+                    ImVec2 pos   = ImGui::GetCursorScreenPos();
+                    int const iw = std::max(16, static_cast<int>(avail.x));
+                    int const ih = std::max(16, static_cast<int>(avail.y));
+
+                    // A KOVETKEZO frame-re kerjuk a meretet (lasd App::request_viewport_size).
+                    app.request_viewport_size(iw, ih);
+                    Vp::set_current({pos.x, pos.y, static_cast<float>(iw), static_cast<float>(ih)});
+
+                    // A GL-textura alulrol felfele all, ezert az UV-t megforditjuk.
+                    ImGui::Image(static_cast<ImTextureID>(app.viewport_texture()),
+                                 ImVec2(static_cast<float>(iw), static_cast<float>(ih)),
+                                 ImVec2(0, 1), ImVec2(1, 0));
+                    image_hovered = ImGui::IsItemHovered();
+                    ImGui::EndTabItem();
+                }
+                ImGui::PopID();
+                if (!open) close_scene = &one;
+            }
+            // "+" ful: uj jelenet
+            if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing |
+                                          ImGuiTabItemFlags_NoTooltip)) {
+                auto& ns = scenes.emplace_back();
+                next_name(scenes, "Jelenet ", ns.name, sizeof(ns.name));
+                ns.set_active(false);
+                want_scene = &ns;
+            }
+            ImGui::EndTabBar();
+        }
+        ImGui::End();
+
+        // --- Fulvaltas / bezaras ------------------------------------------
+        if (close_scene) {
+            bool const closing_current = (close_scene == cur);
+            for (auto it = scenes.begin(); it != scenes.end(); ++it)
+                if (&*it == close_scene) { scenes.erase(it); break; }
+            if (closing_current || want_scene == close_scene) {
+                cur = &scenes.front();
+                cur->set_active(true);
+            }
+        } else if (want_scene != cur) {
+            cur->set_active(false);      // a reszecskek allapota megmarad
+            cur = want_scene;
+            cur->set_active(true);
+        }
+        ImGui::PopStyleVar();
+
+        // --- Bemenet-kapu ---------------------------------------------------
+        // A jelenet akkor kap egeret, ha a kurzor a kepen van. HUZAS-RETESZ: ha a
+        // huzas a kepen indult, a gomb elengedeseig akkor is oda megy, ha az eger
+        // kicsuszik — kulonben forgatas kozben a panel fole erve megallna a nezet.
+        {
+            static bool drag_latch = false;
+            ImGuiIO& io = ImGui::GetIO();
+            bool const any_down = ImGui::IsMouseDown(ImGuiMouseButton_Left)  ||
+                                  ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+                                  ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+            if (image_hovered && any_down) drag_latch = true;
+            if (!any_down)                 drag_latch = false;
+
+            Vp::set_scene_mouse(image_hovered || drag_latch);
+            Vp::set_scene_keyboard(!io.WantCaptureKeyboard);
+        }
+
+        // --- Huzhato elvalasztok --------------------------------------------
+        splitter("##split_left",  {O.x + PAD + layout.left_w, O.y + PAD},
+                 {PAD, inner_h + PAD}, true,  &layout.left_w,  MINW, max_side, +1.0f);
+        splitter("##split_right", {rx - PAD, O.y + PAD},
+                 {PAD, inner_h + PAD}, true,  &layout.right_w, MINW, max_side, -1.0f);
+        {
+            float lt_px = lt_h, rt_px = rt_h;
+            splitter("##split_lh", {O.x + PAD, O.y + PAD + lt_h},
+                     {layout.left_w, PAD}, false, &lt_px, 120.0f, inner_h - 120.0f, +1.0f);
+            splitter("##split_rh", {rx, O.y + PAD + rt_h},
+                     {layout.right_w, PAD}, false, &rt_px, 120.0f, inner_h - 120.0f, +1.0f);
+            layout.left_top  = std::clamp(lt_px / std::max(inner_h, 1.0f), 0.15f, 0.85f);
+            layout.right_top = std::clamp(rt_px / std::max(inner_h, 1.0f), 0.15f, 0.85f);
+        }
 
         if (needs_rebuild) build_all();
 
@@ -888,7 +1179,7 @@ int main() {
             if (objs.empty()) {
                 photo_status = "Nincs mit fenykepezni (nyomj Indit-ot).";
             } else {
-                auto& cam = app.get_camera();
+                auto& cam = cur->camera;
                 Raytrace::CameraDesc rc;
                 rc.eye     = cam.get_position();
                 rc.front   = cam.get_front();
@@ -923,5 +1214,10 @@ int main() {
     });
 
     app.run();
+
+    // A jelenetek (bennuk a Model-ek: VAO/VBO) felszabaditasa MEG elo GL-kontextussal,
+    // csak utana az ablak es a shader-cache.
+    scenes.clear();
+    app.shutdown();
     return 0;
 }

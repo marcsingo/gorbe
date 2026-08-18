@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Include.hpp"
+#include "Viewport.hpp"
 
 // Térbeli tájékozódási segédlet:  piros = x,  zöld = y,  kék = z.
 //
@@ -92,9 +93,10 @@ class Axes : public Model {
         glm::vec3 const fwd = camera.get_front();
 
         eye = camera.get_eye();
-        int const win_h = std::max(Window::get_height(), 1);
+        // A kepernyo-meretu elemek merteke a 3D NEZET magassagabol jon (nem az ablakebol).
+        float const vp_h = std::max(Vp::current().h, 1.0f);
         world_per_px_unit = 2.0f * std::tan(camera.get_fov_deg() * 0.5f * 3.14159265f / 180.0f)
-                          / static_cast<float>(win_h);
+                          / vp_h;
 
         glm::vec3 const axis_color[3] = {
             {0.85f, 0.22f, 0.26f},   // x — piros

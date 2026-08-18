@@ -71,6 +71,7 @@ ctest --test-dir build --output-on-failure
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), a csúcsfény fehérsége (műanyag), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú |
+| `test_ui` | a 3D nézet koordináta-átváltása (panel belsejében) és a három szintű hatókör-feloldás/elfedés |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
@@ -121,11 +122,17 @@ Megjegyzések:
 A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakzat
 **önálló** implicit felület, saját részecskékkel mintavételezve.
 
+A panelek **fixek** (nem lebegnek): a főablak méretéhez igazodnak, és az oldalsó sávok
+szélessége, valamint a bennük lévő vízszintes osztás **egérrel húzható**.
+
+A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy önálló jelenet.
+
 | ablak | mi van benne |
 |---|---|
 | **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, a **`Fenykep keszitese`** gomb, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
 | **Tulajdonságok** | a kijelölt alakzat neve, és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
-| **Globális paraméterek** | minden alakzat által látott paraméterek (név = érték), és a **globális tartomány**. |
+| **Parameterek** | a **jelenet** paraméterei, a **program-szintű** paraméterek, és a jelenet **munkatere**. |
+| **(középen)** | a 3D nézet, fülekre bontva — `+` gombbal új jelenet, `X`-szel bezárható. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
 
 ### Fénykép (sugárkövetés)
@@ -162,6 +169,31 @@ sorokat és a `test_raytrace`-t, a `main.cpp`-ből a két `#include "raytrace/..
 sort, a `Fenykep` gombot kezelő blokkot, a `Shape::color_idx`/`dom_tree` mezőket és
 a `szin` lenyílót. Semmi más nem hivatkozik rá — a komponens nem függ sem OpenGL-től,
 sem az ablaktól, sem a jelenet-modelltől, csak a `matek/` kifejezésrendszertől.
+
+### Jelenetek (fülek)
+
+Minden fül egy **önálló jelenet**: saját alakzatok, saját paraméterek, saját munkatér,
+**saját kamera** (a nézet fülváltáskor megmarad) és saját mintavételezők.
+
+A **háttérben lévő fülek szimulációja áll** — a részecskék állapota megmarad, tehát
+visszaváltáskor onnan folytatódik. Így az FPS nem függ attól, hány fül van nyitva. Az
+inaktív fülek a bevitelt sem kapják meg; enélkül minden fül kamerája együtt mozogna.
+
+### Paraméterek — három hatókör
+
+```
+alakzat lokálisai  →  jelenet paraméterei  →  program-szintű paraméterek
+```
+
+Az **első találat nyer**, tehát a belső **elfedi** a külsőt, ugyanúgy, mint C++-ban.
+Ez nem hiba: a panel halványan kiírja a paraméter mellé, hogy `elfedi: jelenet` vagy
+`elfedi: program`.
+
+Ami **hiba** marad: két azonos nevű paraméter **ugyanazon a szinten**, foglalt név
+(`x`, `pi`, `sin`…), és két azonos nevű alakzat egy jeleneten belül.
+
+> A paraméterek **előbb** oldódnak fel, mint az alakzatnevek, tehát egy paraméter egy
+> azonos nevű alakzatot is elfed — ezt `elfedi: alakzat` jelzi.
 
 ### Árnyalás
 
@@ -674,6 +706,9 @@ minden kimenetre.
 | `model/`, `utils/` | OpenGL-réteg (kamera, ablak, shader, Model) |
 | `model/Gui.{hpp,cpp}` | Dear ImGui wrapper (init/frame/render, input-szűrés) |
 | `model/CameraBasis.hpp` | a kamera Z-up bázisa és az egérkezelés előjel-konvenciója (GL nélkül, tesztelhetően) |
+| `model/Viewport.hpp` | a 3D nézet téglalapja és a koordináta-átváltás; a bemenet-kapu |
+| `model/Framebuffer.hpp` | képernyőn kívüli rajzolási cél (a nézet textúrája) |
+| `scene/Scope.hpp` | a három szintű hatókör-feloldás (elfedéssel) |
 | `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
