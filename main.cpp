@@ -274,7 +274,11 @@ int main() {
         cur->set_active(true);
     }
 
-    int         preset_idx = 0;    // a sablon-lenyílóban kiválasztott alakzat
+    // A lenyilok kivalasztott eleme. FONTOS, hogy ezek a GUI-lambdan KIVUL legyenek:
+    // a lambda torzse minden frame-ben lefut, tehat egy ott deklaralt valtozo minden
+    // frame-ben visszaallna a kezdoertekre — a valasztas sosem maradna meg.
+    int         preset_idx      = 0;   // alakzat-sablon
+    int         warp_preset_idx = 0;   // warp-sablon
 
     // A sugárkövető komponens állapota (a gomb csak jelez; a render a GUI után fut,
     // hogy ne egy félig felépített ImGui-frame közben blokkoljuk a programot).
@@ -603,7 +607,6 @@ int main() {
     // szövege változott: ilyenkor újra kell parseolni. A warp PARAMÉTEREI viszont az
     // alakzat lokálisai, tehát cím szerint épülnek be — azokat a csúszka élőben
     // állítja, újraépítés nélkül.
-    int warp_preset_idx = 0;
     auto draw_warps = [&](Shape& s, bool& rebuild) {
         if (!ImGui::CollapsingHeader("Warpok (lancban)", ImGuiTreeNodeFlags_DefaultOpen))
             return;
