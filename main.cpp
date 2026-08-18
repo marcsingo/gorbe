@@ -24,6 +24,7 @@
 #include <filesystem>
 #include "model/Viewport.hpp"
 #include "raytrace/Raytracer.hpp"
+#include "raytrace/Material.hpp"
 #include "raytrace/Image.hpp"
 
 // A bináris könyvtára (a CMake adja meg); ide mentjük a fényképeket.
@@ -93,10 +94,13 @@ struct Shape {
     std::vector<Warp> warps;
 
     // --- a sugárkövető komponenshez ---
-    // Szín a paletta-listából (Raytrace::PALETTE) és az Indításkor felépített,
-    // KÉSZ tartomány-fa (globális ÉS saját, transzformálva) — hogy a fénykép
-    // pontosan azt lássa, amit a szimuláció.
+    // Szín a paletta-listából (Raytrace::PALETTE), anyag az anyaglistából
+    // (Raytrace::MATERIALS), és az Indításkor felépített, KÉSZ tartomány-fa
+    // (globális ÉS saját, transzformálva) — hogy a fénykép pontosan azt lássa,
+    // amit a szimuláció. Mindkét beállítás CSAK a fényképre hat: a valós idejű
+    // nézetben a részecskék a szokásos árnyalásukat kapják.
     int color_idx = 0;
+    int material_idx = 0;
     std::shared_ptr<Kifejezes const> dom_tree;
 };
 
@@ -888,7 +892,8 @@ int main() {
             ImGui::TextDisabled("Hivatkozhatsz a listaban ELOTTE allo alakzatok nevere is.");
             }
 
-            // Szín a paletta-listából (a sugárkövetett fényképhez).
+            // Szín és anyag (mindkettő a sugárkövetett FÉNYKÉPHEZ). Az anyag a szín
+            // MELLÉ jön, nem helyette: ugyanaz a piros lehet matt gumi vagy üveg.
             ImGui::SetNextItemWidth(200.0f);
             if (ImGui::BeginCombo("szin", Raytrace::palette_name(s.color_idx))) {
                 for (int k = 0; k < Raytrace::PALETTE_COUNT; ++k) {
@@ -901,6 +906,15 @@ int main() {
                 }
                 ImGui::EndCombo();
             }
+
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::BeginCombo("anyag", Raytrace::material_name(s.material_idx))) {
+                for (int k = 0; k < Raytrace::MATERIAL_COUNT; ++k)
+                    if (ImGui::Selectable(Raytrace::material_name(k), k == s.material_idx))
+                        s.material_idx = k;
+                ImGui::EndCombo();
+            }
+            ImGui::TextDisabled("A szin es az anyag a FENYKEPRE hat (nem a nezetre).");
 
             if (ImGui::CollapsingHeader("Tartomany")) {
             ImGui::Text("Csak itt jelenjen meg (opcionalis):");
@@ -1200,7 +1214,8 @@ int main() {
                 Raytrace::ObjectDesc o;
                 o.F = Kif(s.tree);
                 if (s.dom_tree) { o.domain = Kif(s.dom_tree); o.has_domain = true; }
-                o.color = Raytrace::palette_color(s.color_idx);
+                o.color    = Raytrace::palette_color(s.color_idx);
+                o.material = Raytrace::material_of(s.material_idx);
                 objs.push_back(std::move(o));
             }
 

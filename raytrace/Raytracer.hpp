@@ -9,6 +9,7 @@
 #include <glm.hpp>
 
 #include "../matek/Kif.hpp"
+#include "Material.hpp"
 #include "Palette.hpp"
 
 // ---------------------------------------------------------------------------
@@ -16,7 +17,7 @@
 //
 // Nem függ semmitől a programból a kifejezésrendszeren (matek/) kívül: nincs benne
 // OpenGL, ablak, ImGui, se a jelenet-modell. A hívó egy egyszerű leírást ad át
-// (kifejezés + opcionális tartomány + szín), és egy RGB-tömböt kap vissza.
+// (kifejezés + opcionális tartomány + szín + anyag), és egy RGB-tömböt kap vissza.
 //
 // A METSZÉS közelítő, ahogy kértük: a sugár mentén LÉPKEDÜNK, amíg elég közel nem
 // kerülünk a felülethez, és ott metszünk el. A lépéshosszt nem fixáljuk, hanem a
@@ -25,12 +26,15 @@
 // aprót. Előjelváltásnál felezéssel finomítunk.
 //
 // Fény: IRÁNYFÉNY (párhuzamos sugarak, mint a napfény), nem pontszerű.
-// Anyag: MŰANYAG — színes diffúz + FEHÉR csúcsfény. (A fehér csúcsfény az, amitől
-// műanyagnak látszik: a fémeknél a csúcsfény is felveszi az anyag színét.)
+// Anyag: ANYAGONKÉNT változó (lásd Material.hpp) — műanyag, gumi, kerámia, fém,
+// króm, üveg, fa, márvány. A tükröződéshez és az üveg átlátszóságához a sugarat
+// TOVÁBB kell követni, ezért a színszámítás rekurzív (`radiance`), legfeljebb
+// `Settings::max_depth` mélységig.
 //
 // LEVÁLASZTÁS: töröld a raytrace/ mappát, a CMakeLists-ből a raytrace/* sorokat,
 // a main.cpp-ből a "#include raytrace/..." sorokat és a "Fenykep" gombot kezelő
-// blokkot, valamint a Shape::color_idx mezőt. Semmi más nem hivatkozik rá.
+// blokkot, valamint a Shape::color_idx és Shape::material_idx mezőt. Semmi más
+// nem hivatkozik rá.
 // ---------------------------------------------------------------------------
 namespace Raytrace {
 
@@ -38,12 +42,13 @@ namespace Raytrace {
     using Matek::Analizis::Program;
 
     // Egy rajzolandó objektum: VILÁGKOORDINÁTÁS implicit függvény (F=0 a felület,
-    // F<0 belül), opcionális tartomány-feltétel (dom>0 = látható rész), és egy szín.
+    // F<0 belül), opcionális tartomány-feltétel (dom>0 = látható rész), szín és anyag.
     struct ObjectDesc {
         Kif       F;
         Kif       domain;
         bool      has_domain = false;
         glm::vec3 color{0.8f, 0.8f, 0.8f};
+        Material  material = MATERIALS[0];      // alapértelmezés: műanyag
     };
 
     struct CameraDesc {
@@ -70,14 +75,26 @@ namespace Raytrace {
         glm::vec3 ground_color{0.28f, 0.26f, 0.24f};
         float     ambient = 0.30f;
 
-        // Háttér (függőleges átmenet).
+        // Háttér (függőleges átmenet). A tükröződő és átlátszó anyagok EZT is
+        // visszaverik/átengedik, ezért nem mindegy, hogy mi van benne.
         glm::vec3 bg_top{0.92f, 0.94f, 0.97f};
         glm::vec3 bg_bottom{0.72f, 0.76f, 0.82f};
 
-        // MŰANYAG anyagjellemzők.
-        float diffuse   = 0.80f;
-        float specular  = 0.38f;
-        float shininess = 48.0f;
+        // Hányszor követhet tovább egy sugár (tükrözés/törés). 0 = csak a helyi
+        // árnyalás, tehát a fém és az üveg is átlátszatlan matt lenne.
+        //
+        // Üvegnél elvben minden szint KÉT sugárra ágazna (2^max_depth), de a
+        // `min_weight` levágja az elhanyagolható ágakat, így a gyakorlatban egy
+        // fő út marad — ezért engedhető meg ilyen nagy mélység. Kell is: egy
+        // tömör üveggömbben a teljes visszaverődés több oda-vissza utat okoz, és
+        // ha ezek elfogynak, sötét foltok maradnak a helyükön.
+        int   max_depth = 8;
+        // Ez alatti hozzájárulású ágat nem követünk tovább. MÉRVE (900x600, 3 alakzat,
+        // árnyékkal): 0.02 -> műanyag 4073 ms, üveg 10758 ms; 0.05 -> 3091 ms és
+        // 6478 ms. A 0.05 pont a dielektrikumok merőleges Fresnel-értéke (0.04)
+        // fölött van, tehát a szemből alig látszó tükörképet elhagyja, a súrló
+        // szögben felerősödő (és ott jól látható) tükröződést viszont megtartja.
+        float min_weight = 0.05f;
 
         // Menetelés.
         float t_min     = 0.02f;
@@ -87,6 +104,7 @@ namespace Raytrace {
         float min_step  = 1e-3f;
         float max_step  = 2.0f;
         float step_safety = 0.75f; // a becsült távolság ekkora részét lépjük
+        float bias      = 1e-2f;   // ennyivel lépünk el a felülettől új sugárnál
 
         bool  shadows      = true;
         int   shadow_steps = 140;
@@ -105,6 +123,7 @@ namespace Raytrace {
             int       dom_out = 0;
             bool      has_domain = false;
             glm::vec3 color{0.8f};
+            Material  mat = MATERIALS[0];
         };
 
         inline std::vector<Compiled> compile(std::vector<ObjectDesc> const& objs) {
@@ -123,6 +142,7 @@ namespace Raytrace {
                     c.dom.finish();
                 }
                 c.color = o.color;
+                c.mat   = o.material;
                 out.push_back(std::move(c));
             }
             return out;
@@ -153,10 +173,15 @@ namespace Raytrace {
         }
 
         struct Hit {
-            bool      hit = false;
-            float     t   = 0.0f;
-            glm::vec3 normal{0.0f};
-            glm::vec3 color{0.0f};
+            bool            hit = false;
+            float           t   = 0.0f;
+            glm::vec3       normal{0.0f};
+            glm::vec3       color{0.0f};
+            Material const* mat = nullptr;
+            // A sugár BELÜLRŐL érte el a felületet (a normálist meg kellett
+            // fordítani). Üvegnél ez dönti el a törésmutató irányát, és ez jelzi,
+            // hogy a mögöttünk hagyott szakasz az anyagban futott.
+            bool            inside = false;
         };
 
         // Menetelés EGY objektumon. `t` a sugár mentén, `any_hit` esetén az első
@@ -217,34 +242,46 @@ namespace Raytrace {
                     best.hit = true;
                     best.t = t;
                     best.color = c.color;
+                    best.mat = &c.mat;
                     Sample s = eval(c, ro + rd * t);
                     glm::vec3 n = s.grad;
                     float len = std::sqrt(glm::dot(n, n));
                     n = (len > 1e-9f) ? n / len : glm::vec3(0.0f, 0.0f, 1.0f);
                     // A normális a NÉZŐ felé nézzen (F<0 belül konvenció mellett a
                     // gradiens kifelé mutat, de belülről nézve fordítva kell).
-                    if (glm::dot(n, rd) > 0.0f) n = -n;
+                    best.inside = glm::dot(n, rd) > 0.0f;
+                    if (best.inside) n = -n;
                     best.normal = n;
                 }
             }
             return best;
         }
 
-        inline bool in_shadow(std::vector<Compiled> const& objs, glm::vec3 p,
-                              glm::vec3 to_light, Settings const& st) {
+        // Mennyi fény jut el a fényforrástól a pontig: 1 = semmi sem takarja,
+        // 0 = teljes árnyék. ÁTLÁTSZÓ takaró nem olt ki teljesen, csak tompít —
+        // e nélkül az üveg ugyanolyan koromfekete árnyékot vetne, mint a kő.
+        inline float light_visibility(std::vector<Compiled> const& objs, glm::vec3 p,
+                                      glm::vec3 to_light, Settings const& st) {
             Settings sh = st;
             sh.max_steps = st.shadow_steps;
+            float vis = 1.0f;
             float t;
-            for (auto const& c : objs)
-                if (march(c, p, to_light, sh, st.t_min, st.t_max, true, t)) return true;
-            return false;
+            for (auto const& c : objs) {
+                if (!march(c, p, to_light, sh, st.t_min, st.t_max, true, t)) continue;
+                if (c.mat.transparency > 0.01f) vis *= 0.15f + 0.75f * c.mat.transparency;
+                else                            return 0.0f;
+            }
+            return vis;
         }
 
-        // MŰANYAG árnyalás: színes diffúz + FEHÉR csúcsfény (Blinn-Phong), plusz
-        // féggömb-ambiens. Irányfénnyel, tehát távolság-csökkenés nélkül.
-        inline glm::vec3 shade(Hit const& h, glm::vec3 view_dir, bool shadowed,
-                               Settings const& st) {
-            glm::vec3 const N = h.normal;
+        // Helyi árnyalás: színes diffúz + csúcsfény (Blinn-Phong), plusz féggömb-
+        // ambiens. Irányfénnyel, tehát távolság-csökkenés nélkül.
+        //
+        // Az anyag dönti el, hogy a CSÚCSFÉNY fehér-e (műanyag, kerámia, üveg) vagy
+        // felveszi az anyag színét (fém, króm) — ez a legerősebb vizuális jelzés
+        // arról, hogy mit lát az ember.
+        inline glm::vec3 shade(glm::vec3 N, glm::vec3 albedo, glm::vec3 view_dir,
+                               float vis, Material const& m, Settings const& st) {
             glm::vec3 const L = -glm::normalize(st.light_dir);   // a fény FELÉ mutat
             glm::vec3 const V = -view_dir;
             glm::vec3 const H = glm::normalize(L + V);
@@ -257,12 +294,103 @@ namespace Raytrace {
             float const up_amount = 0.5f * (N.z + 1.0f);
             glm::vec3 amb = st.ambient * glm::mix(st.ground_color, st.sky_color, up_amount);
 
-            float const vis = shadowed ? 0.0f : 1.0f;
-            glm::vec3 col = h.color * (amb + st.diffuse * ndl * vis * st.light_intensity
-                                             * st.light_color);
-            // A csúcsfény NEM veszi fel az anyag színét -> műanyag hatás.
-            col += st.light_color * (st.specular * std::pow(ndh, st.shininess) * vis
-                                     * st.light_intensity);
+            glm::vec3 col = albedo * (amb + m.diffuse * ndl * vis * st.light_intensity
+                                            * st.light_color);
+            // Fémnél a csúcsfény színezett, egyébként fehér marad -> műanyag hatás.
+            glm::vec3 const spec_tint = m.metallic ? albedo : glm::vec3(1.0f);
+            col += spec_tint * st.light_color
+                 * (m.specular * std::pow(ndh, m.shininess) * vis * st.light_intensity);
+            return col;
+        }
+
+        inline glm::vec3 background(glm::vec3 rd, Settings const& st) {
+            float const t = 0.5f * (rd.z + 1.0f);   // z = függőleges
+            return glm::mix(st.bg_bottom, st.bg_top, std::clamp(t, 0.0f, 1.0f));
+        }
+
+        // Schlick-közelítés: súrló szögben minden anyag tükröz. Enélkül az üveg
+        // pereme nem világosodna ki, és laposnak látszana.
+        inline float fresnel(float cos_theta, float ior) {
+            float r0 = (1.0f - ior) / (1.0f + ior);
+            r0 *= r0;
+            float const c = std::clamp(1.0f - cos_theta, 0.0f, 1.0f);
+            return r0 + (1.0f - r0) * c * c * c * c * c;
+        }
+
+        // Egy sugár által hozott szín. `depth` a már megtett tükrözések/törések
+        // száma, `weight` pedig az, hogy ez a sugár mekkora súllyal számít bele a
+        // VÉGSŐ pixelbe. A súly az, ami az elágazást kordában tartja: egy üveg
+        // homlokfelületén a visszavert ág súlya ~0.04, tehát azonnal elhal, míg az
+        // átmenő ág ~0.96-tal megy tovább — így az exponenciális szétágazás
+        // helyett a gyakorlatban egyetlen fő út marad.
+        inline glm::vec3 radiance(std::vector<Compiled> const& objs, glm::vec3 ro,
+                                  glm::vec3 rd, Settings const& st, int depth,
+                                  float weight = 1.0f) {
+            Hit const h = trace(objs, ro, rd, st);
+            if (!h.hit || !h.mat) return background(rd, st);
+
+            Material const& m = *h.mat;
+            glm::vec3 const p = ro + rd * h.t;
+            glm::vec3 const albedo = pattern_albedo(h.color, m, p);
+
+            float vis = 1.0f;
+            if (st.shadows) {
+                glm::vec3 const L = -glm::normalize(st.light_dir);
+                vis = light_visibility(objs, p + h.normal * st.bias, L, st);
+            }
+            glm::vec3 col = shade(h.normal, albedo, rd, vis, m, st);
+
+            if (depth < st.max_depth) {
+                float const cosi = std::clamp(glm::dot(-rd, h.normal), 0.0f, 1.0f);
+
+                if (m.transparency > 0.01f) {
+                    // Üveg: a fény egy része visszaverődik, a többi megtörik.
+                    // A törésmutató iránya attól függ, hogy be- vagy kilépünk.
+                    float const eta = h.inside ? m.ior : 1.0f / m.ior;
+                    glm::vec3 const T = glm::refract(rd, h.normal, eta);
+                    float F = fresnel(cosi, m.ior);
+                    if (glm::dot(T, T) < 1e-9f) F = 1.0f;      // teljes visszaverődés
+
+                    float const wr = weight * m.transparency * F;
+                    float const wt = weight * m.transparency * (1.0f - F);
+                    glm::vec3 through(0.0f);
+                    bool any = false;
+                    if (wr > st.min_weight) {
+                        through += F * radiance(objs, p + h.normal * st.bias,
+                                                glm::reflect(rd, h.normal), st, depth + 1, wr);
+                        any = true;
+                    }
+                    if (wt > st.min_weight) {
+                        through += (1.0f - F) * radiance(objs, p - h.normal * st.bias,
+                                                         glm::normalize(T), st, depth + 1, wt);
+                        any = true;
+                    }
+                    // Ha MINDKÉT ág elhanyagolható, a helyi árnyalást hagyjuk meg:
+                    // a nullával való keverés fekete foltot festene oda.
+                    if (any) col = glm::mix(col, through, m.transparency);
+                } else if (m.reflectivity > 0.001f) {
+                    // Fémnél a tükörkép is felveszi az anyag színét (a réz sárgásan
+                    // tükröz), egyébként színezetlen marad.
+                    float const k = std::clamp(m.reflectivity
+                                    + (1.0f - m.reflectivity) * std::pow(1.0f - cosi, 5.0f),
+                                    0.0f, 1.0f);
+                    if (weight * k > st.min_weight) {
+                        glm::vec3 const refl = radiance(objs, p + h.normal * st.bias,
+                                                        glm::reflect(rd, h.normal), st,
+                                                        depth + 1, weight * k);
+                        glm::vec3 const tint = m.metallic ? albedo : glm::vec3(1.0f);
+                        col = glm::mix(col, refl * tint, k);
+                    }
+                }
+            }
+
+            // Beer-féle elnyelés: ha a sugár az ANYAGON BELÜL tette meg az utat
+            // (most lép ki), a vastagabb rész telítettebb színű. Ettől lesz az
+            // üvegnek mélysége a lapos átlátszóság helyett.
+            if (h.inside && m.absorb > 0.0f) {
+                glm::vec3 const a = (glm::vec3(1.0f) - albedo) * (m.absorb * h.t);
+                col *= glm::vec3(std::exp(-a.x), std::exp(-a.y), std::exp(-a.z));
+            }
             return col;
         }
 
@@ -304,23 +432,8 @@ namespace Raytrace {
                                    * tan_half;
                     glm::vec3 const rd = glm::normalize(fw + rt * sx + upv * sy);
 
-                    detail::Hit h = detail::trace(local, cam.eye, rd, st);
-
-                    glm::vec3 col;
-                    if (h.hit) {
-                        glm::vec3 const p = cam.eye + rd * h.t;
-                        bool shadowed = false;
-                        if (st.shadows) {
-                            // Eltoljuk a felülettől, különben a saját felületét találná el.
-                            glm::vec3 const o = p + h.normal * 1e-2f;
-                            shadowed = detail::in_shadow(local, o, -glm::normalize(st.light_dir), st);
-                        }
-                        col = detail::shade(h, rd, shadowed, st);
-                    } else {
-                        float const t = 0.5f * (rd.z + 1.0f);   // z = függőleges
-                        col = glm::mix(st.bg_bottom, st.bg_top, std::clamp(t, 0.0f, 1.0f));
-                    }
-                    img[static_cast<std::size_t>(y) * W + x] = col;
+                    img[static_cast<std::size_t>(y) * W + x] =
+                        detail::radiance(local, cam.eye, rd, st, 0);
                 }
             }
         };

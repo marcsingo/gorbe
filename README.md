@@ -70,7 +70,7 @@ ctest --test-dir build --output-on-failure
 | `test_csg` | halmazműveletek értéke és deriváltja, szimbolikus vs. numerikus gradiens, hibás hívások |
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
-| `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), a csúcsfény fehérsége (műanyag), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú |
+| `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, és a `t` idő (élő követés + `∂F/∂t`) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -144,7 +144,7 @@ A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy ön�
 | ablak | mi van benne |
 |---|---|
 | **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, a **`Fenykep keszitese`** gomb, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
-| **Tulajdonságok** | a kijelölt alakzat neve, és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
+| **Tulajdonságok** | a kijelölt alakzat neve, a **`szin`** és **`anyag`** lenyíló (a fényképhez), és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
 | **Parameterek** | a **jelenet** paraméterei, a **program-szintű** paraméterek, és a jelenet **munkatere**. |
 | **(középen)** | a 3D nézet, fülekre bontva — `+` gombbal új jelenet, `X`-szel bezárható. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
@@ -168,21 +168,65 @@ tehát semmi nem íródik felül. A pontos útvonalat a gomb alatt is kiírja a 
   nagyot lép, a felület közelében aprót. Előjelváltásnál 24 felezéssel finomítunk.
 - **Irányfény** (vektorszerű, mint a napfény): párhuzamos sugarak, nincs helye és
   nincs távolság-csökkenés.
-- **Műanyag anyag**: színes diffúz + **fehér** csúcsfény (Blinn-Phong). A fehér
-  csúcsfény az, amitől műanyagnak látszik — fémeknél a csúcsfény is felvenné az
-  anyag színét. Emellett féggömb-ambiens (ég/föld) és vetett árnyék.
-- Az alakzat **színe előre megadott listából** választható (Tulajdonságok → `szin`);
-  új alakzat automatikusan a következő palettaszínt kapja.
+- **Szín és anyag** külön választható (Tulajdonságok → `szin`, `anyag`) — lásd lentebb.
+  Új alakzat automatikusan a következő palettaszínt kapja. Mindkettő **csak a képre**
+  hat: a valós idejű nézetben a részecskék a szokásos árnyalásukat kapják.
 - A tartomány-feltétel a képen is érvényes, tehát a levágott rész ott sem látszik.
 - A render több szálon fut (minden szál saját másolatot kap a lefordított
   programokból, mert egy `Program` közös munkaterületre ír). 900×600 + árnyék,
-  4 alakzat: ~1–3,5 s.
+  3 alakzat: műanyaggal ~3 s, tükröző fémmel ~3,8 s, üveggel ~6,5 s.
+
+#### Anyagok
+
+Az anyag a **szín mellé** jön, nem helyette: ugyanaz a piros lehet matt gumi,
+csillogó műanyag vagy áttetsző üveg.
+
+| anyag | mitől ismerhető fel |
+|---|---|
+| **Műanyag** (alapértelmezett) | színes diffúz + **fehér** csúcsfény |
+| **Gumi (matt)** | gyakorlatilag nincs csúcsfény |
+| **Kerámia** | erős, kicsi, fehér csúcsfény |
+| **Fém** | sötét diffúz + **színezett** csúcsfény és tükörkép |
+| **Króm (tükör)** | szinte teljes tükrözés |
+| **Üveg** | átlátszó, törésmutató 1.5, Beer-féle elnyeléssel |
+| **Fa** | évgyűrűk a **z tengely körül** + rostozat a szál mentén |
+| **Márvány** | zajjal torzított erezet |
+
+Amit ez a rendszer megkövetel a rendertől:
+
+- **A csúcsfény színe választja el a fémet a nemfémtől.** Műanyagnál/kerámiánál a
+  csúcsfény fehér marad, fémnél felveszi az anyag színét — ez a legerősebb vizuális
+  jelzés arról, hogy mit lát az ember.
+- **Tükrözéshez és átlátszósághoz tovább kell követni a sugarat**, ezért a
+  színszámítás rekurzív (`radiance`). Üvegnél Fresnel-arányban (Schlick) ágazik
+  visszavert és megtört sugárra, a törésmutató iránya a be-/kilépéstől függ, teljes
+  visszaverődésnél pedig csak a tükrözés marad.
+- **Az elágazást súly szerint vágjuk**, nem mélység szerint: minden sugár viszi
+  magával, hogy mekkora résszel számít bele a pixelbe, és a `min_weight` (0.05) alatti
+  ág elhal. Egy üveg homlokfelületén a visszavert ág súlya ~0.04, tehát azonnal
+  megáll, míg az átmenő ág ~0.96-tal megy tovább — így a 2^mélység szétágazás helyett
+  a gyakorlatban egyetlen fő út marad. Ezért engedhető meg a `max_depth = 8`, és kell
+  is: egy tömör üveggömbben a teljes visszaverődés több oda-vissza utat okoz, és ha
+  ezek elfogynak, sötét foltok maradnak a helyükön. (Mérve, 900×600, 3 alakzat:
+  a súlyvágás 0.02 → 0.05 az üveget 10,8 s-ról 6,5 s-ra viszi, a képen látható
+  különbség nélkül; a mélység 8 → 3 levágása ennél kevesebbet spórol *és* rontja a képet.)
+- **Az átlátszó test nem vet koromfekete árnyékot**: az árnyéksugár nem „talált/nem
+  talált", hanem fényláthatóságot ad vissza, amit az áttetsző takaró csak tompít.
+- A **mintázatok** (fa, márvány) eljárásosak, textúrafájl nélkül: a térbeli pontból
+  számol egy hash-alapú value-noise, ezért minden alakzatra torzulás nélkül feszül rá,
+  és két render között sem sercen. A fa évgyűrűi `|sin(π·r)|`-ből jönnek és nem a
+  törtrészből: utóbbinak ugrása van minden egésznél, ami tördelt, aliasos élt adna.
+- A műanyag is tükröz egy keveset (0.04, a dielektrikumok Fresnel-értéke), ami
+  **súrló szögben felerősödik** — ettől lesz a padlónak/nagy lapos alakzatoknak
+  tükröződése. Ez a rész a `min_weight` fölött marad, a szemből alig látszó
+  tükörképet viszont elhagyjuk.
 
 **Leválasztás:** töröld a `raytrace/` mappát, a `CMakeLists.txt`-ből a `raytrace/*`
-sorokat és a `test_raytrace`-t, a `main.cpp`-ből a két `#include "raytrace/..."`
-sort, a `Fenykep` gombot kezelő blokkot, a `Shape::color_idx`/`dom_tree` mezőket és
-a `szin` lenyílót. Semmi más nem hivatkozik rá — a komponens nem függ sem OpenGL-től,
-sem az ablaktól, sem a jelenet-modelltől, csak a `matek/` kifejezésrendszertől.
+sorokat és a `test_raytrace`-t, a `main.cpp`-ből a három `#include "raytrace/..."`
+sort, a `Fenykep` gombot kezelő blokkot, a `Shape::color_idx`/`material_idx`/`dom_tree`
+mezőket és a `szin`/`anyag` lenyílót. Semmi más nem hivatkozik rá — a komponens nem függ
+sem OpenGL-től, sem az ablaktól, sem a jelenet-modelltől, csak a `matek/`
+kifejezésrendszertől.
 
 ### `t` — az idő, animációhoz
 
@@ -743,7 +787,7 @@ minden kimenetre.
 | `model/Framebuffer.hpp` | képernyőn kívüli rajzolási cél (a nézet textúrája) |
 | `scene/Scope.hpp` | a három szintű hatókör-feloldás (elfedéssel) |
 | `scene/Time.hpp` | a képletekben használható `t` idő |
-| `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, BMP-mentés) |
+| `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, anyagok, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
 

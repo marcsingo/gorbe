@@ -89,6 +89,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         scene/Time.hpp
         raytrace/Raytracer.hpp
         raytrace/Palette.hpp
+        raytrace/Material.hpp
         raytrace/Image.hpp
         App.hpp
         particle_sampling/ImplicitSurface.hpp
