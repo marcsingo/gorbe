@@ -122,8 +122,22 @@ Megjegyzések:
 A jelenetet futás közben, három ImGui-panelen lehet összerakni. Minden alakzat
 **önálló** implicit felület, saját részecskékkel mintavételezve.
 
-A panelek **fixek** (nem lebegnek): a főablak méretéhez igazodnak, és az oldalsó sávok
-szélessége, valamint a bennük lévő vízszintes osztás **egérrel húzható**.
+A panelek **fixek** (nem lebegnek): a főablak méretéhez igazodnak, és a sávok
+szélessége, valamint a bal oldali vízszintes osztások **egérrel húzhatók**.
+
+```
+┌──────────────┬─────────────────────────────┬──────────────┐
+│ Alakzatok    │ [Jelenet 1][Jelenet 2][ + ] │              │
+├──────────────┤                             │              │
+│ Nezet es     │      3D kép (textúra)       │ Tulajdon-    │
+│ sugo         │                             │ sagok        │
+├──────────────┤                             │              │
+│ Parameterek  │                             │              │
+└──────────────┴─────────────────────────────┴──────────────┘
+```
+
+A **Tulajdonságok** a jobb oldalon, **teljes magasságban** — ez a panel tartja a
+képletet, a tartományt, a transzformációt és a warp-láncot, tehát ennek kell a hely.
 
 A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy önálló jelenet.
 

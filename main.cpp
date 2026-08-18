@@ -287,10 +287,15 @@ int main() {
     // A ket oldalso sav szelessege es a bennuk levo vizszintes osztas huzhato.
     // ---------------------------------------------------------------------
     struct Layout {
-        float left_w   = 340.0f;   // bal sav szelessege
-        float right_w  = 340.0f;   // jobb sav szelessege
-        float left_top = 0.46f;    // a bal sav felso paneljenek aranya
-        float right_top= 0.52f;
+        // A bal sav alapertelmezett szelesseget az iranyitas-tabla szabja meg: a
+        // masodik oszlop 178 px-nel kezdodik, tehat ennel keskenyebben elvagodna.
+        float left_w  = 372.0f;
+        float right_w = 380.0f;    // jobb sav (Tulajdonsagok) — ide kerul a keplet
+        // A BAL sav HAROM panelre oszlik (Alakzatok / Nezet / Parameterek); ez a ket
+        // arany a felso ketto magassaga, a harmadik a maradek. A JOBB sav egyetlen,
+        // teljes magassagu panel.
+        float left_f1 = 0.30f;
+        float left_f2 = 0.42f;
     } layout;
 
     constexpr float PAD   = 6.0f;   // panelek kozti res (ez egyben az elvalaszto is)
@@ -711,11 +716,18 @@ int main() {
         layout.left_w  = std::clamp(layout.left_w,  MINW, max_side);
         layout.right_w = std::clamp(layout.right_w, MINW, max_side);
 
-        float const inner_h = S.y - 3.0f * PAD;
-        float const cx = O.x + PAD + layout.left_w + PAD;                 // kozep bal szele
+        float const col_h = S.y - 2.0f * PAD;             // egy sav teljes magassaga
+        float const cx = O.x + PAD + layout.left_w + PAD;  // kozep bal szele
         float const cw = S.x - layout.left_w - layout.right_w - 4.0f * PAD;
-        float const lt_h = inner_h * layout.left_top;
-        float const rt_h = inner_h * layout.right_top;
+        float const rx = O.x + S.x - PAD - layout.right_w;
+
+        // A bal savban harom panel es koztuk ket res van.
+        float const left_avail = std::max(col_h - 2.0f * PAD, 3.0f);
+        layout.left_f1 = std::clamp(layout.left_f1, 0.12f, 0.70f);
+        layout.left_f2 = std::clamp(layout.left_f2, 0.12f, 0.88f - layout.left_f1);
+        float const h1 = left_avail * layout.left_f1;                    // Alakzatok
+        float const h2 = left_avail * layout.left_f2;                    // Nezet es sugo
+        float const h3 = left_avail - h1 - h2;                           // Parameterek
 
         // Ha a transzformacios vezerlokhoz eloszor nyulunk hozza, az alakzatot
         // ujra kell epiteni (lasd a Tulajdonsagok panelnel).
@@ -724,7 +736,7 @@ int main() {
         // ------------------------------------------------------------------
         // 1. ablak: a jelenet alakzatai (lista + kijelölés) és a futtatás.
         // ------------------------------------------------------------------
-        fixed_panel("Alakzatok", {O.x + PAD, O.y + PAD}, {layout.left_w, lt_h});
+        fixed_panel("Alakzatok", {O.x + PAD, O.y + PAD}, {layout.left_w, h1});
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Separator();
 
@@ -837,8 +849,9 @@ int main() {
         // ------------------------------------------------------------------
         // 2. ablak: a kijelölt alakzat adatai (képlet + lokális paraméterek).
         // ------------------------------------------------------------------
-        fixed_panel("Tulajdonsagok", {O.x + PAD, O.y + PAD + lt_h + PAD},
-                    {layout.left_w, inner_h - lt_h});
+        // A Tulajdonsagok a JOBB oldalon, TELJES magassagban: ez a panel tartja a
+        // kepletet, a tartomanyt, a transzformaciot es a warp-lancot.
+        fixed_panel("Tulajdonsagok", {rx, O.y + PAD}, {layout.right_w, col_h});
         if (selected == nullptr) {
             ImGui::TextDisabled("Valassz egy alakzatot az \"Alakzatok\" listabol.");
         } else {
@@ -918,8 +931,8 @@ int main() {
         // 3. ablak: nézet, jelmagyarázat és irányítás — a program használata
         //    közben végig látható súgó.
         // ------------------------------------------------------------------
-        float const rx = O.x + S.x - PAD - layout.right_w;
-        fixed_panel("Nezet es sugo", {rx, O.y + PAD}, {layout.right_w, rt_h});
+        fixed_panel("Nezet es sugo", {O.x + PAD, O.y + PAD + h1 + PAD},
+                    {layout.left_w, h2});
 
         auto swatch = [](ImVec4 c, char const* text) {
             ImGui::ColorButton("##sw", c,
@@ -1000,8 +1013,8 @@ int main() {
         // ------------------------------------------------------------------
         // 4. ablak: paraméterek — jelenet- és program-szinten.
         // ------------------------------------------------------------------
-        fixed_panel("Parameterek", {rx, O.y + PAD + rt_h + PAD},
-                    {layout.right_w, inner_h - rt_h});
+        fixed_panel("Parameterek", {O.x + PAD, O.y + PAD + h1 + PAD + h2 + PAD},
+                    {layout.left_w, h3});
 
         ImGui::TextDisabled("Hatokor kifele: alakzat -> jelenet -> program.");
         ImGui::TextDisabled("A belso ELFEDI a kulsot (mint C++-ban).");
@@ -1052,7 +1065,7 @@ int main() {
         // Kozepso ablak: a 3D nezet (a jelenet texturaja), fulekkel.
         // ------------------------------------------------------------------
         ImGui::SetNextWindowPos({cx, O.y + PAD});
-        ImGui::SetNextWindowSize({cw, inner_h + PAD});
+        ImGui::SetNextWindowSize({cw, col_h});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("##nezet", nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
@@ -1140,17 +1153,19 @@ int main() {
 
         // --- Huzhato elvalasztok --------------------------------------------
         splitter("##split_left",  {O.x + PAD + layout.left_w, O.y + PAD},
-                 {PAD, inner_h + PAD}, true,  &layout.left_w,  MINW, max_side, +1.0f);
+                 {PAD, col_h}, true, &layout.left_w,  MINW, max_side, +1.0f);
         splitter("##split_right", {rx - PAD, O.y + PAD},
-                 {PAD, inner_h + PAD}, true,  &layout.right_w, MINW, max_side, -1.0f);
+                 {PAD, col_h}, true, &layout.right_w, MINW, max_side, -1.0f);
         {
-            float lt_px = lt_h, rt_px = rt_h;
-            splitter("##split_lh", {O.x + PAD, O.y + PAD + lt_h},
-                     {layout.left_w, PAD}, false, &lt_px, 120.0f, inner_h - 120.0f, +1.0f);
-            splitter("##split_rh", {rx, O.y + PAD + rt_h},
-                     {layout.right_w, PAD}, false, &rt_px, 120.0f, inner_h - 120.0f, +1.0f);
-            layout.left_top  = std::clamp(lt_px / std::max(inner_h, 1.0f), 0.15f, 0.85f);
-            layout.right_top = std::clamp(rt_px / std::max(inner_h, 1.0f), 0.15f, 0.85f);
+            // A bal sav ket vizszintes osztasa. Pixelben huzzuk, aranyban taroljuk:
+            // igy ablak-atmeretezeskor egyutt mozognak a panelekkel.
+            float p1 = h1, p2 = h2;
+            splitter("##split_l1", {O.x + PAD, O.y + PAD + h1},
+                     {layout.left_w, PAD}, false, &p1, 90.0f, left_avail - 180.0f, +1.0f);
+            splitter("##split_l2", {O.x + PAD, O.y + PAD + h1 + PAD + h2},
+                     {layout.left_w, PAD}, false, &p2, 90.0f, left_avail - 180.0f, +1.0f);
+            layout.left_f1 = p1 / left_avail;
+            layout.left_f2 = p2 / left_avail;
         }
 
         if (needs_rebuild) build_all();
