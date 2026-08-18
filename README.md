@@ -71,7 +71,7 @@ ctest --test-dir build --output-on-failure
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
-| `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, és a `t` idő (élő követés + `∂F/∂t`) |
+| `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
@@ -147,7 +147,7 @@ A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy ön�
 | **Tulajdonságok** | a kijelölt alakzat neve, a **`szin`** és **`anyag`** lenyíló (a fényképhez), és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
 | **Parameterek** | a **jelenet** paraméterei, a **program-szintű** paraméterek, és a jelenet **munkatere**. |
 | **(középen)** | a 3D nézet, fülekre bontva — `+` gombbal új jelenet, `X`-szel bezárható. |
-| **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások és a teljes irányítás — a program használata közben végig látható. |
+| **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások, a részecske-korongok **hézag**-csúszkája és a teljes irányítás — a program használata közben végig látható. |
 
 ### Fénykép (sugárkövetés)
 
@@ -286,6 +286,23 @@ szimuláció amúgy is kiszámol, és a korong forgatásához már eddig is hasz
 - A megvilágítás „half-Lambert": a `dot` `[0,1]`-re képződik le a szokásos
   `max(0,dot)` helyett, így a fénytől elforduló korongok sem esnek egyetlen
   egyenletes sötét foltba, és a forma végig olvasható marad.
+
+### A korongok mérete — `hezag` csúszka
+
+A korong sugara alapból `σ/2`. Ez nem véletlen: a Witkin-féle taszítás a szomszédokat
+nagyjából `σ` távolságra állítja be, tehát `σ/2` sugárnál a korongok **éppen összeérnek**,
+és a felület folytonos hártyának látszik. Ez viszont el is fedi a mintavételezést: nem
+látszik, hol vannak valójában a pontok és mennyire egyenletes az eloszlásuk.
+
+A `Nézet és súgó → Nézet → hezag` csúszka ezt állítja: a szomszédos korongok szélei közt
+látszó rés `σ·hezag` lesz. `0` = éppen összeérnek, negatív = átfedők (tömörebb felület),
+`0.9` = apró pontok. A logika `particle_sampling/ParticleView.hpp`-ben van, GL nélkül
+tesztelve (`test_ui` 7. szakasz).
+
+> Ez **csak a rajzolás**. A részecskék helyét, a `σ`-t és a taszítást nem érinti, tehát a
+> csúszka mozgatása nem indítja újra és nem billenti ki a mintavételezést — a **tényleges**
+> részecsketávolságot a `d` csúszka állítja. A kontrollpontokra szándékosan nem hat: azok
+> mérete fix, mert az egérrel való elkapásuk sugara is fix.
 
 ### Tájékozódás a térben
 

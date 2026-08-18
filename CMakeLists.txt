@@ -99,6 +99,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         particle_sampling/Transform.hpp
         particle_sampling/WarpPresets.hpp
         particle_sampling/SpatialGrid.hpp
+        particle_sampling/ParticleView.hpp
         matek/Program.hpp
         matek/Kif.hpp
         model/Include.hpp

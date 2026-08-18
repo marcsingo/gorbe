@@ -19,6 +19,7 @@
 #include "particle_sampling/ImplicitSurface.hpp"
 #include "particle_sampling/Transform.hpp"
 #include "particle_sampling/WarpPresets.hpp"
+#include "particle_sampling/ParticleView.hpp"
 
 // --- Sugarkoveto komponens (onallo, levalaszthato: lasd raytrace/Raytracer.hpp) ---
 #include <filesystem>
@@ -1003,6 +1004,17 @@ int main() {
             ImGui::SetNextItemWidth(150.0f);
             if (ImGui::SliderFloat("tavolsag", &dist, 3.0f, 60.0f))
                 cam.look_at(glm::normalize(cam.get_position()) * dist);
+
+            // A korongok megjelenitesi merete. NEM a szimulacio: a reszecskek helye
+            // es a `d` altal beallitott tenyleges tavolsaguk valtozatlan marad.
+            ImGui::SeparatorText("Reszecskek");
+            ImGui::SetNextItemWidth(150.0f);
+            ImGui::SliderFloat("hezag", &ParticleView::gap,
+                               ParticleView::GAP_MIN, ParticleView::GAP_MAX, "%.2f");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("0")) ParticleView::gap = 0.0f;
+            ImGui::TextDisabled("0 = a korongok eppen osszeernek, negativ = atfedok.");
+            ImGui::TextDisabled("Csak a rajzolast allitja; a tenyleges suruseg a `d`.");
         }
 
         if (ImGui::CollapsingHeader("Iranyitas", ImGuiTreeNodeFlags_DefaultOpen)) {

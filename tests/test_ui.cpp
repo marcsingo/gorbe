@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "model/Viewport.hpp"
+#include "particle_sampling/ParticleView.hpp"
 #include "scene/Scope.hpp"
 #include "scene/Time.hpp"
 #include "matek/Kif.hpp"
@@ -185,6 +186,53 @@ int main() {
         near("t-fuggetlen alakzat erteke sem valtozik", still.at({2, 0, 0}), 0.0f);
 
         SceneTime::value = 0.0f;   // ne szivarogjon at masik tesztre
+    }
+
+    std::printf("\n=== 7. A reszecske-korongok megjelenitesi hezaga ===\n");
+    {
+        float const sigma = 0.8f;      // tipikus egyensulyi tavolsag ket szomszed kozt
+
+        // Alapallapot: a korongok EPPEN osszeernek. Ket szomszed sigma tavolsagra
+        // all be, tehat a ket sugar osszege pont sigma.
+        ParticleView::gap = 0.0f;
+        near("alapban a sugar sigma/2", ParticleView::disk_radius(sigma), 0.4f);
+        near("ket szomszedos korong eppen osszeer",
+             2.0f * ParticleView::disk_radius(sigma), sigma);
+
+        // A csuszka ERTELME: a korongok szelei kozt latszo res sigma*gap legyen.
+        for (float g : {0.25f, 0.5f, 0.9f}) {
+            ParticleView::gap = g;
+            float const res = sigma - 2.0f * ParticleView::disk_radius(sigma);
+            near("hezag=" + std::to_string(g).substr(0, 4) + " -> a res sigma*hezag",
+                 res, sigma * g);
+        }
+
+        // Negativ hezag = atfedes (tomorebb felulet).
+        ParticleView::gap = -0.5f;
+        ok("negativ hezagnal a korongok ATFEDNEK",
+           2.0f * ParticleView::disk_radius(sigma) > sigma,
+           "atmero=" + std::to_string(2.0f * ParticleView::disk_radius(sigma)) +
+           " tavolsag=" + std::to_string(sigma));
+
+        // A tartomanyon kivuli ertek nem fordithatja ki a korongot.
+        ParticleView::gap = 5.0f;
+        ok("tul nagy hezag: a sugar nem lesz negativ",
+           ParticleView::disk_radius(sigma) >= 0.0f &&
+           ParticleView::disk_radius(sigma) <= 0.5f * sigma,
+           "sugar=" + std::to_string(ParticleView::disk_radius(sigma)));
+        ParticleView::gap = -9.0f;
+        near("tul kicsi hezag levagva (GAP_MIN)",
+             ParticleView::disk_radius(sigma), 0.5f * sigma * (1.0f - ParticleView::GAP_MIN));
+
+        // A merettel egyutt skalazodik: nagyobb sigma -> aranyosan nagyobb korong.
+        ParticleView::gap = 0.3f;
+        near("ketszeres sigma -> ketszeres sugar",
+             ParticleView::disk_radius(2.0f * sigma), 2.0f * ParticleView::disk_radius(sigma));
+        near("sigma=0 -> nincs korong", ParticleView::disk_radius(0.0f), 0.0f);
+        ok("NaN sigma sem ad ervenytelen korongot",
+           ParticleView::disk_radius(std::nanf("")) == 0.0f);
+
+        ParticleView::gap = 0.0f;      // ne szivarogjon at masik tesztre
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);

@@ -11,6 +11,7 @@
 // peldanyosodik, amikor a Surface mar teljes.
 #include "../model/Include.hpp"
 #include "DomainConstraint.hpp"
+#include "ParticleView.hpp"
 #include <algorithm>
 #include <vector>
 
@@ -66,6 +67,11 @@ private:
 protected:
     std::vector<Particle<L>> particles;
 
+    // Kövesse-e ez a halmaz a megjelenítési hézag-csúszkát? A KONTROLLPONTOKNÁL nem:
+    // azok mérete szándékosan fix, mert az egérrel való elkapásuk sugara is fix —
+    // ha a rajzolt korong elszakadna tőle, a felhasználó mellényúlna.
+    bool follow_view_gap = true;
+
     void render(const Camera &camera) override {
         if (particles.empty()) return;
 
@@ -91,12 +97,18 @@ protected:
             glm::vec3 T = glm::normalize(glm::cross(N, helper));
             glm::vec3 B = glm::cross(N, T);
 
+            // A korong sugara alapból σ/2 (ekkor a szomszédok éppen összeérnek); a
+            // "Nezet es sugo" panel hézag-csúszkája ezt szűkíti vagy tágítja.
+            float const R = this->follow_view_gap ? ParticleView::disk_radius(p.sigma)
+                                                  : p.sigma / 2.0f;
+            if (R <= 0.0f) continue;
+
             for (int i = 0; i < DISK_SEGS; i++) {
                 float a0 = TWO_PI * float(i)     / float(DISK_SEGS);
                 float a1 = TWO_PI * float(i + 1) / float(DISK_SEGS);
                 this->vertices.push_back(p.p);
-                this->vertices.push_back(p.p + p.sigma / 2.0f * (std::cos(a0) * T + std::sin(a0) * B));
-                this->vertices.push_back(p.p + p.sigma / 2.0f * (std::cos(a1) * T + std::sin(a1) * B));
+                this->vertices.push_back(p.p + R * (std::cos(a0) * T + std::sin(a0) * B));
+                this->vertices.push_back(p.p + R * (std::cos(a1) * T + std::sin(a1) * B));
                 // A korong lapos, tehát mindhárom csúcsához a felület normálisa
                 // (a már kiszámolt N) tartozik — ettől olvasható térben az alak.
                 this->normals.push_back(N);
@@ -182,6 +194,10 @@ public:
 
     ControlPoints(int size, const glm::vec3 &color, Camera const &camera)
         : Particles<L>(size, color, camera) {
+
+        // A kontrollpont FIX méretű: az elkapási sugara (lentebb 0.5) is fix, a
+        // kettőnek együtt kell mozognia, különben mellényúlna a felhasználó.
+        this->follow_view_gap = false;
 
         btn_sub = Window::Subscription(Window::add_mouse_button_event([this, &camera](auto p) {
             if (!input_enabled) return;
