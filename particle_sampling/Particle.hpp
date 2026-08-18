@@ -33,6 +33,7 @@ struct Particle {
     ParticleState state = ramozog;
 
     float F;
+    float F_t = 0.0f; // dF/dt — a felület saját mozgása (ha a képlet fugg a `t` idotol)
     float K = 0.0f;   // a felület közepes görbülete a részecske helyén (surface.curvature)
 
     // Tartomány-feltétel a részecske helyén: dom > 0 = megfelelő térrészben van.

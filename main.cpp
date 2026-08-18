@@ -14,6 +14,7 @@
 // A Kif / make_kif / Kifejezes a Matek::Analizis névtérből jön (a Surface.hpp
 // globális `using namespace`-e miatt közvetlenül elérhető).
 #include "scene/Scope.hpp"
+#include "scene/Time.hpp"
 #include "particle_sampling/Surface.hpp"
 #include "particle_sampling/ImplicitSurface.hpp"
 #include "particle_sampling/Transform.hpp"
@@ -173,7 +174,7 @@ static bool is_reserved(char const* n) {
         "sin", "cos", "tan", "tg", "ctg", "cot", "ln", "log", "sqrt", "abs", "sign",
         "min", "max", "unio", "union", "metszet", "intersect", "kulonbseg", "subtract",
         "smin", "smax", "sunio", "sunion", "smetszet", "sintersect", "skulonbseg", "ssubtract",
-        "and", "or", "not", "pi"};
+        "and", "or", "not", "pi", "t"};
     for (auto r : R)
         if (std::strcmp(n, r) == 0) return true;
     return false;
@@ -347,6 +348,10 @@ int main() {
     });
 
     app.set_gui([&] {
+        // A `t` beepitett ido frissitese. A kifejezesfa ennek a floatnak a CIMET
+        // tarolja, ezert eleg az erteket atirni — nem kell ujraparseolni.
+        SceneTime::value = static_cast<float>(glfwGetTime());
+
         // Az AKTUALIS jelenet allapota. A lenti kod ezeken a neveken dolgozik, tehat
         // mindig a kivalasztott ful adatait szerkeszti.
         Scene& sc = *cur;
@@ -473,6 +478,9 @@ int main() {
         //     alakzat lokalisai -> jelenet parameterei -> program-szintuek
         // A vegen a NALA KORABBI alakzatok neve (igy lehet oket egymasbol epiteni).
         auto resolve = [&](Shape const& owner, std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+            // A `t` (ido) beepitett: foglalt nev, tehat parameterkent nem veheto fel,
+            // viszont barmelyik kepletben hasznalhato.
+            if (nm == "t") return Kif(SceneTime::ptr()).get();
             if (float const* v = Scope::find({&owner.locals, &scene_params, &program_params},
                                              nm.c_str()))
                 return Kif(v).get();
@@ -486,6 +494,7 @@ int main() {
         // A jelenet munkatere alakzat-lokalist nem lathat (nincs "sajat" alakzata),
         // de a jelenet- es program-szintu parametereket igen.
         auto resolve_global = [&](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+            if (nm == "t") return Kif(SceneTime::ptr()).get();
             if (float const* v = Scope::find({&scene_params, &program_params}, nm.c_str()))
                 return Kif(v).get();
             return nullptr;
@@ -869,7 +878,8 @@ int main() {
             ImGui::Text("F(x, y, z) =");
             ImGui::InputTextMultiline("##keplet", s.formula, sizeof(s.formula),
                                       ImVec2(-1.0f, ImGui::GetTextLineHeight() * 3.5f));
-            ImGui::TextDisabled("Valtozok: x y z | sin cos tan ctg ln log sqrt abs sign");
+            ImGui::TextDisabled("Valtozok: x y z | t = ido (mp) | allando: pi");
+            ImGui::TextDisabled("Fuggvenyek: sin cos tan ctg ln log sqrt abs sign");
             ImGui::TextDisabled("Eles: unio(a,b) metszet(a,b) kulonbseg(a,b) min max");
             ImGui::TextDisabled("Sima: sunio(a,b,k) smetszet(a,b,k) skulonbseg(a,b,k)");
             ImGui::TextDisabled("Hivatkozhatsz a listaban ELOTTE allo alakzatok nevere is.");

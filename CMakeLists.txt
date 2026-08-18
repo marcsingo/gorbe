@@ -86,6 +86,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         model/Viewport.hpp
         model/Framebuffer.hpp
         scene/Scope.hpp
+        scene/Time.hpp
         raytrace/Raytracer.hpp
         raytrace/Palette.hpp
         raytrace/Image.hpp

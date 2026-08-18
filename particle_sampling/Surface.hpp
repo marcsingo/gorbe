@@ -8,6 +8,7 @@
 #include "../matek/Kif.hpp"
 #include "../matek/Analizis.hpp"
 #include "Particle.hpp"
+#include "../scene/Time.hpp"
 
 // Célzott using-deklarációk a régi globális `using namespace Matek::Analizis;` helyett:
 // az utóbbi minden fordítási egységbe beszórta az `x`, `y`, `z` neveket is, ami ahogy
@@ -42,6 +43,12 @@ public:
     // elég a felső háromszög: dxy = dyx, stb.
     Kif F_dxx, F_dxy, F_dxz, F_dyy, F_dyz, F_dzz;
     Kif F;
+
+    // dF/dt — a felület SAJÁT mozgása, ha a képlet hivatkozik a `t` időre.
+    // A Witkin-lépésben ez a tag tartja a részecskét a mozgó felületen; nélküle
+    // csak a PHI*F visszacsatolás húzná vissza, ami láthatóan lemarad. (Ha a képlet
+    // nem függ t-től, a szimbolikus deriválás konstans 0-t ad, tehát ingyen van.)
+    Kif F_dt;
 
     glm::vec<L, float> q;
     glm::vec<L, float> q_dot;
@@ -169,33 +176,36 @@ public:
     //   prog_full : ugyanaz + a Hesse 6 eleme (csak ha kell a görbület)
     //   prog_dom  : a tartomány-feltétel és a gradiense
     Program prog_grad, prog_full, prog_dom;
-    int out_grad[4]{};
-    int out_full[10]{};
+    int out_grad[5]{};    // F, dF/dx, dF/dy, dF/dz, dF/dt
+    int out_full[11]{};   // + a Hesse 6 eleme
     int out_dom[4]{};
 
-    // F és a gradiens egy menetben.
-    void eval_grad(glm::vec3 at, float& F_out, glm::vec3& grad_out) const {
+    // F, a gradiens és az idő szerinti derivált egy menetben.
+    void eval_grad(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& Ft_out) const {
         prog_grad.run(at);
         F_out    = prog_grad.slot(out_grad[0]);
         grad_out = {prog_grad.slot(out_grad[1]),
                     prog_grad.slot(out_grad[2]),
                     prog_grad.slot(out_grad[3])};
+        Ft_out   = prog_grad.slot(out_grad[4]);
     }
 
     // F, a gradiens és a közepes görbület egy menetben.
-    void eval_full(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& K_out) const {
+    void eval_full(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& K_out,
+                   float& Ft_out) const {
         prog_full.run(at);
         F_out    = prog_full.slot(out_full[0]);
         grad_out = {prog_full.slot(out_full[1]),
                     prog_full.slot(out_full[2]),
                     prog_full.slot(out_full[3])};
+        Ft_out   = prog_full.slot(out_full[4]);
         K_out = mean_curvature(grad_out,
-                               prog_full.slot(out_full[4]),   // fxx
-                               prog_full.slot(out_full[7]),   // fyy
-                               prog_full.slot(out_full[9]),   // fzz
-                               prog_full.slot(out_full[5]),   // fxy
-                               prog_full.slot(out_full[6]),   // fxz
-                               prog_full.slot(out_full[8]));  // fyz
+                               prog_full.slot(out_full[5]),    // fxx
+                               prog_full.slot(out_full[8]),    // fyy
+                               prog_full.slot(out_full[10]),   // fzz
+                               prog_full.slot(out_full[6]),    // fxy
+                               prog_full.slot(out_full[7]),    // fxz
+                               prog_full.slot(out_full[9]));   // fyz
     }
 
     // A tartomány-feltétel és a gradiense egy menetben.
@@ -215,6 +225,10 @@ public:
         F_dy = F.derrive('y');
         F_dz = F.derrive('z');
 
+        // Az idő szerinti derivált: a `t` egy CÍM szerinti paraméter, ezért a cím
+        // szerinti deriválást hívjuk (lásd Kif::derrive(float const*)).
+        F_dt = F.derrive(SceneTime::ptr());
+
         // Hesse-mátrix (szimmetrikus): a már kész elsőrendű deriváltakat deriváljuk tovább.
         F_dxx = F_dx.derrive('x');
         F_dxy = F_dx.derrive('y');
@@ -227,15 +241,16 @@ public:
     }
 
     void compile_programs() {
-        Kif const* all[10] = {&F, &F_dx, &F_dy, &F_dz,
+        // A sorrend fix, es az eval_* ehhez indexel: F, grad(3), dF/dt, Hesse(6).
+        Kif const* all[11] = {&F, &F_dx, &F_dy, &F_dz, &F_dt,
                               &F_dxx, &F_dxy, &F_dxz, &F_dyy, &F_dyz, &F_dzz};
 
         prog_grad = Program{};
-        for (int i = 0; i < 4; ++i) out_grad[i] = all[i]->get()->compile(prog_grad);
+        for (int i = 0; i < 5; ++i) out_grad[i] = all[i]->get()->compile(prog_grad);
         prog_grad.finish();
 
         prog_full = Program{};
-        for (int i = 0; i < 10; ++i) out_full[i] = all[i]->get()->compile(prog_full);
+        for (int i = 0; i < 11; ++i) out_full[i] = all[i]->get()->compile(prog_full);
         prog_full.finish();
     }
 };

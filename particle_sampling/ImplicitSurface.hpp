@@ -240,11 +240,11 @@ public:
         // kell: a Hesse a derivált-fák tömegének ~98%-a, és ha a görbület-taszítás
         // ki van kapcsolva, a curvature_scale() amúgy is 1-et ad.
         if (curvature_repulsion > 0.0f) {
-            surface.eval_full(p.p, p.F, p.F_x, p.K);
+            surface.eval_full(p.p, p.F, p.F_x, p.K, p.F_t);
             // Éles CSG-varraton (min/max) a Hesse nem véges — ilyenkor 0, mintha sík lenne.
             if (!std::isfinite(p.K)) p.K = 0.0f;
         } else {
-            surface.eval_grad(p.p, p.F, p.F_x);
+            surface.eval_grad(p.p, p.F, p.F_x, p.F_t);
             p.K = 0.0f;
         }
         // Tartomány-feltétel (ha van): érték + gradiens + a felület menti irány.
@@ -337,9 +337,15 @@ public:
         //  és a fisszió/halál küszöböket a simulation()-ben.)
 
         if (glm::length(i.F_x) > 1e-6f) {
+            // A szamlaloban a felulet SAJAT mozgasa is benne van:
+            //   q_dot . dF/dq  — a parameterek valtozasa (kontrollpontok),
+            //   dF/dt          — az IDO szerinti valtozas (ha a keplet hasznalja a `t`-t).
+            // Ez utobbi nelkul egy animalt felulet mogott a reszecskek lemaradnanak: csak
+            // a PHI*F visszacsatolas huzna oket vissza, ami mindig hibaval kovet.
             i.p_dot =
                 i.P -
-                    ((glm::dot(i.F_x, i.P) + glm::dot(surface.q_dot, surface.get_F_q(i.p)) + PHI*i.F)
+                    ((glm::dot(i.F_x, i.P) + glm::dot(surface.q_dot, surface.get_F_q(i.p))
+                        + i.F_t + PHI*i.F)
                         /
                     glm::dot(i.F_x, i.F_x)) * i.F_x;
         } else {

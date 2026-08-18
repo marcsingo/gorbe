@@ -9,6 +9,8 @@
 
 #include "model/Viewport.hpp"
 #include "scene/Scope.hpp"
+#include "scene/Time.hpp"
+#include "matek/Kif.hpp"
 
 static int failures = 0;
 static void ok(std::string const& what, bool c, std::string const& info = "") {
@@ -137,6 +139,52 @@ int main() {
             near("B jelenet a sajatjat latja",        *b, 7.0f);
             ok("tehat a ket jelenet MAST lat ugyanarra a nevre", *a != *b);
         }
+    }
+
+    std::printf("\n=== 6. A beepitett `t` (ido) ===\n");
+    {
+        using namespace Matek::Analizis;
+        // Ugy oldjuk fel, ahogy a program: a `t` a SceneTime CIMERE mutat.
+        auto res = [](std::string const& nm) -> std::shared_ptr<Kifejezes const> {
+            if (nm == "t") return Kif(SceneTime::ptr()).get();
+            return nullptr;
+        };
+
+        // Mozgo gomb: a kozeppontja x = t menten halad.
+        Kif f = make_kif("(x - t)^2 + y^2 + z^2 - 1", res);
+
+        SceneTime::value = 0.0f;
+        near("t=0: a kozeppont az origoban", f.at({0, 0, 0}), -1.0f);
+        near("t=0: (1,0,0) a feluleten",     f.at({1, 0, 0}),  0.0f);
+
+        SceneTime::value = 5.0f;                 // CSAK az erteket irjuk at
+        near("t=5: a kozeppont x=5-nel",     f.at({5, 0, 0}), -1.0f);
+        near("t=5: (6,0,0) a feluleten",     f.at({6, 0, 0}),  0.0f);
+        ok("tehat ujraparseolas nelkul kovet", true);
+
+        // dF/dt: ezt a tagot hasznalja a szimulacio, hogy a reszecske EGYUTT
+        // mozogjon a felulettel. F = (x-t)^2 + ... -> dF/dt = -2(x-t)
+        Kif ft = f.derrive(SceneTime::ptr());
+        SceneTime::value = 2.0f;
+        near("dF/dt a (5,0,0) pontban = -2(5-2)", ft.at({5, 0, 0}), -6.0f);
+        near("dF/dt a kozeppontban = 0",          ft.at({2, 0, 0}),  0.0f);
+
+        // Numerikus ellenorzes: (F(t+h) - F(t-h)) / 2h
+        float const h = 1e-3f;
+        glm::vec3 q{4.0f, 0.5f, -0.25f};
+        SceneTime::value = 2.0f + h; float fp = f.at(q);
+        SceneTime::value = 2.0f - h; float fm = f.at(q);
+        SceneTime::value = 2.0f;
+        near("dF/dt szimbolikus == numerikus", ft.at(q), (fp - fm) / (2.0f * h), 1e-2f);
+
+        // Ha a keplet NEM fugg t-tol, a derivalt azonosan 0 (tehat ingyen van).
+        Kif still = make_kif("x^2 + y^2 + z^2 - 4", res);
+        Kif still_t = still.derrive(SceneTime::ptr());
+        SceneTime::value = 123.0f;
+        near("t-fuggetlen alakzat: dF/dt = 0", still_t.at({1, 2, 3}), 0.0f);
+        near("t-fuggetlen alakzat erteke sem valtozik", still.at({2, 0, 0}), 0.0f);
+
+        SceneTime::value = 0.0f;   // ne szivarogjon at masik tesztre
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);

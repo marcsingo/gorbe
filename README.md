@@ -71,7 +71,7 @@ ctest --test-dir build --output-on-failure
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), a csúcsfény fehérsége (műanyag), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú |
-| `test_ui` | a 3D nézet koordináta-átváltása (panel belsejében) és a három szintű hatókör-feloldás/elfedés |
+| `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, és a `t` idő (élő követés + `∂F/∂t`) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
 
@@ -184,6 +184,25 @@ sort, a `Fenykep` gombot kezelő blokkot, a `Shape::color_idx`/`dom_tree` mezők
 a `szin` lenyílót. Semmi más nem hivatkozik rá — a komponens nem függ sem OpenGL-től,
 sem az ablaktól, sem a jelenet-modelltől, csak a `matek/` kifejezésrendszertől.
 
+### `t` — az idő, animációhoz
+
+A `t` beépített név: **paraméterként nem vehető fel** (foglalt), viszont bármelyik
+képletben használható, és a program indulása óta eltelt időt adja másodpercben.
+
+```
+x^2 + y^2 + (z - 2*sin(t))^2 - 4          fel-le mozgó gömb
+unio(x^2+y^2+z^2-1, (x-3*cos(t))^2+y^2+z^2-1)   keringő második gömb
+```
+
+- A kifejezésfa a `t` **címét** tárolja, ezért az idő múlása magától hat: nincs
+  újraparseolás, újraderiválás vagy újraindítás.
+- A részecskék **együtt mozognak** a felülettel. Ehhez a Witkin-lépés számlálójában
+  szerepel a `∂F/∂t` tag is (`Surface::F_dt`) — enélkül csak a `PHI*F` visszacsatolás
+  húzná vissza őket, ami láthatóan lemaradna a mozgó felület mögött. Ha a képlet nem
+  hivatkozik `t`-re, a szimbolikus deriválás konstans 0-t ad, tehát ez ingyen van.
+- Egyetlen, **program-szintű** óra van (nem fülönkénti). Ebből következik, hogy egy
+  háttérben álló fül alakzata visszaváltáskor a megváltozott `t`-hez ugrik.
+
 ### Jelenetek (fülek)
 
 Minden fül egy **önálló jelenet**: saját alakzatok, saját paraméterek, saját munkatér,
@@ -246,8 +265,8 @@ zárójelezni). Függvények:
 
 | kategória | függvények |
 |---|---|
+| beépített nevek | `x` `y` `z` (hely), **`t`** (idő, másodperc), `pi` |
 | egyváltozós | `sin cos tan`/`tg` `ctg`/`cot` `ln log sqrt abs sign` |
-| állandó | `pi` |
 | éles halmazműveletek | `unio(a,b)` `metszet(a,b)` `kulonbseg(a,b)` `min(a,b)` `max(a,b)` |
 | sima halmazműveletek | `sunio(a,b[,k])` `smetszet(a,b[,k])` `skulonbseg(a,b[,k])` `smin` `smax` |
 
@@ -723,6 +742,7 @@ minden kimenetre.
 | `model/Viewport.hpp` | a 3D nézet téglalapja és a koordináta-átváltás; a bemenet-kapu |
 | `model/Framebuffer.hpp` | képernyőn kívüli rajzolási cél (a nézet textúrája) |
 | `scene/Scope.hpp` | a három szintű hatókör-feloldás (elfedéssel) |
+| `scene/Time.hpp` | a képletekben használható `t` idő |
 | `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
