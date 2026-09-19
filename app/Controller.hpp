@@ -7,11 +7,14 @@
 #include <list>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "../scene/Build.hpp"
 #include "../scene/Names.hpp"
 #include "../scene/ProjectFile.hpp"
 #include "../ui/Requests.hpp"
+#include "Parallel.hpp"
 #include "Photo.hpp"
 #include "Scene.hpp"
 
@@ -39,6 +42,28 @@ public:
         std::snprintf(s0.name, sizeof(s0.name), "Jelenet 1");
         cur_ = &s0;
         cur_->set_active(true);
+
+        // A szimuláció órája: frame-enként egyszer, az aktuális fül esedékes
+        // objektumait PÁRHUZAMOSAN lépteti (a háttérben lévők úgysem futnak).
+        sim_sub = Window::Subscription(Window::add_time_passed_event([this](auto ev) {
+            step_objects(static_cast<float>(ev.dt));
+        }));
+    }
+
+    // Az esedékes objektumok egy-egy lépése, párhuzamosan (app/Parallel.hpp).
+    //
+    // Biztonságos: minden objektumnak saját részecskéi, lefordított programjai (a
+    // munkaterületükkel) és véletlenszám-generátora van; a közös adatokat
+    // (paraméterek, a `t`, a kifejezésfák) a lépés csak OLVASSA, és a GUI csak a
+    // lépések befejezése után írhat újra — ez a hívás megvárja az összeset.
+    void step_objects(float dt) {
+        if (!cur_) return;
+        std::vector<std::pair<SpaceObject*, float>> due;
+        for (auto& p : cur_->pool)
+            if (float const s = p->controller().advance(dt); s > 0.0f) due.emplace_back(p.get(), s);
+        Parallel::for_each(due.size(), [&](std::size_t i) {
+            due[i].first->model().step(due[i].second);
+        });
     }
 
     Scene& cur() { return *cur_; }
@@ -133,6 +158,7 @@ public:
 
 private:
     Scene* cur_ = nullptr;
+    Window::Subscription sim_sub;
 
     // Minden jelenet lecserélése egy betöltött projektre, és a felépítésük, hogy
     // rögtön lássuk is. SORREND: előbb a régi jelenetek szűnnek meg (a fáik a régi

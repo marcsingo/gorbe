@@ -7,8 +7,10 @@
 // ===========================================================================
 // Egy térbeli objektum VEZÉRLŐJE: az idő és a bevitel.
 //
-//  * Óra: fix lépésközzel lépteti a modellt, amíg fut (`running`). A háttérben
-//    lévő fülek objektumai állnak — a részecskék állapota megmarad, és
+//  * Óra: gyűjti az eltelt időt, és megmondja, esedékes-e egy szimulációs lépés
+//    (advance). Magát a lépést a jelenet vezérlője futtatja, az összes objektumét
+//    PÁRHUZAMOSAN (app/Controller.hpp). Amíg nem fut (`running`), nincs lépés: a
+//    háttérben lévő fülek objektumai állnak, a részecskék állapota megmarad, és
 //    visszaváltáskor onnan folytatódik.
 //  * Bevitel: Shift + bal kattintás új kontrollpontot tesz le, bal gombbal húzva
 //    mozgatható. Csak az aktív jelenet objektumai reagálnak (`input_enabled`).
@@ -27,9 +29,7 @@ class ObjectController {
     // Ilyen gyakran lép a szimuláció (másodperc). A lépés dt-je az azóta eltelt idő.
     static constexpr float SIM_PERIOD = 0.03f;
 
-    // A regisztrációs sorrend számít (a Window ebben a sorrendben hívja őket):
-    // előbb a kontrollpont-húzás, utána a szimulációs lépés.
-    Window::Subscription btn_sub, key_sub, drag_sub, sim_sub;
+    Window::Subscription btn_sub, key_sub, drag_sub;
 
 public:
     bool running = false;
@@ -69,19 +69,21 @@ public:
             auto target = camera.get_mouse_pos_on_plane(cs[selected].p, camera.get_front());
             model.drag_control(selected, target, static_cast<float>(ev.dt));
         }));
-
-        sim_sub = Window::Subscription(Window::add_time_passed_event([this](auto ev) {
-            if (!running) return;            // leállított állapotban nem szimulálunk
-            sim_accum += static_cast<float>(ev.dt);
-            if (sim_accum >= SIM_PERIOD) {
-                model.step(sim_accum);
-                sim_accum = 0.0f;
-            }
-        }));
     }
 
     ObjectController(ObjectController const&) = delete;
     ObjectController& operator=(ObjectController const&) = delete;
+
+    // Az eltelt idő hozzáadása. Ha esedékes egy lépés, annak dt-jét adja vissza
+    // (az utolsó lépés óta eltelt időt), különben 0-t. Leállítva mindig 0.
+    float advance(float dt) {
+        if (!running) return 0.0f;
+        sim_accum += dt;
+        if (sim_accum < SIM_PERIOD) return 0.0f;
+        float const step_dt = sim_accum;
+        sim_accum = 0.0f;
+        return step_dt;
+    }
 
     // Leállításkor a félig gyűjtött időt is eldobjuk, hogy az újraindítás ne
     // egy nagy lépéssel kezdjen.

@@ -8,6 +8,13 @@
 #include <cstdio>
 #include <string>
 
+#include <atomic>
+#include <memory>
+#include <stdexcept>
+#include <thread>
+#include <vector>
+
+#include "app/Parallel.hpp"
 #include "particle_sampling/ParticleSystem.hpp"
 
 static int failures = 0;
@@ -96,6 +103,45 @@ int main() {
         glm::vec3 p = ps.controls()[0].p;
         ok("a huzott pont a celhoz ert", glm::length(p - glm::vec3{0, 2, 0}) < 0.05f);
         ok("a normalisa kovette (a gombon kifele)", ps.controls()[0].F_x.y > 3.0f);
+    }
+
+    std::printf("\n=== 5. Parhuzamos leptetes (app/Parallel.hpp) ===\n");
+    {
+        // Minden index pontosan egyszer fut, akkor is, ha tobb feladat van, mint mag.
+        std::size_t const n = 4 * std::max(1u, std::thread::hardware_concurrency()) + 3;
+        std::vector<std::atomic<int>> hits(n);
+        Parallel::for_each(n, [&](std::size_t i) { hits[i]++; });
+        bool once = true;
+        for (auto& h : hits) once = once && h == 1;
+        ok("minden index pontosan egyszer", once, std::to_string(n) + " feladat");
+
+        bool caught = false;
+        try { Parallel::for_each(8, [](std::size_t i) { if (i == 5) throw std::runtime_error("x"); }); }
+        catch (std::runtime_error const&) { caught = true; }
+        ok("a szalbeli kivetel a hivohoz jut", caught);
+
+        // Tobb objektum egyszerre leptetve: mindegyik ugyanugy felepiti a mintavetelt,
+        // mint egyedul (nincs kozos, irt allapot koztuk).
+        char const* const F[] = {"x^2 + y^2 + z^2 - 4",
+                                 "(x^2 + y^2 + z^2 + 9 - 1)^2 - 4*9*(x^2 + y^2)",
+                                 "x^2 + y^2 - 1",
+                                 "sunio(x^2+y^2+z^2-4, (x-2.5)^2+y^2+z^2-4, 0.5)"};
+        std::vector<std::unique_ptr<ParticleSystem>> objs;
+        for (char const* f : F) {
+            auto& o = objs.emplace_back(std::make_unique<ParticleSystem>());
+            o->d = 1.0f;
+            o->surface().set_tree(Matek::Analizis::make_kif(f).get());
+            if (std::string(f) == "x^2 + y^2 - 1")   // vegtelen henger: veges darab
+                o->surface().set_domain(Matek::Analizis::make_kif("z > -2 and z < 2").get());
+            o->restart();
+        }
+        for (float t = 0.0f; t < 20.0f; t += 0.03f)
+            Parallel::for_each(objs.size(), [&](std::size_t i) { objs[i]->step(0.03f); });
+        for (std::size_t i = 0; i < objs.size(); ++i) {
+            float r = on_surface_ratio(*objs[i], 0.05f);
+            ok(std::string("parhuzamosan: ") + F[i], objs[i]->particles().size() > 30 && r > 0.9f,
+               std::to_string(objs[i]->particles().size()) + " db, feluleten " + std::to_string(r));
+        }
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);
