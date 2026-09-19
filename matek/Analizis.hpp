@@ -1,6 +1,8 @@
 #ifndef MATEK_FUGGVENY_HPP
 #define MATEK_FUGGVENY_HPP
 
+// A kifejezésfa csomópontjai. Kívülről a Kif.hpp-t (vagy a Parser.hpp-t) érdemes
+// behúzni: a Hivas deriváltja a Parser.hpp-ben van definiálva.
 #include "Kifejezes.hpp"
 
 #include "levelek/Konstans.hpp"
@@ -12,21 +14,9 @@
 #include "muveletek/Kulonbseg.hpp"
 #include "muveletek/Szorzat.hpp"
 #include "muveletek/Hanyados.hpp"
-
-#include "fuggvenyek/Fuggveny.hpp"
-#include "fuggvenyek/Ln.hpp"
-#include "fuggvenyek/Log.hpp"
-
 #include "muveletek/Hatvany.hpp"
 
-#include "fuggvenyek/Cos.hpp"
-#include "fuggvenyek/Tan.hpp"
-#include "fuggvenyek/Ctg.hpp"
-
-// Előjel / abszolútérték, és a rájuk épülő éles min-max (CSG) csomópontok.
-#include "fuggvenyek/Elojel.hpp"
-#include "fuggvenyek/Abs.hpp"
-#include "muveletek/Minimum.hpp"
-#include "muveletek/Maximum.hpp"
+#include "fuggvenyek/Fuggveny.hpp"
+#include "Fuggvenyek.hpp"
 
 #endif //MATEK_FUGGVENY_HPP

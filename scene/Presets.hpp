@@ -18,9 +18,9 @@
 // közönséges alakzat születik, ami utána szabadon szerkeszthető.
 //
 // A képletek szándékosan POLINOMIÁLISAK (nincs bennük sqrt), ahol lehet: a
-// sqrt(u) a parserben u^0.5-tá alakul, aminek a deriváltja u=0-ban végtelen —
-// a felületen (F=0) ez pont a rossz hely lenne. A blend-sablonban a gyök alatt
-// mindig van egy +k² tag, ezért ott biztonságos.
+// sqrt(u) deriváltja u=0-ban végtelen — a felületen (F=0) ez pont a rossz hely
+// lenne. A sima halmazműveletekben a gyök alatt mindig van egy +k² tag, ezért ott
+// biztonságos.
 // ---------------------------------------------------------------------------
 struct PresetParam {
     char const* name;
@@ -61,9 +61,9 @@ inline std::vector<Preset> const PRESETS = {
     // A feltetel NEM epul be F-be: igy nyers szelu felulet-darabot kapunk, nem
     // egy zart test hatarat (ami a vagolapokat is tartalmazna).
     {"Vegtelen + tartomany", "Sik (negyzet darab)", "sik", "z", {{"m", 3.0f}},
-        "x > 0 - m and x < m and y > 0 - m and y < m"},
+        "x > -m and x < m and y > -m and y < m"},
     {"Vegtelen + tartomany", "Henger (veges hosszu)", "cso", "x^2 + y^2 - r^2",
-        {{"r", 1.0f}, {"h", 3.0f}}, "z > 0 - h and z < h"},
+        {{"r", 1.0f}, {"h", 3.0f}}, "z > -h and z < h"},
 
     // Éles (C0) halmazműveletek: a varraton törés van, a gradiens ugrik.
     {"Eles muveletek", "Unio  (f1 U f2)",       "unio",       "unio(f1, f2)",       {}},

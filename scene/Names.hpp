@@ -5,17 +5,12 @@
 #include <cstdio>
 #include <cstring>
 
-// A parser által lefoglalt nevek: a térbeli változók és a beépített függvények.
+#include "../matek/Fuggvenyek.hpp"
+
+// A lefoglalt nevek: a nyelv beépített nevei (változók, állandók, kulcsszavak és a
+// függvénytábla — matek/Fuggvenyek.hpp), plusz a jelenet `t` ideje.
 inline bool is_reserved(char const* n) {
-    static char const* const R[] = {
-        "x", "y", "z",
-        "sin", "cos", "tan", "tg", "ctg", "cot", "ln", "log", "sqrt", "abs", "sign",
-        "min", "max", "unio", "union", "metszet", "intersect", "kulonbseg", "subtract",
-        "smin", "smax", "sunio", "sunion", "smetszet", "sintersect", "skulonbseg", "ssubtract",
-        "and", "or", "not", "pi", "t"};
-    for (auto r : R)
-        if (std::strcmp(n, r) == 0) return true;
-    return false;
+    return std::strcmp(n, "t") == 0 || Matek::Analizis::is_builtin(n);
 }
 
 // Azonosító-formátum: betűvel kezdődik, utána betű/szám/aláhúzás (ezt tudja a parser).

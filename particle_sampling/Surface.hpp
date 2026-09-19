@@ -122,9 +122,9 @@ public:
 
     void set_domain(std::shared_ptr<Kifejezes const> tree) {
         Dom = Kif(std::move(tree));
-        Dom_dx = Dom.derrive('x');
-        Dom_dy = Dom.derrive('y');
-        Dom_dz = Dom.derrive('z');
+        Dom_dx = Dom.derive('x');
+        Dom_dy = Dom.derive('y');
+        Dom_dz = Dom.derive('z');
 
         Kif const* all[4] = {&Dom, &Dom_dx, &Dom_dy, &Dom_dz};
         prog_dom = Program{};
@@ -219,23 +219,23 @@ public:
 
     void calculate() {
         for (int i = 0; i < L; i++) {
-            F_dp_s[&q[i]] = F.derrive(&q[i]);
+            F_dp_s[&q[i]] = F.derive(&q[i]);
         }
-        F_dx = F.derrive('x');
-        F_dy = F.derrive('y');
-        F_dz = F.derrive('z');
+        F_dx = F.derive('x');
+        F_dy = F.derive('y');
+        F_dz = F.derive('z');
 
         // Az idő szerinti derivált: a `t` egy CÍM szerinti paraméter, ezért a cím
-        // szerinti deriválást hívjuk (lásd Kif::derrive(float const*)).
-        F_dt = F.derrive(SceneTime::ptr());
+        // szerinti deriválást hívjuk (lásd Kif::derive(float const*)).
+        F_dt = F.derive(SceneTime::ptr());
 
         // Hesse-mátrix (szimmetrikus): a már kész elsőrendű deriváltakat deriváljuk tovább.
-        F_dxx = F_dx.derrive('x');
-        F_dxy = F_dx.derrive('y');
-        F_dxz = F_dx.derrive('z');
-        F_dyy = F_dy.derrive('y');
-        F_dyz = F_dy.derrive('z');
-        F_dzz = F_dz.derrive('z');
+        F_dxx = F_dx.derive('x');
+        F_dxy = F_dx.derive('y');
+        F_dxz = F_dx.derive('z');
+        F_dyy = F_dy.derive('y');
+        F_dyz = F_dy.derive('z');
+        F_dzz = F_dz.derive('z');
 
         compile_programs();
     }

@@ -2,6 +2,7 @@
 #define GORBE_UI_PROPSPANEL_HPP
 
 #include <list>
+#include <string>
 #include <utility>
 
 #include "imgui.h"
@@ -16,6 +17,29 @@
 #include "Requests.hpp"
 
 namespace Ui {
+
+    // A súgó a függvénytáblából (matek/Fuggvenyek.hpp) épül: egy új függvény így
+    // magától megjelenik itt is.
+    inline std::string const& function_list() {
+        static std::string const s = [] {
+            std::string r;
+            for (auto const& f : Matek::Analizis::FUNCS)  (r += f.name) += ' ';
+            for (auto const& m : Matek::Analizis::MACROS) (r += m.name) += ' ';
+            return r;
+        }();
+        return s;
+    }
+    inline std::string const& function_help() {
+        static std::string const s = [] {
+            std::string r;
+            for (auto const& f : Matek::Analizis::FUNCS)
+                r += std::string(f.name) + (f.arity() == 2 ? "(u, v)" : "(u)") + "  " + f.help + '\n';
+            for (auto const& m : Matek::Analizis::MACROS)
+                r += std::string(m.name) + "(" + m.params + ")  " + m.help + '\n';
+            return r;
+        }();
+        return s;
+    }
 
     // --- Warp-lánc szerkesztő ------------------------------------------------
     // Újraépítést akkor kér, ha a lánc SZERKEZETE vagy egy kifejezés szövege
@@ -109,10 +133,13 @@ namespace Ui {
             ImGui::Text("F(x, y, z) =");
             ImGui::InputTextMultiline("##keplet", s.formula, sizeof(s.formula),
                                       ImVec2(-1.0f, ImGui::GetTextLineHeight() * 3.5f));
-            ImGui::TextDisabled("Valtozok: x y z | t = ido (mp) | allando: pi");
-            ImGui::TextDisabled("Fuggvenyek: sin cos tan ctg ln log sqrt abs sign");
-            ImGui::TextDisabled("Eles: unio(a,b) metszet(a,b) kulonbseg(a,b) min max");
-            ImGui::TextDisabled("Sima: sunio(a,b,k) smetszet(a,b,k) skulonbseg(a,b,k)");
+            ImGui::TextDisabled("Valtozok: x y z | t = ido (mp) | allandok: pi e");
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("Fuggvenyek (reszletek: vidd ide az egeret): %s",
+                                function_list().c_str());
+            ImGui::PopTextWrapPos();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", function_help().c_str());
+            ImGui::TextDisabled("Rovidites: 2x  3(x+1)  x**2  -> 2*x  3*(x+1)  x^2");
             ImGui::TextDisabled("Hivatkozhatsz a listaban ELOTTE allo alakzatok nevere is.");
         }
 

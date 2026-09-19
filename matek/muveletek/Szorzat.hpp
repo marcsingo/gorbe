@@ -3,53 +3,42 @@
 
 #include "KetOperandus.hpp"
 #include "Osszeg.hpp"
-#include "../levelek/Konstans.hpp"
 
 namespace Matek {
     namespace Analizis {
 
         struct Szorzat : public KetOperandus {
-            explicit Szorzat(std::shared_ptr<Kifejezes const> bal, std::shared_ptr<Kifejezes const> jobb)
-                : KetOperandus(std::move(bal), std::move(jobb)) {}
+            explicit Szorzat(Tree bal, Tree jobb) : KetOperandus(std::move(bal), std::move(jobb)) {}
 
             float at(glm::vec3 const v) const override {
                 return get_bal()->at(v) * get_jobb()->at(v);
             }
 
-            std::shared_ptr<Kifejezes const> simplify() const override {
+            Tree simplify() const override {
                 auto bal = get_bal()->simplify();
                 auto jobb = get_jobb()->simplify();
-                auto bal_k = std::dynamic_pointer_cast<Konstans const>(bal);
-                auto jobb_k = std::dynamic_pointer_cast<Konstans const>(jobb);
-                if ((bal_k && bal_k->get_value() == 0.0f) || (jobb_k && jobb_k->get_value() == 0.0f))
-                    return std::make_shared<Konstans>(0.0f);
-                if (bal_k && bal_k->get_value() == 1.0f) return jobb;
-                if (jobb_k && jobb_k->get_value() == 1.0f) return bal;
+                if (const_of(jobb) && !const_of(bal)) std::swap(bal, jobb);   // konstans balra
+                auto a = const_of(bal), b = const_of(jobb);
+                if (a && b) return std::make_shared<Konstans>(a->get_value() * b->get_value());
+                if (is_const(bal, 0.0f)) return std::make_shared<Konstans>(0.0f);
+                if (is_const(bal, 1.0f)) return jobb;
+                // c1 * (c2 * u)  ->  (c1*c2) * u   — így lesz a 2*x*3-ból 6*x
+                if (a)
+                    if (auto in = dynamic_cast<Szorzat const*>(jobb.get()))
+                        if (auto c2 = const_of(in->get_bal()))
+                            return std::make_shared<Szorzat>(
+                                std::make_shared<Konstans>(a->get_value() * c2->get_value()),
+                                in->get_jobb());
                 return std::make_shared<Szorzat>(bal, jobb);
             }
 
-            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
+            Tree derive(Var const& var) const override {
                 return std::make_shared<Osszeg>(
-                    std::make_shared<Szorzat>(get_bal()->derrivate(var), get_jobb()),
-                    std::make_shared<Szorzat>(get_bal(), get_jobb()->derrivate(var))
-                );
-            }
-            std::shared_ptr<Kifejezes const> derrivate(float const * var) const override {
-                return std::make_shared<Osszeg>(
-                    std::make_shared<Szorzat>(get_bal()->derrivate(var), get_jobb()),
-                    std::make_shared<Szorzat>(get_bal(), get_jobb()->derrivate(var))
-                );
-            }
-            std::shared_ptr<Kifejezes const> derrivate(std::shared_ptr<Kifejezes const> var) const override {
-                return std::make_shared<Osszeg>(
-                    std::make_shared<Szorzat>(get_bal()->derrivate(var), get_jobb()),
-                    std::make_shared<Szorzat>(get_bal(), get_jobb()->derrivate(var))
-                );
+                    std::make_shared<Szorzat>(get_bal()->derive(var), get_jobb()),
+                    std::make_shared<Szorzat>(get_bal(), get_jobb()->derive(var)));
             }
 
-            std::shared_ptr<Kifejezes const> with_children(
-                std::shared_ptr<Kifejezes const> a,
-                std::shared_ptr<Kifejezes const> b) const override {
+            Tree with_children(Tree a, Tree b) const override {
                 return std::make_shared<Szorzat>(std::move(a), std::move(b));
             }
 
@@ -60,7 +49,7 @@ namespace Matek {
             }
 
         protected:
-            char const get_operator() const override { return '*'; }
+            char get_operator() const override { return '*'; }
         };
 
     }

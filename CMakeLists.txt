@@ -64,17 +64,8 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         matek/muveletek/Szorzat.hpp
         matek/muveletek/Hanyados.hpp
         matek/muveletek/Hatvany.hpp
-        matek/muveletek/Minimum.hpp
-        matek/muveletek/Maximum.hpp
         matek/fuggvenyek/Fuggveny.hpp
-        matek/fuggvenyek/Elojel.hpp
-        matek/fuggvenyek/Abs.hpp
-        matek/fuggvenyek/Ln.hpp
-        matek/fuggvenyek/Log.hpp
-        matek/fuggvenyek/Sin.hpp
-        matek/fuggvenyek/Cos.hpp
-        matek/fuggvenyek/Tan.hpp
-        matek/fuggvenyek/Ctg.hpp
+        matek/Fuggvenyek.hpp
         model/Window.cpp
         model/Window.hpp
         model/Shader.cpp
@@ -117,6 +108,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         particle_sampling/ParticleView.hpp
         matek/Program.hpp
         matek/Kif.hpp
+        matek/Parser.hpp
         model/Include.hpp
         particle_sampling/Particle.hpp)
 
@@ -143,7 +135,7 @@ target_compile_definitions(gorbe PRIVATE
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})

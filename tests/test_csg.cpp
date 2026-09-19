@@ -51,7 +51,7 @@ static Kif build(std::string const& formula) {
 static float norm(glm::vec3 v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
 
 static glm::vec3 grad(Kif const& f, glm::vec3 at) {
-    return {f.derrive('x').at(at), f.derrive('y').at(at), f.derrive('z').at(at)};
+    return {f.derive('x').at(at), f.derive('y').at(at), f.derive('z').at(at)};
 }
 
 // Numerikus (centralis differencia) gradiens az ellenorzeshez.
@@ -125,8 +125,8 @@ int main() {
     {
         Kif f = build("unio(f1, f2)");
         // csakA-ban f1 nyer, d2 f1/dx2 = 2
-        check("d2 unio/dx2 @ csak A", f.derrive('x').derrive('x').at(csakA), 2.0f);
-        float s = build("sunio(f1, f2, 0.5)").derrive('x').derrive('x').at(csakA);
+        check("d2 unio/dx2 @ csak A", f.derive('x').derive('x').at(csakA), 2.0f);
+        float s = build("sunio(f1, f2, 0.5)").derive('x').derive('x').at(csakA);
         check("d2 sunio/dx2 @ csak A veges", std::isfinite(s) ? 1.0f : 0.0f, 1.0f);
     }
 
@@ -161,8 +161,8 @@ int main() {
     check("abs(-3)",       make_kif("abs(0 - 3)").at({0, 0, 0}), 3.0f);
     check("sign(-3)",      make_kif("sign(0 - 3)").at({0, 0, 0}), -1.0f);
     check("sign(0)",       make_kif("sign(0)").at({0, 0, 0}), 0.0f);
-    check("d abs(x)/dx @ x=2",  make_kif("abs(x)").derrive('x').at({2, 0, 0}), 1.0f);
-    check("d abs(x)/dx @ x=-2", make_kif("abs(x)").derrive('x').at({-2, 0, 0}), -1.0f);
+    check("d abs(x)/dx @ x=2",  make_kif("abs(x)").derive('x').at({2, 0, 0}), 1.0f);
+    check("d abs(x)/dx @ x=-2", make_kif("abs(x)").derive('x').at({-2, 0, 0}), -1.0f);
 
     std::printf("\n=== 8. Hibas hivasok ===\n");
     check_throws("min(x) - keves argumentum",        "min(x)");

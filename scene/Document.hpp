@@ -69,6 +69,19 @@ struct Shape {
     bool warped = false;
 };
 
+// A jelenet SAJÁT függvénye: név(paraméterek) = törzs, pl. g(u, k = 1) = u^2 + k.
+// A képletekben úgy hívható, mint egy beépített függvény. A törzs a saját
+// paraméterein kívül x, y, z-t, a jelenet- és program-szintű paramétereket, a `t`-t
+// és a listában NÁLA KORÁBBI függvényeket látja (így rekurzió nem lehet).
+//
+// A képletbe a KIFEJTETT törzs épül be, a UserFunc memóriájára semmi nem mutat —
+// ezért törölni is szabadon lehet (legfeljebb a következő Indítás hibát ad).
+struct UserFunc {
+    char name[32]   = "";
+    char params[64] = "u";
+    char body[256]  = "";
+};
+
 // Egy jelenet (fül) adatai. A futásidejű része (kamera, mintavételezők) az
 // app/Scene.hpp-ben van, ami ebből származik.
 struct SceneDoc {
@@ -83,6 +96,9 @@ struct SceneDoc {
     char domain[256] = "";
 
     std::list<Shape> shapes;
+
+    // A jelenet saját függvényei (lásd UserFunc).
+    std::list<UserFunc> funcs;
 
     float d_ui    = 2.0f;   // közös méretskála minden samplerre
     float curv_ui = 1.0f;   // görbület-adaptív taszítás (0 = egyenletes)

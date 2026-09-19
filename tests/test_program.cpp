@@ -56,10 +56,10 @@ int main() {
     std::printf("  %-22s %10s %10s %8s\n", "keplet", "fa (kar.)", "program", "utasitas/kar.");
     for (auto& c : cases) {
         Kif F = make_kif(c.f, res);
-        Kif fx = F.derrive('x'), fy = F.derrive('y'), fz = F.derrive('z');
+        Kif fx = F.derive('x'), fy = F.derive('y'), fz = F.derive('z');
         Kif all[10] = {F, fx, fy, fz,
-                       fx.derrive('x'), fx.derrive('y'), fx.derrive('z'),
-                       fy.derrive('y'), fy.derrive('z'), fz.derrive('z')};
+                       fx.derive('x'), fx.derive('y'), fx.derive('z'),
+                       fy.derive('y'), fy.derive('z'), fz.derive('z')};
 
         Program prog;
         int out[10];
@@ -95,10 +95,10 @@ int main() {
     std::printf("  %-22s %12s %12s %8s\n", "keplet", "fa (us)", "program (us)", "gyorsulas");
     for (auto& c : cases) {
         Kif F = make_kif(c.f, res);
-        Kif fx = F.derrive('x'), fy = F.derrive('y'), fz = F.derrive('z');
+        Kif fx = F.derive('x'), fy = F.derive('y'), fz = F.derive('z');
         Kif all[10] = {F, fx, fy, fz,
-                       fx.derrive('x'), fx.derrive('y'), fx.derrive('z'),
-                       fy.derrive('y'), fy.derrive('z'), fz.derrive('z')};
+                       fx.derive('x'), fx.derive('y'), fx.derive('z'),
+                       fy.derive('y'), fy.derive('z'), fz.derive('z')};
         Program prog; int out[10];
         for (int i = 0; i < 10; ++i) out[i] = all[i].get()->compile(prog);
         prog.finish();

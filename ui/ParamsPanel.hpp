@@ -61,6 +61,39 @@ namespace Ui {
         ImGui::TextDisabled("Ebben a fulben minden alakzat latja.");
         param_table(sc.params, "s", {&sc.params, &program_params}, sc, pr, rq);
 
+        // A jelenet saját függvényei. A törlés itt közvetlen: a képletekbe a kifejtett
+        // törzs épül be, a UserFunc memóriájára semmi nem mutat.
+        ImGui::SeparatorText("Jelenet fuggvenyei");
+        ImGui::TextDisabled("pl. g(u, k = 1) = u^2 + k  ->  kepletben: g(x) + g(y, 2)");
+        if (ImGui::Button("Uj fuggveny")) {
+            auto& f = sc.funcs.emplace_back();
+            next_name(sc.funcs, "g", f.name, sizeof(f.name));
+            std::snprintf(f.body, sizeof(f.body), "u^2");
+        }
+        UserFunc const* erase = nullptr;
+        for (auto& f : sc.funcs) {
+            ImGui::PushID(&f);
+            bool warn = pr.is_bad(&f);
+            if (warn) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.45f, 0.12f, 0.12f, 1.0f));
+            ImGui::SetNextItemWidth(60.0f);
+            ImGui::InputText("##nev", f.name, sizeof(f.name));
+            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::TextUnformatted("(");
+            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::SetNextItemWidth(70.0f);
+            ImGui::InputText("##param", f.params, sizeof(f.params));
+            if (warn) ImGui::PopStyleColor();
+            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::TextUnformatted(") =");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-30.0f);
+            ImGui::InputText("##torzs", f.body, sizeof(f.body));
+            ImGui::SameLine();
+            if (ImGui::Button("X")) erase = &f;
+            ImGui::PopID();
+        }
+        if (erase) sc.funcs.remove_if([&](UserFunc const& f) { return &f == erase; });
+
         ImGui::SeparatorText("Program-szintu parameterek");
         ImGui::TextDisabled("MINDEN fulben lathatok.");
         param_table(program_params, "g", {&program_params}, sc, pr, rq);
@@ -76,7 +109,7 @@ namespace Ui {
         // Gyorsgombok: a rács ±8 kiterjedéséhez igazodnak, hogy a beállítás látható legyen.
         if (ImGui::SmallButton("Doboz")) {
             std::snprintf(sc.domain, sizeof(sc.domain),
-                          "x > 0 - 8 and x < 8 and y > 0 - 8 and y < 8 and z > 0 - 8 and z < 8");
+                          "x > -8 and x < 8 and y > -8 and y < 8 and z > -8 and z < 8");
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("Gomb")) {

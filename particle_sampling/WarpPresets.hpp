@@ -45,7 +45,7 @@ namespace WarpPresets {
 
         {"Forgatas z korul",
          "x*cos($1*pi/180) + y*sin($1*pi/180)",
-         "0 - x*sin($1*pi/180) + y*cos($1*pi/180)",
+         "-x*sin($1*pi/180) + y*cos($1*pi/180)",
          "z",
          {{"rz", 0.0f}},
          "FOKBAN (a pi/180 valtja radianra)"},
@@ -53,7 +53,7 @@ namespace WarpPresets {
         {"Forgatas x korul",
          "x",
          "y*cos($1*pi/180) + z*sin($1*pi/180)",
-         "0 - y*sin($1*pi/180) + z*cos($1*pi/180)",
+         "-y*sin($1*pi/180) + z*cos($1*pi/180)",
          {{"rx", 0.0f}},
          "FOKBAN"},
 
@@ -72,7 +72,7 @@ namespace WarpPresets {
         // --- Deformációk ---
         {"Csavaras (twist) z korul",
          "x*cos($1*z) + y*sin($1*z)",
-         "0 - x*sin($1*z) + y*cos($1*z)",
+         "-x*sin($1*z) + y*cos($1*z)",
          "z",
          {{"tw", 0.30f}},
          "a z tengely menten csavarja; $1 = radian/egyseg"},

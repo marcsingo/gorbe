@@ -165,7 +165,7 @@ int main() {
 
         // dF/dt: ezt a tagot hasznalja a szimulacio, hogy a reszecske EGYUTT
         // mozogjon a felulettel. F = (x-t)^2 + ... -> dF/dt = -2(x-t)
-        Kif ft = f.derrive(SceneTime::ptr());
+        Kif ft = f.derive(SceneTime::ptr());
         SceneTime::value = 2.0f;
         near("dF/dt a (5,0,0) pontban = -2(5-2)", ft.at({5, 0, 0}), -6.0f);
         near("dF/dt a kozeppontban = 0",          ft.at({2, 0, 0}),  0.0f);
@@ -180,7 +180,7 @@ int main() {
 
         // Ha a keplet NEM fugg t-tol, a derivalt azonosan 0 (tehat ingyen van).
         Kif still = make_kif("x^2 + y^2 + z^2 - 4", res);
-        Kif still_t = still.derrive(SceneTime::ptr());
+        Kif still_t = still.derive(SceneTime::ptr());
         SceneTime::value = 123.0f;
         near("t-fuggetlen alakzat: dF/dt = 0", still_t.at({1, 2, 3}), 0.0f);
         near("t-fuggetlen alakzat erteke sem valtozik", still.at({2, 0, 0}), 0.0f);

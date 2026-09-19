@@ -30,7 +30,7 @@ static void ok(std::string const& what, bool c, std::string const& info = "") {
 }
 
 static glm::vec3 grad(Kif const& f, glm::vec3 at) {
-    return {f.derrive('x').at(at), f.derrive('y').at(at), f.derrive('z').at(at)};
+    return {f.derive('x').at(at), f.derive('y').at(at), f.derive('z').at(at)};
 }
 static glm::vec3 num_grad(Kif const& f, glm::vec3 at, float h = 1e-3f) {
     return {(f.at(at + glm::vec3{h,0,0}) - f.at(at - glm::vec3{h,0,0})) / (2*h),
@@ -181,10 +181,10 @@ int main() {
             Kif a = make_kif(src);
             Kif b = apply_transform(a, t);
             auto prog_size = [](Kif const& k) {
-                Kif fx = k.derrive('x'), fy = k.derrive('y'), fz = k.derrive('z');
+                Kif fx = k.derive('x'), fy = k.derive('y'), fz = k.derive('z');
                 Kif all[10] = {k, fx, fy, fz,
-                               fx.derrive('x'), fx.derrive('y'), fx.derrive('z'),
-                               fy.derrive('y'), fy.derrive('z'), fz.derrive('z')};
+                               fx.derive('x'), fx.derive('y'), fx.derive('z'),
+                               fy.derive('y'), fy.derive('z'), fz.derive('z')};
                 Program p;
                 for (auto& e : all) e.get()->compile(p);
                 p.finish();
@@ -293,10 +293,10 @@ int main() {
         Kif wy = make_kif("0 - x*sin(0.3*z) + y*cos(0.3*z)");
         Kif wz = make_kif("z");
         auto prog_size = [](Kif const& k) {
-            Kif fx = k.derrive('x'), fy = k.derrive('y'), fz = k.derrive('z');
+            Kif fx = k.derive('x'), fy = k.derive('y'), fz = k.derive('z');
             Kif all[10] = {k, fx, fy, fz,
-                           fx.derrive('x'), fx.derrive('y'), fx.derrive('z'),
-                           fy.derrive('y'), fy.derrive('z'), fz.derrive('z')};
+                           fx.derive('x'), fx.derive('y'), fx.derive('z'),
+                           fy.derive('y'), fy.derive('z'), fz.derive('z')};
             Program p;
             for (auto& e : all) e.get()->compile(p);
             p.finish();
@@ -444,7 +444,7 @@ int main() {
            std::abs(f.at({2, 0, 3})) > 1e-2f, "F=" + std::to_string(f.at({2, 0, 3})));
 
         // A LENYEG: dF/dt a warpon keresztul is helyes (lancszabaly).
-        Kif ft = f.derrive(SceneTime::ptr());
+        Kif ft = f.derive(SceneTime::ptr());
         float const h = 1e-3f;
         glm::vec3 pts[] = {{1.6f, 0.5f, 2.0f}, {0.3f, -0.9f, -1.5f}, {2.0f, 0.0f, 3.0f}};
         float worst = 0.0f;
@@ -462,7 +462,7 @@ int main() {
         Kif f2 = apply_warp(f, tx, make_kif("y"), make_kif("z"));
         SceneTime::value = 2.0f;
         near("lancban az eltolas is kovet (kozeppont x=3)", f2.at({3.0f, 0.0f, 0.0f}), -1.0f);
-        Kif f2t = f2.derrive(SceneTime::ptr());
+        Kif f2t = f2.derive(SceneTime::ptr());
         {
             glm::vec3 q{3.4f, 0.3f, 1.0f};
             SceneTime::value = 2.0f + h; float fp = f2.at(q);

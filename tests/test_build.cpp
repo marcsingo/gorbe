@@ -142,6 +142,86 @@ int main() {
         near("gomb1 felszinen", at(a, 1, 0, 0), 0.0f);
     }
 
+    std::printf("\n=== 6. Visszafele: fa -> szoveg (Build::namer) ===\n");
+    {
+        using Matek::Analizis::kif_text;
+        using Matek::Analizis::make_kif;
+        std::list<Param> program;
+        SceneDoc sc;
+        param(sc.params, "r", 2.0f);
+        auto& g = shape(sc, "g", "x^2 + y^2 + z^2 - r^2");   // a jelenet r-jet hasznalja
+        g.xform.pos[0] = 1.0f;
+        auto& h = shape(sc, "h", "unio(g, z - r*t)");        // beepul g, plusz t
+        param(h.locals, "r", 5.0f);                           // ELFEDI a jelenet r-jet
+
+        ok("build sikeres", Build::build(sc, program).empty());
+        for (Shape* s : {&g, &h}) {
+            std::string txt = kif_text(Kif(s->tree), Build::namer(sc, program, *s));
+            auto own = [&](std::string const& nm) { return Build::resolve(sc, program, *s, nm); };
+            Kif back = make_kif(txt, own);
+            bool eq = true;
+            for (glm::vec3 p : {glm::vec3{0.5f, 1, -1}, glm::vec3{2, 0, 0}})
+                eq = eq && std::abs(back.at(p) - Kif(s->tree).at(p)) < 1e-4f;
+            ok(std::string(s->name) + ": visszaolvasva ugyanaz", eq, txt);
+        }
+        std::string ht = kif_text(Kif(h.tree), Build::namer(sc, program, h));
+        ok("h: sajat r es t nevvel", ht.find("(r * t)") != std::string::npos, ht);
+        ok("h: az elfedett jelenet-r ertekkel (2)", ht.find("(2 ^ 2)") != std::string::npos);
+
+        // A nev CIM szerint el tovabb: a visszaolvasott g koveti a jelenet r-jet.
+        auto own_g = [&](std::string const& nm) { return Build::resolve(sc, program, g, nm); };
+        Kif back_g = make_kif(kif_text(Kif(g.tree), Build::namer(sc, program, g)), own_g);
+        sc.params.front().value = 3.0f;
+        near("g visszaolvasva koveti r-t", back_g.at({1, 0, 0}), -9.0f);
+    }
+
+    std::printf("\n=== 7. A jelenet sajat fuggvenyei ===\n");
+    {
+        std::list<Param> program;
+        SceneDoc sc;
+        param(sc.params, "r", 2.0f);
+        auto fn = [&](char const* n, char const* ps, char const* body) -> UserFunc& {
+            auto& f = sc.funcs.emplace_back();
+            std::snprintf(f.name, sizeof(f.name), "%s", n);
+            std::snprintf(f.params, sizeof(f.params), "%s", ps);
+            std::snprintf(f.body, sizeof(f.body), "%s", body);
+            return f;
+        };
+        fn("sq", "u", "u^2");
+        fn("kor", "u, v, k = 1", "sq(u) + sq(v) - k*r^2");   // korabbit hivhat, lat r-t
+        auto& s = shape(sc, "s", "kor(x, y) + z");
+        auto& s2 = shape(sc, "s2", "kor(x, y, 4)");
+
+        ok("build sikeres", Build::build(sc, program).empty());
+        near("kor(x,y) a korvonalon: 0", at(s, 2, 0, 0), 0.0f);
+        near("alapertelmezett k helyett 4", at(s2, 0, 0, 0), -16.0f);
+        sc.params.front().value = 3.0f;
+        near("a torzsben r cim szerint el", at(s, 3, 0, 0), 0.0f);
+
+        Problems pr = validate(program, sc);
+        ok("ervenyes fuggvenyek: nincs hiba", pr.empty());
+
+        // Rekurzio / kesobbi fuggveny: nem latszik, a parser erthetoen hibat ad.
+        SceneDoc rek;
+        auto& f1 = rek.funcs.emplace_back();
+        std::snprintf(f1.name, sizeof(f1.name), "h");
+        std::snprintf(f1.body, sizeof(f1.body), "h(u) + 1");
+        shape(rek, "s", "h(x)");
+        std::string err = Build::build(rek, program);
+        ok("onmagat nem hivhatja", err.find("ismeretlen fuggveny: h") != std::string::npos,
+           err.substr(0, err.find('\n')));
+
+        SceneDoc rossz;
+        auto& f2 = rossz.funcs.emplace_back();
+        std::snprintf(f2.name, sizeof(f2.name), "sin");
+        auto& f3 = rossz.funcs.emplace_back();
+        std::snprintf(f3.name, sizeof(f3.name), "g");
+        std::snprintf(f3.params, sizeof(f3.params), "u, 2v");
+        Problems pr2 = validate(program, rossz);
+        ok("foglalt fuggvenynev hiba", pr2.is_bad(&f2));
+        ok("rossz parameternev hiba", pr2.is_bad(&f3));
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);
     return failures ? 1 : 0;
 }

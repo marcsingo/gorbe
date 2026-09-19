@@ -2,41 +2,33 @@
 #define MATEK_MUVELETEK_KULONBSEG_HPP
 
 #include "KetOperandus.hpp"
-#include "../levelek/Konstans.hpp"
 
 namespace Matek {
     namespace Analizis {
 
+        // Az előjelváltás is ez: -a = 0 - a (külön csomópont nélkül).
         struct Kulonbseg : public KetOperandus {
-            explicit Kulonbseg(std::shared_ptr<Kifejezes const> bal, std::shared_ptr<Kifejezes const> jobb)
-                : KetOperandus(std::move(bal), std::move(jobb)) {}
+            explicit Kulonbseg(Tree bal, Tree jobb) : KetOperandus(std::move(bal), std::move(jobb)) {}
 
             float at(glm::vec3 const v) const override {
                 return get_bal()->at(v) - get_jobb()->at(v);
             }
 
-            std::shared_ptr<Kifejezes const> simplify() const override {
+            Tree simplify() const override {
                 auto bal = get_bal()->simplify();
                 auto jobb = get_jobb()->simplify();
-                if (bal == jobb) return std::make_shared<Konstans>(0.0f);
-                auto jobb_k = std::dynamic_pointer_cast<Konstans const>(jobb);
-                if (jobb_k && jobb_k->get_value() == 0.0f) return bal;
+                auto a = const_of(bal), b = const_of(jobb);
+                if (a && b) return std::make_shared<Konstans>(a->get_value() - b->get_value());
+                if (is_const(jobb, 0.0f)) return bal;
+                if (bal->same(*jobb)) return std::make_shared<Konstans>(0.0f);
                 return std::make_shared<Kulonbseg>(bal, jobb);
             }
 
-            std::shared_ptr<Kifejezes const> derrivate(char var) const override {
-                return std::make_shared<Kulonbseg>(get_bal()->derrivate(var), get_jobb()->derrivate(var));
-            }
-            std::shared_ptr<Kifejezes const> derrivate(float const * var) const override {
-                return std::make_shared<Kulonbseg>(get_bal()->derrivate(var), get_jobb()->derrivate(var));
-            }
-            std::shared_ptr<Kifejezes const> derrivate(std::shared_ptr<Kifejezes const> var) const override {
-                return std::make_shared<Kulonbseg>(get_bal()->derrivate(var), get_jobb()->derrivate(var));
+            Tree derive(Var const& var) const override {
+                return std::make_shared<Kulonbseg>(get_bal()->derive(var), get_jobb()->derive(var));
             }
 
-            std::shared_ptr<Kifejezes const> with_children(
-                std::shared_ptr<Kifejezes const> a,
-                std::shared_ptr<Kifejezes const> b) const override {
+            Tree with_children(Tree a, Tree b) const override {
                 return std::make_shared<Kulonbseg>(std::move(a), std::move(b));
             }
 
@@ -46,8 +38,16 @@ namespace Matek {
                 return prog.emit(Op::Sub, a, b);
             }
 
+            // 0 - a  ->  "(-a)": így olvasható, és a parser ugyanezt a fát építi belőle.
+            void print(std::ostream& os, ParamNamer const& namer) const override {
+                if (!is_const(get_bal(), 0.0f)) return KetOperandus::print(os, namer);
+                os << "(-";
+                get_jobb()->print(os, namer);
+                os << ')';
+            }
+
         protected:
-            char const get_operator() const override { return '-'; }
+            char get_operator() const override { return '-'; }
         };
 
     }

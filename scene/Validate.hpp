@@ -68,6 +68,28 @@ inline Problems validate(std::list<Param> const& program_params, SceneDoc const&
                 clash(&*a, &*b, std::string("ket alakzat neve azonos: ") + a->name);
     }
 
+    // A jelenet saját függvényei: a nevük egyedi, és a paramétereik is érvényes nevek.
+    for (auto a = sc.funcs.begin(); a != sc.funcs.end(); ++a) {
+        if (!check(a->name, &*a, "fuggveny")) continue;
+        for (auto b = std::next(a); b != sc.funcs.end(); ++b)
+            if (std::strcmp(a->name, b->name) == 0)
+                clash(&*a, &*b, std::string("ket fuggveny neve azonos: ") + a->name);
+        std::string ps = a->params;
+        for (std::size_t from = 0; from <= ps.size();) {
+            std::size_t to = ps.find(',', from);
+            if (to == std::string::npos) to = ps.size();
+            std::string p = ps.substr(from, to - from);
+            p = p.substr(0, p.find('='));
+            p.erase(0, p.find_first_not_of(' '));
+            p.erase(p.find_last_not_of(' ') + 1);
+            if (!p.empty() && (bad_ident(p.c_str()) || is_reserved(p.c_str()))) {
+                pr.messages.push_back(std::string(a->name) + ": ervenytelen parameternev: " + p);
+                pr.bad.insert(&*a);
+            }
+            from = to + 1;
+        }
+    }
+
     // Lokális paraméterek: alakzaton BELÜL egyediek. (Alakzatok között, és a
     // külső hatókörökkel szemben szabadon egyezhetnek — az elfedés.)
     for (auto const& s : sc.shapes) {

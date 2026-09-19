@@ -72,6 +72,7 @@ ctest --test-dir build --output-on-failure
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
 | `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok |
+| `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -323,17 +324,45 @@ A jelenetben a **z a függőleges** (a sík-sablon `z = 0`, a henger a z tengely
 
 A képlet beírása után az **Indít** parseolja az összes alakzatot és újraindítja a
 mintavételezést. Változók: `x`, `y`, `z`; a `^` precedenciája a szokásos (nem kell
-zárójelezni). Függvények:
+zárójelezni). Függvények (a teljes, mindig naprakész lista a `matek/Fuggvenyek.hpp`
+táblája; a Tulajdonságok panelen a függvénylista fölé víve az egeret is megjelenik):
 
 | kategória | függvények |
 |---|---|
-| beépített nevek | `x` `y` `z` (hely), **`t`** (idő, másodperc), `pi` |
-| egyváltozós | `sin cos tan`/`tg` `ctg`/`cot` `ln log sqrt abs sign` |
+| beépített nevek | `x` `y` `z` (hely), **`t`** (idő, másodperc), `pi` `e` |
+| trigonometria | `sin cos tan`/`tg` `ctg`/`cot` `asin`/`arcsin` `acos`/`arccos` `atan`/`arctg`/`arctan` `atan2(y, x)` |
+| hiperbolikus | `sinh cosh tanh` |
+| hatvány, gyök, log | `exp ln log`/`lg` `sqrt cbrt` `pow(a, b)` `hypot(a, b)` `length(a, b[, c])` |
+| előjel, kerekítés | `abs sign`/`sgn` `floor ceil round fract mod(a, b)` |
+| átmenetek | `clamp(u, lo, hi)` `step(e, u)` `smoothstep(e0, e1, u)` `mix`/`lerp(a, b, s)` |
 | éles halmazműveletek | `unio(a,b)` `metszet(a,b)` `kulonbseg(a,b)` `min(a,b)` `max(a,b)` |
 | sima halmazműveletek | `sunio(a,b[,k])` `smetszet(a,b[,k])` `skulonbseg(a,b[,k])` `smin` `smax` |
 
 Az angol nevek is működnek: `union`, `intersect`, `subtract`, `sunion`, `sintersect`,
 `ssubtract`. A sima műveleteknél a `k` a lekerekítés mértéke (elhagyva `0.5`).
+
+**Kényelmi írásmód** — ugyanazt jelenti, mint a hosszú alak:
+
+| így is írható | jelentése |
+|---|---|
+| `2x`, `3(x+1)`, `(x+1)(x-1)`, `2 pi x`, `r(x+1)` | szorzás (implicit) |
+| `x**2` | `x^2` |
+| `-8`, `x > -8` | előjel bárhol (nem kell `0 - 8`) |
+| `π`, `x²`, `y³`, `x · y` | `pi`, `x^2`, `y^3`, `x*y` |
+
+**Hibaüzenet**: megmutatja a hiba helyét, és ha elgépelésnek tűnik, javasol:
+
+```
+ismeretlen fuggveny: sni - erre gondoltal: sin?
+  x^2 + sni(y)
+        ^
+```
+
+**Saját függvények** (Paraméterek panel → *Jelenet függvényei*): `név(paraméterek) =
+törzs`, például `g(u, k = 1) = u^2 + k`, és utána a képletekben `g(x) + g(y, 2)`. Az
+alapértékes paraméter elhagyható. A törzs a jelenet- és program-szintű paramétereket
+és a `t`-t látja, és a listában **nála korábbi** függvényeket hívhatja (így rekurzió
+nem lehet). A képletbe a kifejtett törzs épül be.
 
 ### Tér-transzformáció (eltolás / forgatás / méret)
 
@@ -530,8 +559,8 @@ alakzatonként hangolni kell — például a tórusz kvartikus `F`-je sokkal nag
 értékeket vesz fel, mint egy gömb `x²+y²+z²−r²`-e.
 
 > A cikk 3.2-es R-függvény alakja (`a + b ± √(a²+b²)`, `k` nélkül) **nem** használható
-> itt: a gyök argumentuma pont a varraton 0, és mivel a `sqrt(u)` a parserben `u^0.5`,
-> a deriváltja ott végtelen — a keletkező NaN a taszításon keresztül az összes
+> itt: a gyök argumentuma pont a varraton 0, és a `sqrt(u)`
+> deriváltja ott végtelen — a keletkező NaN a taszításon keresztül az összes
 > szomszédos részecskére átterjedne. Ugyanígy nem használható a 3.3-as szuperelliptikus
 > blend (`(aⁿ + bⁿ)^(1/n)`) sem: előjeles `F`-nél az alap belül negatív, törtkitevővel
 > NaN. Mindkettőt mérés igazolta.
@@ -560,9 +589,8 @@ A lenyíló fölé húzva a kurzort megjelenik a képlet.
 Megjegyzések:
 
 - A **tórusz** algebrai (négyzetgyök nélküli) alakban van felírva, hogy a deriváltjai
-  mindenhol végesek legyenek. Ugyanezért polinomiálisak a többiek is: a `sqrt(u)` a
-  parserben `u^0.5`-tá alakul, aminek a deriváltja `u=0`-ban végtelen — ez pont a
-  felületen (F=0) lenne baj. A blendben a gyök alatt mindig ott a `+k²`, ezért az jó.
+  mindenhol végesek legyenek. Ugyanezért polinomiálisak a többiek is: a `sqrt(u)`
+  deriváltja `u=0`-ban végtelen — ez pont a felületen (F=0) lenne baj. A blendben a gyök alatt mindig ott a `+k²`, ezért az jó.
 - Az **ellipszis** implicit felületként valójában elliptikus henger (a képlet nem
   függ `z`-től); egy valódi 2D görbe nem F=0 alakú felület, azt a részecske-sampler
   nem tudja mintavételezni.
@@ -681,7 +709,8 @@ a `Surface.hpp`-ben):
 | `2.0f` vagy `2.0_k` | konstans |
 | `+ - * /` | alapműveletek |
 | `^` | hatvány — pl. `(x ^ 2.0f)`. **Zárójelezd**, mert a `^` precedenciája alacsony! |
-| `sin(...)` | szinusz (jelenleg ez az egyetlen beépített függvény-wrapper) |
+| `sin(...)`, `cos`, `abs`, `sign`, `sqrt`, `min`, `max` | a leggyakoribb függvények rövid néven |
+| `fn("atan", a)`, `fn("atan2", a, b)` | **bármelyik** táblabeli függvény |
 
 A deriválás szimbolikus és automatikus; nem kell kézzel deriváltat írni. (Konstans
 kitevőjű hatványt – pl. `x^2` – a rendszer a stabil `n·aⁿ⁻¹·a'` szabállyal deriválja.)
@@ -749,6 +778,23 @@ automatikusan működik az új felületen.
 
 ---
 
+## Új beépített függvény felvétele
+
+Egyetlen sor a `matek/Fuggvenyek.hpp` táblájában — a parser, a kiírás, a deriválás, a
+lapos program, a foglalt nevek és a súgó mind innen dolgozik, a `test_parser` pedig
+magától ellenőrzi a deriváltját:
+
+```cpp
+// FUNCS: saját csomópont, a derivált a parser nyelvén (u = az argumentum)
+{.name = "atan", .aliases = "arctg arctan", .f1 = [](float u) { return std::atan(u); },
+ .du = "1/(1 + u^2)", .help = "arkusz tangens"},
+
+// MACROS: ha más függvényekből felírható, elég a törzse (a derivált magától adódik)
+{"hypot", "", "a, b", "sqrt(a^2 + b^2)", "atfogo"},
+```
+
+Kétargumentumúnál `.f2` és `.dv` is kell (`u`, `v` a két argumentum).
+
 ## Hogyan gyors ez (teljesítmény)
 
 A szimuláció részecskénként és lépésenként 10 mennyiséget kér a felülettől: `F`, a
@@ -790,7 +836,9 @@ minden kimenetre.
 | `particle_sampling/ImplicitSurface.hpp` | a szimuláció (taszítás, fisszió, halál) és `SimParams` |
 | `particle_sampling/Particle.hpp` | részecske + a `Particles`/`Floaters`/`ControlPoints` modellek |
 | `matek/` | a szimbolikus kifejezés-/deriválórendszer (Kif DSL) |
-| `matek/Kif.hpp` | a string → kifejezésfa parser és a függvénytábla (`make_func`) |
+| `matek/Kif.hpp` | a `Kif` burkoló és a C++ DSL (operátorok, `sin`, `min`, …) |
+| `matek/Parser.hpp` | string ↔ kifejezésfa, **mindkét irányban**: `make_kif(szöveg, resolver, funcs)` és `kif_text(fa, namer)`; implicit szorzás, hibaüzenet javaslattal |
+| `matek/Fuggvenyek.hpp` | **a függvénytábla**: minden beépített függvény egy sor (név, álnevek, kiértékelés, derivált, súgó) — lásd lent |
 | `matek/Program.hpp` | a kifejezésfa lapos, futtatható alakja (közös részkifejezés-kiemeléssel) |
 | `particle_sampling/SpatialGrid.hpp` | egyenletes rács a taszítás szomszédkereséséhez |
 | `matek/muveletek/{Minimum,Maximum}.hpp` | éles halmazműveletek (CSG) csomópontjai |

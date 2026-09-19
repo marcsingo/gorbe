@@ -131,7 +131,7 @@ namespace Raytrace {
             out.reserve(objs.size());
             for (auto const& o : objs) {
                 Compiled c;
-                Kif fx = o.F.derrive('x'), fy = o.F.derrive('y'), fz = o.F.derrive('z');
+                Kif fx = o.F.derive('x'), fy = o.F.derive('y'), fz = o.F.derive('z');
                 Kif const* all[4] = {&o.F, &fx, &fy, &fz};
                 for (int i = 0; i < 4; ++i) c.out[i] = all[i]->get()->compile(c.prog);
                 c.prog.finish();

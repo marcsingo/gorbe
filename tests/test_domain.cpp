@@ -29,7 +29,7 @@ static void near(std::string const& what, float got, float exp, float tol) {
 struct Field {
     Kif f, fx, fy, fz;
     explicit Field(std::string const& s) : f(make_kif(s)) {
-        fx = f.derrive('x'); fy = f.derrive('y'); fz = f.derrive('z');
+        fx = f.derive('x'); fy = f.derive('y'); fz = f.derive('z');
     }
     float     val(glm::vec3 p) const { return f.at(p); }
     glm::vec3 grad(glm::vec3 p) const { return {fx.at(p), fy.at(p), fz.at(p)}; }

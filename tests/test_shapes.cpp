@@ -90,15 +90,15 @@ int main() {
                              auto p = torusz.find(nm);
                              return p != torusz.end() ? Kif(&p->second).get() : nullptr;
                          });
-        Kif fx = f.derrive('x'), fy = f.derrive('y'), fz = f.derrive('z');
+        Kif fx = f.derive('x'), fy = f.derive('y'), fz = f.derive('z');
         // (4,0,0): a kulso egyenlitonel a normalis +x irany, y/z komponens 0
         glm::vec3 at{4, 0, 0};
         check("torusz dF/dx (4,0,0)", fx.at(at), 4.0f * 4.0f * (16.0f + 8.0f) - 8.0f * 9.0f * 4.0f);
         check("torusz dF/dy (4,0,0)", fy.at(at), 0.0f);
         check("torusz dF/dz (4,0,0)", fz.at(at), 0.0f);
         // masodrendu derivalt (Hesse) is legyen veges - a gorbulet ebbol jon
-        check("torusz d2F/dx2 veges",  std::isfinite(fx.derrive('x').at(at)) ? 1.0f : 0.0f, 1.0f);
-        check("torusz d2F/dydz veges", std::isfinite(fy.derrive('z').at(at)) ? 1.0f : 0.0f, 1.0f);
+        check("torusz d2F/dx2 veges",  std::isfinite(fx.derive('x').at(at)) ? 1.0f : 0.0f, 1.0f);
+        check("torusz d2F/dydz veges", std::isfinite(fy.derive('z').at(at)) ? 1.0f : 0.0f, 1.0f);
     }
 
     // --- precedencia-ellenorzes: a^2*z^2 == (a^2)*(z^2), nem a^(2*z^2) ---
