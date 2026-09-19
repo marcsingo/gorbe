@@ -71,6 +71,7 @@ ctest --test-dir build --output-on-failure
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
+| `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -802,11 +803,24 @@ minden kimenetre.
 | `model/CameraBasis.hpp` | a kamera Z-up bázisa és az egérkezelés előjel-konvenciója (GL nélkül, tesztelhetően) |
 | `model/Viewport.hpp` | a 3D nézet téglalapja és a koordináta-átváltás; a bemenet-kapu |
 | `model/Framebuffer.hpp` | képernyőn kívüli rajzolási cél (a nézet textúrája) |
+| `main.cpp` | csak összeköti az MVC három rétegét (lásd lent) |
+| `scene/` | **MODEL**: GL és ImGui nélkül, tesztelhető |
+| `scene/Document.hpp` | a jelenet adatai: `Warp`, `Shape`, `SceneDoc` |
+| `scene/Build.hpp` | a képletek felépítése: névfeloldás, warp-lánc + transzformáció, tartományok |
+| `scene/Validate.hpp` | névellenőrzés és elfedés-jelzés |
+| `scene/Presets.hpp`, `scene/Names.hpp` | alakzat- és warp-sablonok felvétele; szabad nevek, foglalt nevek |
 | `scene/Scope.hpp` | a három szintű hatókör-feloldás (elfedéssel) |
 | `scene/Time.hpp` | a képletekben használható `t` idő |
+| `app/` | **CONTROLLER**: `Controller` (a fülek gazdája, a kérések végrehajtása), `Scene` (kamera + mintavételezők), `Photo` |
+| `ui/` | **VIEW**: egy fájl panelenként; `Requests.hpp` a nézet → vezérlő kérések, `Layout.hpp` az elrendezés |
 | `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, anyagok, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
+
+A frontend szabálya: a nézet (`ui/`) élőben írhatja az **értékeket**, és a listák végére
+is szúrhat, de amire egy kifejezésfa címmel mutathat (paraméter, alakzat, jelenet), azt
+sosem törli — csak kéri (`Ui::Requests`). A törlést a `Controller::apply` végzi a frame
+végén, előtte eldobja a fákat. Így a „törlés előtt kötelező a drop” szabály egy helyen él.
 
 Az ablak eseményei (`Window::add_*_event`) azonosítót adnak vissza, és a
 `Window::Subscription` RAII-osztállyal automatikusan leiratkoznak — ezért a

@@ -87,6 +87,21 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         model/Framebuffer.hpp
         scene/Scope.hpp
         scene/Time.hpp
+        scene/Document.hpp
+        scene/Names.hpp
+        scene/Presets.hpp
+        scene/Validate.hpp
+        scene/Build.hpp
+        app/Scene.hpp
+        app/Photo.hpp
+        app/Controller.hpp
+        ui/Requests.hpp
+        ui/Layout.hpp
+        ui/ShapesPanel.hpp
+        ui/PropsPanel.hpp
+        ui/HelpPanel.hpp
+        ui/ParamsPanel.hpp
+        ui/ViewportPanel.hpp
         raytrace/Raytracer.hpp
         raytrace/Palette.hpp
         raytrace/Material.hpp
@@ -106,8 +121,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         particle_sampling/Particle.hpp)
 
 # 4. Az executable létrehozása
-add_executable(gorbe ${SOURCE_FILES}
-        utils/init.hpp)
+add_executable(gorbe ${SOURCE_FILES})
 
 # 5. Linkelés (GLFW, OpenGL és Dear ImGui)
 find_package(OpenGL REQUIRED)
@@ -129,7 +143,7 @@ target_compile_definitions(gorbe PRIVATE
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})
