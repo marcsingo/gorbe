@@ -143,26 +143,39 @@ public:
 
     // --- egy szimulációs lépés -------------------------------------------------
 
+    // JACOBI-lépés: minden részecske a lépés ELEJI állapotot látja (a szomszédok
+    // helyét és σ-ját), és csak a teljes erő kiszámolása után mozdul. (Korábban
+    // Gauss–Seidel volt: a lépés közben elmozdult szomszédokat is látta, így az
+    // eredmény a feldolgozási sorrendtől függött.) Ettől lehet minden párt EGYSZER
+    // számolni, és ez az előfeltétele egy objektumon belüli párhuzamosításnak is.
     void step(float dt) {
         rebuild_grid();   // a taszítás szomszédkeresése ezen megy (O(n) a O(n²) helyett)
 
+        // 1. Kiértékelés (F, gradiens, görbület, tartomány), és a még repülők
+        //    ráhúzása a felületre.
+        for (std::size_t idx = 0; idx < floaters.size(); ++idx) {
+            Particle& i = floaters[idx];
+            calculate_particle(i);
+            dist[idx] = surface_distance(i);
+            if (i.state == ramozog) {
+                masik(i, dt);
+                // Geometriai közelség (nem nyers F): minden alakzatnál ugyanazt jelenti.
+                if (surface_distance(i) < 1e-2f) i.state = rajtamozog;
+            }
+        }
+
+        // 2. Taszítás: minden pár egyszer.
+        accumulate_repulsion();
+
+        // 3. Mozgás a teljes erőből.
+        for (auto& i : floaters)
+            if (i.state == rajtamozog) witkin_move(i, dt);
+
+        // 4. Fisszió és halál.
         std::vector<Particle> next;
         next.reserve(floaters.size() + 8);
         for (std::size_t idx = 0; idx < floaters.size(); ++idx) {
             Particle& i = floaters[idx];
-            calculate_particle(i);
-            dist[idx] = surface_distance(i);   // a később jövők már a friss értéket látják
-            if (i.state == ramozog) {
-                masik(i, dt);
-                // Geometriai közelség (nem nyers F): minden alakzatnál ugyanazt jelenti.
-                if (surface_distance(i) < 1e-2f) {
-                    i.state = rajtamozog;
-                }
-            }
-            if (i.state == rajtamozog) {
-                witkin(static_cast<int>(idx), dt);
-            }
-
             float R = dist_R(rng);
 
             // Görbület-adaptív cél-méretskálák: görbült helyen kisebbek -> sűrűbb mintavétel.
@@ -361,7 +374,7 @@ private:
     //
     // Előtte a részecskéket a CELLÁJUK szerint rendezzük: így a térben szomszédosak
     // a tömbben is egymás mellé kerülnek (jobb gyorsítótár-kihasználás), és a
-    // witkin() cellánként egyszer gyűjti a jelölteket. Mérve 1.3–1.9x gyorsabb lépés,
+    // accumulate_repulsion() cellánként egyszer gyűjti a jelölteket. Mérve 1.3–1.9x gyorsabb lépés,
     // változatlan mintavétellel (részecskeszám, a szomszédtávolság szórása).
     void rebuild_grid() {
         float max_sigma = 0.0f;
@@ -384,32 +397,50 @@ private:
         cand_valid = false;
     }
 
-    void witkin(int idx, float dt) {
-        Particle& i = floaters[static_cast<std::size_t>(idx)];
+    // A Witkin-taszítás összegei (P, D, D_sigma) a felületi részecskékre, MINDEN PÁRT
+    // EGYSZER számolva. Az i-re ható tag (r/σi²·E_ij + r/σj²·E_ji) j-re ellentétes
+    // előjellel hat (r_ji = -r_ij), és a két exp() is mindkét oldalt kiszolgálja —
+    // így feleannyi exp() és távolság-számítás kell, mint részecskénként külön.
+    //
+    // Egy tag akkor számít egy részecskének, ha ő a felületen mozog, és a párja
+    // közel van a felülethez (a még messze repülők nem taszítanak).
+    void accumulate_repulsion() {
+        for (std::size_t a = 0; a < floaters.size(); ++a) {
+            Particle& i = floaters[a];
 
-        std::int64_t const key = SpatialGrid::key_at(i.p, grid_cell);
-        if (!cand_valid || key != cand_key) {
-            cand.clear();
-            grid.for_each_near(i.p, [&](int jdx) { cand.push_back(jdx); });
-            cand_key = key;
-            cand_valid = true;
+            std::int64_t const key = SpatialGrid::key_at(i.p, grid_cell);
+            if (!cand_valid || key != cand_key) {
+                cand.clear();
+                grid.for_each_near(i.p, [&](int jdx) { cand.push_back(jdx); });
+                cand_key = key;
+                cand_valid = true;
+            }
+            for (int jdx : cand) {
+                auto const b = static_cast<std::size_t>(jdx);
+                if (b <= a) continue;                          // minden pár egyszer
+                Particle& j = floaters[b];
+                bool const to_i = i.state == rajtamozog && dist[b] <= 5e-1f;
+                bool const to_j = j.state == rajtamozog && dist[a] <= 5e-1f;
+                if (!to_i && !to_j) continue;
+
+                auto  r  = i.p - j.p;
+                float r2 = glm::dot(r, r);
+                // A rács 27 cellája a hatósugárnál nagyobb területet fed le, ezért itt
+                // még pontosan is ellenőrizzük — ez a drága exp() elé kerülő olcsó szűrő.
+                float cut = REPULSION_CUTOFF * std::max(i.sigma, j.sigma);
+                if (r2 > cut * cut) continue;
+                float const E_ij = alpha*std::exp(-r2 / (i.sigma*i.sigma*2));
+                float const E_ji = alpha*std::exp(-r2 / (j.sigma*j.sigma*2));
+                glm::vec3 const f = r / (i.sigma*i.sigma) * E_ij + r / (j.sigma*j.sigma) * E_ji;
+                if (to_i) { i.P += f; i.D += E_ij; i.D_sigma += r2*E_ij; }
+                if (to_j) { j.P -= f; j.D += E_ji; j.D_sigma += r2*E_ji; }
+            }
         }
-        for (int jdx : cand) {
-            if (jdx == idx) continue;
-            Particle& j = floaters[static_cast<std::size_t>(jdx)];
-            if (dist[static_cast<std::size_t>(jdx)] > 5e-1f) continue;
-            auto  r  = i.p - j.p;
-            float r2 = glm::dot(r, r);
-            // A rács 27 cellája a hatósugárnál nagyobb területet fed le, ezért itt
-            // még pontosan is ellenőrizzük — ez a drága exp() elé kerülő olcsó szűrő.
-            float cut = REPULSION_CUTOFF * std::max(i.sigma, j.sigma);
-            if (r2 > cut * cut) continue;
-            auto E_ij = alpha*std::exp(-r2 / (i.sigma*i.sigma*2) );
-            auto E_ji = alpha*std::exp(-r2 / (j.sigma*j.sigma*2) );
-            i.P += r / (i.sigma*i.sigma) * E_ij + r / (j.sigma*j.sigma) * E_ji;
-            i.D += E_ij;
-            i.D_sigma += r2*E_ij;
-        }
+    }
+
+    // A Witkin-lépés többi része egy felületi részecskére, a már összegyűjtött
+    // taszításból: σ-adaptáció, a felületre vetített sebesség, a tartomány, a mozgás.
+    void witkin_move(Particle& i, float dt) {
         i.P *= i.sigma*i.sigma;
 
         i.D_dot = -rho*(i.D - E_v);

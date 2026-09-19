@@ -800,6 +800,15 @@ minden kimenetre.
    az összes szálat. Mérve (egyensúlyban): 2 objektum 1.5×, 4 objektum 2.76× — a
    párhuzamos idő a leglassabb objektuméval egyezik meg.
 
+7. **Jacobi-lépés, szimmetrikus párokkal** (`ParticleSystem::step`). A lépés négy
+   fázis: kiértékelés → taszítás → mozgás → fisszió/halál, és a taszításnál minden
+   részecske a lépés ELEJI állapotot látja. Így minden pár EGYSZER számolódik: az
+   i-re ható tag j-re ellentétes előjellel hat, és a két `exp()` mindkét oldalt
+   kiszolgálja. (Korábban Gauss–Seidel volt: a lépés közben elmozdult szomszédokat is
+   látta, és az eredmény a feldolgozási sorrendtől függött.) Mérve **1.05–1.26×**
+   gyorsabb lépés, változatlan mintavétellel; és ez az előfeltétele annak, hogy egy
+   objektumon belül is párhuzamosan lehessen számolni.
+
 ---
 
 ## Projekt-szerkezet (röviden)
