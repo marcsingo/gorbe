@@ -100,7 +100,6 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         App.hpp
         particle_sampling/ImplicitSurface.hpp
         particle_sampling/Surface.hpp
-        particle_sampling/Occluders.hpp
         particle_sampling/DomainConstraint.hpp
         particle_sampling/Transform.hpp
         particle_sampling/WarpPresets.hpp

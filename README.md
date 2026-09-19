@@ -619,28 +619,6 @@ jelennek meg, és amíg van ütközés, az `Indít` gomb tiltva marad.
 > paraméter vagy alakzat törlésekor a program eldobja a beparseolt képleteket és
 > leállítja a szimulációt — ilyenkor újra `Indít` kell.
 
-## A `main` felépítése (fordítási idejű alakzatok)
-
-A GUI-s út mellett megmaradt a fordítási idejű változat is: a teljes boilerplate
-(ablak, kamera, render loop) az `App` mögött van, és elég a felület típusát megadni:
-
-```cpp
-#include "App.hpp"
-#include "particle_sampling/Surface.hpp"
-
-int main() {
-    App app{800, 800, "Particle sampling"};
-    app.show<Torus>();          // Sphere, Torus, Ellipsoid, Ellipse, ...
-    app.run();
-}
-```
-
-Opcionális hangolás (a cikk paraméterei, lásd `SimParams`):
-
-```cpp
-app.show<Sphere>({.alpha = 8.0f, .phi = 20.0f});
-```
-
 ## Felhasználói felület (Dear ImGui)
 
 A [Dear ImGui](https://github.com/ocornut/imgui) be van építve (`libraries/imgui`,
@@ -667,114 +645,18 @@ dokkolható panelek építőkövei stb.
 
 ---
 
-## Saját alakzat hozzáadása
+## Régi, fordítási idejű felületek
 
-Három lépés. Csak a felület-definícióhoz és a referencia-meshhez kell hozzányúlni,
-a `main`-ben utána már csak `app.show<SajatAlakzat>()` a dolgod.
+Korábban a felületeket C++ osztályként is meg lehetett adni (`Sphere`, `Torus`,
+`Ellipsoid`, `Ellipse`, `Circle`, `Cylinder`, `Teszt`), saját referencia-meshsel
+(`particle_sampling/Occluders.hpp`) és `q`-paraméteres kontrollpont-vezérléssel. A
+program már csak a képletből épülő felületet használja, ezért ezek kikerültek. Az
+utolsó állapotuk a **`regi-feluletek`** git tagen érhető el:
 
-### 1. Felület-osztály (`particle_sampling/Surface.hpp`)
-
-Származz le a `Surface<L>`-ből, ahol `L` a felület paramétereinek (`q`) száma.
-A konstruktorban:
-
-- állítsd be a `q` kezdőértékét,
-- írd fel az `F` implicit függvényt a kifejezés-DSL-lel,
-- hívd meg a `calculate()`-et (ez deriválja `F`-et `x,y,z` és minden `q[i]` szerint),
-- írd felül a `diameter()`-t (lásd lentebb, miért fontos).
-
-Példa — **forgási ellipszoid** (az `y` a forgástengely), `F = (x²+z²)/a² + y²/b² - 1`,
-két paraméterrel (`a`, `b`):
-
-```cpp
-// q = {a, b}
-struct Spheroid : Surface<2> {
-    Spheroid() {
-        q = {2.0f, 1.0f};
-        F = ((x^2.0f) + (z^2.0f)) / ((&q.x)^2.0_k)
-          + (y^2.0f) / ((&q.y)^2.0_k) - 1.0_k;
-        calculate();
-    }
-    // A legkisebb jellemző méret skálája (lásd: „diameter()").
-    float diameter() const override { return 2.0f * std::min(q.x, q.y); }
-};
+```bash
+git show regi-feluletek:particle_sampling/Surface.hpp
+git show regi-feluletek:particle_sampling/Occluders.hpp
 ```
-
-**Kifejezés-DSL** (a `Matek::Analizis` névtérből, `using namespace` nélkül is elérhető
-a `Surface.hpp`-ben):
-
-| elem | jelentés |
-|---|---|
-| `x`, `y`, `z` | a térbeli változók |
-| `&q.x`, `&q.y`, … | a felület paraméterei **cím szerint** (futás közben változhatnak; ettől tudja a kontrollpont mozgatni a felületet) |
-| `2.0f` vagy `2.0_k` | konstans |
-| `+ - * /` | alapműveletek |
-| `^` | hatvány — pl. `(x ^ 2.0f)`. **Zárójelezd**, mert a `^` precedenciája alacsony! |
-| `sin(...)`, `cos`, `abs`, `sign`, `sqrt`, `min`, `max` | a leggyakoribb függvények rövid néven |
-| `fn("atan", a)`, `fn("atan2", a, b)` | **bármelyik** táblabeli függvény |
-
-A deriválás szimbolikus és automatikus; nem kell kézzel deriváltat írni. (Konstans
-kitevőjű hatványt – pl. `x^2` – a rendszer a stabil `n·aⁿ⁻¹·a'` szabállyal deriválja.)
-
-#### `diameter()` — fontos a stabilitáshoz
-
-A `diameter()` a felület **legkisebb jellemző méretét** adja vissza (nem a befoglaló
-átmérőt). Ebből számolódik a részecskék taszítási sugara (`σ̂ = d/4`). Ha `d` nagyobb,
-mint a felület legkisebb görbületi sugara, a taszítás „átér" a vékony részeken, és a
-szimuláció instabillá válik.
-
-- gömb/ellipszoid: a legvékonyabb tengely → `2·min(a,b,c)`
-- tórusz: a **cső** átmérője (`2r`), nem a külső `2(R+r)`
-
-### 2. Referencia-mesh (occluder) + párosítás (`particle_sampling/Occluders.hpp`)
-
-Az occluder a szürke „tömör" felület, ami a részecskék mögött látszik (csak vizuális
-segédlet). Minden felülethez kell egy, és a végén egy sorral párosítani kell a felülettel.
-
-Az occluder egy `Model`, ami a felület egy paraméterezéséből háromszögeket tölt a
-`vertices`-be. A legegyszerűbb a meglévők egyikét (`SphereOccluder`, `TorusOccluder`)
-mintának venni, és a `v(...)` paraméterezést kicserélni. Vázlat:
-
-```cpp
-class SpheroidOccluder : public Model {
-    Spheroid const& surf;
-    glm::vec3 color;
-    void render(const Camera&) override {
-        vertices.clear();
-        // ... a surf.q alapján generálj háromszögeket a vertices-be ...
-        update_buffers();
-        set_uniform("color", color);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertices.size());
-    }
-public:
-    SpheroidOccluder(Spheroid const& s, glm::vec3 col, Camera const&)
-        : surf{s}, color{col} {
-        update_buffers_on_draw = false;
-        Builder::ShaderBuilder b;
-        set_shader(b.add_vertex_shader(SHADER_DIR "/vertex.vert")
-                    .add_fragment_shader(SHADER_DIR "/fragment.glsl")
-                    .build());
-    }
-};
-```
-
-Majd a fájl alján (a többi `OccluderFor` mellé) egy sor, ami összeköti a kettőt:
-
-```cpp
-template<> struct OccluderFor<Spheroid> { using type = SpheroidOccluder; };
-```
-
-> Megjegyzés: az occluder konstruktorának kötelezően
-> `(SajatAlakzat const&, glm::vec3, Camera const&)` a szignatúrája, és az `OccluderFor`
-> párosítás nélkül az `ImplicitSurface<SajatAlakzat>` nem fordul le.
-
-### 3. Megjelenítés (`main.cpp`)
-
-```cpp
-app.show<Spheroid>();
-```
-
-Ennyi — a részecske-mintavételezés, fisszió/halál és a kontrollpontos vezérlés
-automatikusan működik az új felületen.
 
 ---
 
@@ -831,8 +713,7 @@ minden kimenetre.
 | hely | mi |
 |---|---|
 | `App.hpp` | ablak + kamera + render loop wrapper |
-| `particle_sampling/Surface.hpp` | a `Surface<L>` ős és a konkrét felületek |
-| `particle_sampling/Occluders.hpp` | referencia-meshek + `OccluderFor` párosítás |
+| `particle_sampling/Surface.hpp` | a felület: F, deriváltak, lefordított programok, tartomány |
 | `particle_sampling/ImplicitSurface.hpp` | a szimuláció (taszítás, fisszió, halál) és `SimParams` |
 | `particle_sampling/Particle.hpp` | részecske + a `Particles`/`Floaters`/`ControlPoints` modellek |
 | `matek/` | a szimbolikus kifejezés-/deriválórendszer (Kif DSL) |

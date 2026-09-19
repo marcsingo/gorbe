@@ -9,7 +9,6 @@
 #include "SpatialGrid.hpp"
 #include "../model/Include.hpp"
 #include "../matek/Kif.hpp"
-#include "Occluders.hpp"
 
 
 // A szükséges neveket a Surface.hpp már behozza célzott using-deklarációkkal;
@@ -32,18 +31,14 @@ struct SimParams {
 };
 
 
-// SurfaceT: a megjelenítendő implicit felület típusa (Sphere, Torus, Ellipsoid, ...).
-// Az L paraméterszámot és a hozzá tartozó occludert automatikusan levezetjük, így
-// a main-ben elég a felület típusát megadni.
+// SurfaceT: a megjelenítendő implicit felület típusa (a programban StringSurface).
 template<class SurfaceT>
 class ImplicitSurface {
     static constexpr size_t L = SurfaceT::param_count;
-    using Occluder = typename OccluderFor<SurfaceT>::type;
 
     SurfaceT surface;
     Floaters<L> floaters;
     ControlPoints<L> controls;
-    Occluder sphere_mesh;
 
     std::mt19937 rng;
     std::uniform_real_distribution<float> dist_R;
@@ -61,7 +56,6 @@ public:
         // világosabb, kevertebb szín viszont szépen mutatja a formát.
         floaters{5, {0.20f, 0.45f, 0.90f}, camera},
         controls{10, {0.90f, 0.27f, 0.25f}, camera},
-        sphere_mesh{surface, {0.85f, 0.85f, 0.85f}, camera},
         rng(std::random_device{}()),
         dist_R(0.0f, 1.0f),
         d(params.d), alpha(params.alpha), sigma(params.sigma), PHI(params.phi),
@@ -513,7 +507,6 @@ public:
 
     void draw(const Camera &camera) {
         if (!visible) return;
-        sphere_mesh.draw(camera);
         floaters.draw(camera);
         controls.draw(camera);
     }
