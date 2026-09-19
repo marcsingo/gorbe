@@ -28,6 +28,7 @@ int main() {
     // --- egy minden mezot kitolto projekt -------------------------------------
     std::list<Param> program;
     param(program, "g1", 0.5f, 0.0f, 2.0f);
+    set(param(program, "g2", 0.0f, -10.0f, 10.0f).expr, "2*g1 + 1");   // kepletes
 
     std::list<SceneDoc> scenes;
     auto& sc = scenes.emplace_back();
@@ -60,8 +61,9 @@ int main() {
     std::vector<std::string> warn;
     auto pr = ProjectFile::from_text(text, warn);
     ok("nincs figyelmeztetes", warn.empty(), warn.empty() ? "" : warn.front());
-    ok("program-parameter", pr.program_params.size() == 1 &&
+    ok("program-parameter", pr.program_params.size() == 2 &&
        std::string(pr.program_params.front().name) == "g1" && pr.program_params.front().max == 2.0f);
+    ok("kepletes parameter", std::string(pr.program_params.back().expr) == "2*g1 + 1");
     ok("ket jelenet, sorrendben", pr.scenes.size() == 2 &&
        std::string(pr.scenes.back().name) == "Masodik");
 

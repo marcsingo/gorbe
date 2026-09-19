@@ -50,8 +50,11 @@ namespace ProjectFile {
 
         inline json params(std::list<Param> const& ps) {
             json a = json::array();
-            for (auto const& p : ps)
-                a.push_back({{"name", p.name}, {"value", p.value}, {"min", p.min}, {"max", p.max}});
+            for (auto const& p : ps) {
+                json pj = {{"name", p.name}, {"value", p.value}, {"min", p.min}, {"max", p.max}};
+                if (p.derived()) pj["expr"] = p.expr;   // képletes paraméter
+                a.push_back(pj);
+            }
             return a;
         }
 
@@ -143,6 +146,7 @@ namespace ProjectFile {
                     str(pj, "name", p.name, where + " parametere");
                     get(pj, "value", p.value, where);
                     get(pj, "min", p.min, where);
+                    str(pj, "expr", p.expr, where + " parametere");
                     get(pj, "max", p.max, where);
                     p.fit_range_to_value();
                 }

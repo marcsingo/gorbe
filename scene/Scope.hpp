@@ -18,6 +18,12 @@ struct Param {
     char  name[32] = "";
     float value    = 0.0f;
 
+    // Ha nem üres, a paraméter KÉPLETBŐL számolt (pl. "2*r + 1"): a `value` ilyenkor
+    // nem számít, és a hivatkozók a képlet fáját kapják (scene/Build.hpp,
+    // param_tree), így az alap-paraméterek csúszkáit élőben követi.
+    char  expr[128] = "";
+    bool  derived() const { return expr[0] != 0; }
+
     // A csúszka tartománya. Csak a GUI-t érinti: a kifejezésfa a `value` címét
     // tárolja, a tartomány nem kerül bele.
     float min = -10.0f;
@@ -50,6 +56,21 @@ namespace Scope {
             if (!lvl) continue;
             for (auto const& p : *lvl)
                 if (p.name[0] && std::strcmp(p.name, name) == 0) return &p.value;
+        }
+        return nullptr;
+    }
+
+    // Mint a find, de magat a parametert es a szintjet adja vissza (0 = legbelso).
+    inline Param const* find_param(std::vector<std::list<Param> const*> const& levels,
+                                   char const* name, int* level_out = nullptr) {
+        if (!name || !name[0]) return nullptr;
+        for (std::size_t i = 0; i < levels.size(); ++i) {
+            if (!levels[i]) continue;
+            for (auto const& p : *levels[i])
+                if (p.name[0] && std::strcmp(p.name, name) == 0) {
+                    if (level_out) *level_out = static_cast<int>(i);
+                    return &p;
+                }
         }
         return nullptr;
     }

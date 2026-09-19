@@ -71,7 +71,7 @@ ctest --test-dir build --output-on-failure
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
-| `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok |
+| `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok, alakzatonkénti `d`, **képletes paraméterek** (lánc élőben, `t`, körkörös hivatkozás Indítás előtt, önhivatkozás, `x/y/z`-tilalom, hatókör) |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
@@ -285,6 +285,20 @@ beírható: ha kilóg a tartományból, a `min`/`max` magától kitágul hozzá.
 `max` átírásakor a fordított határokat a program megcseréli, és az értéket a
 tartományba húzza. Alapból −10…10; a forgatás-warpok fokban −180…180, a skálázás
 0.1…5 tartománnyal indul.
+
+**Képletes paraméter.** A sor `=` gombjával egy paraméter értéke képlet lehet, ami
+más paraméterekre (és a `t` időre) hivatkozik, pl. `R = 2*r + 1`. A csúszka helyén
+ilyenkor a kiszámított érték látszik, és ez **élőben** követi az alap-paraméterek
+csúszkáit (a hivatkozók a képlet fáját kapják, benne az alap-paraméterek címével).
+A `#` gomb visszaváltja számmá, a pillanatnyi értékkel.
+
+- A képlet a paraméter **saját szintjéről kifelé** lát: egy lokális paraméteré a saját
+  alakzat lokálisait, a jelenet- és a program-szintűeket; egy program-szintűé csak a
+  program-szintűeket.
+- **Körkörös hivatkozás** (`a = b + 1`, `b = a * 2`, vagy `c = c + 1`) nem lehet: a
+  program már az Indítás **előtt** kiírja a teljes kört (`a -> b -> a`), a kör tagjai
+  pirosak, és az Indít tiltva marad.
+- A paraméter a térben állandó, ezért `x`, `y`, `z` nem lehet a képletében.
 
 ### Árnyalás
 

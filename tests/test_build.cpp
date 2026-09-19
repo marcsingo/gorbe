@@ -197,7 +197,83 @@ int main() {
         near("visszakapcsolva ujra a globalist koveti", effective_d(b, sc), 5.0f);
     }
 
-    std::printf("\n=== 8. A jelenet sajat fuggvenyei ===\n");
+    std::printf("\n=== 8. Kepletes parameterek ===\n");
+    {
+        auto derived = [](Param& p, char const* e) { std::snprintf(p.expr, sizeof(p.expr), "%s", e); };
+        std::list<Param> program;
+        SceneDoc sc;
+        auto& g = param(program, "g", 2.0f);                // program-szintu alap
+        auto& a = param(sc.params, "a", 0.0f);
+        derived(a, "3*g");                                  // jelenet -> program
+        auto& s = shape(sc, "s", "b - 1");
+        auto& b = param(s.locals, "b", 0.0f);
+        derived(b, "a + 1");                                // lokalis -> jelenet -> program
+
+        ok("lanc: nincs hiba a validalasban", validate(program, sc).empty());
+        ok("build sikeres", Build::build(sc, program).empty());
+        near("b = 3*g + 1 = 7, F = b - 1", at(s, 0, 0, 0), 6.0f);
+
+        g.value = 4.0f;                                     // az alap csuszkaja
+        near("elo: az alap valtozasat a lanc koveti", at(s, 0, 0, 0), 12.0f);
+        near("a kijelzett ertek is", Build::param_value(b, {&s.locals, &sc.params, &program}), 13.0f);
+
+        // A t (ido) hasznalhato.
+        derived(a, "g + t");
+        SceneTime::value = 1.5f;
+        ok("t-vel is felepul", Build::build(sc, program).empty());
+        near("a = g + t", at(s, 0, 0, 0), 4.0f + 1.5f + 1.0f - 1.0f);
+        SceneTime::value = 0.0f;
+    }
+    {
+        auto derived = [](Param& p, char const* e) { std::snprintf(p.expr, sizeof(p.expr), "%s", e); };
+        std::list<Param> program;
+        SceneDoc sc;
+        auto& a = param(sc.params, "a", 0.0f);
+        auto& b = param(sc.params, "b", 0.0f);
+        auto& c = param(sc.params, "c", 0.0f);
+        derived(a, "b + 1");
+        derived(b, "c * 2");
+        derived(c, "a - 3");                                // kor: a -> b -> c -> a
+        auto& s = shape(sc, "s", "x - a");
+
+        Problems pr = validate(program, sc);
+        bool shown = false;
+        for (auto const& m : pr.messages)
+            if (m.find("korkoros hivatkozas") != std::string::npos &&
+                m.find("a -> b -> c -> a") != std::string::npos) shown = true;
+        ok("a kor mar az Inditas ELOTT latszik (teljes korrel)", shown,
+           pr.messages.empty() ? "" : pr.messages.front());
+        ok("a kor minden tagja pirossal", pr.is_bad(&a) && pr.is_bad(&b) && pr.is_bad(&c));
+        ok("egyszer irja ki, nem haromszor", pr.messages.size() == 1, std::to_string(pr.messages.size()));
+
+        std::string err = Build::build(sc, program);        // vegtelen rekurzio helyett hiba
+        ok("a build is megall a kornel", err.find("korkoros") != std::string::npos,
+           err.substr(0, err.find('\n')));
+        ok("nem marad felkesz fa", !s.tree);
+
+        derived(c, "5");                                    // a kor megszuntetese
+        ok("kor nelkul ujra rendben", validate(program, sc).empty());
+
+        derived(c, "c + 1");                                // onmagara
+        ok("onhivatkozas is kor", validate(program, sc).messages.front().find("c -> c") != std::string::npos);
+
+        derived(c, "x + 1");                                // terbeli valtozo
+        ok("x/y/z-tol nem fugghet",
+           validate(program, sc).messages.front().find("nem fugghet x/y/z") != std::string::npos);
+
+        derived(c, "nincsilyen + 1");                       // ismeretlen nev
+        ok("ismeretlen nev -> hiba",
+           validate(program, sc).messages.front().find("ismeretlen nev") != std::string::npos,
+           validate(program, sc).messages.front());
+
+        // A program-szintu parameter a jelenetet NEM latja (kifele nez, befele nem).
+        c.expr[0] = 0;
+        auto& p = param(program, "p", 0.0f);
+        derived(p, "a");
+        ok("program-szint nem lat jelenet-parametert", !validate(program, sc).empty());
+    }
+
+    std::printf("\n=== 9. A jelenet sajat fuggvenyei ===\n");
     {
         std::list<Param> program;
         SceneDoc sc;

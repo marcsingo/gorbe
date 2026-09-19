@@ -1,6 +1,7 @@
 #ifndef GORBE_SCENE_VALIDATE_HPP
 #define GORBE_SCENE_VALIDATE_HPP
 
+#include <algorithm>
 #include <cstring>
 #include <iterator>
 #include <list>
@@ -8,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "Build.hpp"
 #include "Document.hpp"
 #include "Names.hpp"
 #include "Scope.hpp"
@@ -96,6 +98,37 @@ inline Problems validate(std::list<Param> const& program_params, SceneDoc const&
         std::string sn = s.name[0] ? s.name : "(nevtelen)";
         unique_within(s.locals, sn + " lokalis parametere");
     }
+
+    // A képletes paraméterek: minden hivatkozás feloldható, nincs köztük kör, és
+    // nem függnek x/y/z-től. UGYANAZ a feloldás fut, mint az Indításkor (Build.hpp),
+    // csak itt a hibát nem dobjuk tovább, hanem kiírjuk — így a kör már az Indítás
+    // ELŐTT látszik, és az Indít tiltva marad.
+    auto check_derived = [&](std::list<Param> const& list, Build::Levels const& levels) {
+        for (auto const& p : list) {
+            if (!p.derived() || pr.is_bad(&p)) continue;
+            try {
+                std::vector<Param const*> path;
+                Build::param_tree(p, levels, path);
+            } catch (Build::CycleError const& e) {
+                // A kör MINDEN tagja piros, és így a többi tagnál már nem írjuk ki
+                // újra (más kezdőponttal) ugyanazt a kört.
+                pr.messages.push_back(e.what());
+                pr.bad.insert(&p);
+                for (auto const* m : e.members) pr.bad.insert(m);
+            } catch (std::exception const& e) {
+                std::string msg = e.what();
+                msg = msg.substr(0, msg.find('\n'));          // a parser-jelölés nélkül
+                // Egy kör minden tagjánál ugyanaz az üzenet — elég egyszer kiírni.
+                if (std::find(pr.messages.begin(), pr.messages.end(), msg) == pr.messages.end())
+                    pr.messages.push_back(msg);
+                pr.bad.insert(&p);
+            }
+        }
+    };
+    check_derived(program_params, {&program_params});
+    check_derived(sc.params, {&sc.params, &program_params});
+    for (auto const& s : sc.shapes)
+        check_derived(s.locals, {&s.locals, &sc.params, &program_params});
     return pr;
 }
 

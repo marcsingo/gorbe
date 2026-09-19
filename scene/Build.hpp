@@ -1,6 +1,8 @@
 #ifndef GORBE_SCENE_BUILD_HPP
 #define GORBE_SCENE_BUILD_HPP
 
+#include <algorithm>
+#include <cmath>
 #include <exception>
 #include <list>
 #include <memory>
@@ -28,6 +30,86 @@ namespace Build {
     using Matek::Analizis::FuncResolver;
     using Tree = std::shared_ptr<Matek::Analizis::Kifejezes const>;
 
+    // A hatókörök LEGBELSŐTŐL kifelé (lásd Scope.hpp).
+    using Levels = std::vector<std::list<Param> const*>;
+
+    // Körkörös hivatkozás a paraméterek képletei között. Külön típus, hogy a
+    // beágyazott hibaüzenetek ne takarják el: a kört magát akarjuk látni.
+    struct CycleError : std::runtime_error {
+        std::vector<Param const*> members;   // a kör tagjai (a jelöléshez)
+        CycleError(std::string const& msg, std::vector<Param const*> m)
+            : std::runtime_error(msg), members(std::move(m)) {}
+    };
+
+    // Egy paraméter fája. Sima paraméternél a `value` CÍME (a csúszka élőben hat);
+    // képletesnél a képlet fája, amiben a hivatkozott paraméterek ugyanígy
+    // feloldódnak — tehát az alap-paraméterek címéig, élőben.
+    //
+    // A képlet a paraméter SAJÁT szintjéről kifelé lát (`levels`: az első elem a
+    // saját listája), plusz a `t` időt. Térbeli változó (x, y, z) nem lehet benne:
+    // a paraméter a térben állandó.
+    //
+    // A `path` a feloldás alatt álló paraméterek lánca: ha egy már benne lévőre
+    // érkezünk vissza, az kör — CycleError, a teljes körrel (a -> b -> a).
+    inline Tree param_tree(Param const& p, Levels const& levels, std::vector<Param const*>& path) {
+        if (!p.derived()) return Kif(&p.value).get();
+
+        if (std::find(path.begin(), path.end(), &p) != path.end()) {
+            std::string cyc;
+            std::vector<Param const*> members;
+            bool on = false;
+            for (auto const* q : path) {
+                if (q == &p) on = true;
+                if (on) { (cyc += q->name) += " -> "; members.push_back(q); }
+            }
+            throw CycleError("korkoros hivatkozas a parameterek kozott: " + cyc + p.name,
+                             std::move(members));
+        }
+
+        path.push_back(&p);
+        auto r = [&](std::string const& nm) -> Tree {
+            if (nm == "t") return Kif(SceneTime::ptr()).get();
+            int lvl = -1;
+            if (Param const* q = Scope::find_param(levels, nm.c_str(), &lvl))
+                return param_tree(*q, Levels(levels.begin() + lvl, levels.end()), path);
+            return nullptr;
+        };
+        Kif k;
+        try {
+            k = make_kif(p.expr, r);
+        } catch (CycleError const&) {
+            throw;
+        } catch (std::exception const& e) {
+            throw std::runtime_error(std::string("a(z) '") + p.name + "' parameter keplete: " + e.what());
+        }
+        for (char v : {'x', 'y', 'z'})
+            if (!Matek::Analizis::is_const(k.derive(v).get(), 0.0f))
+                throw std::runtime_error(std::string("a(z) '") + p.name +
+                                         "' parameter nem fugghet x/y/z-tol (a terben allando)");
+        path.pop_back();
+        return k.get();
+    }
+
+    // Egy név paraméterként, a megadott hatókörökben; nullptr, ha nincs ilyen.
+    inline Tree param_ref(Levels const& levels, std::string const& nm) {
+        int lvl = -1;
+        Param const* q = Scope::find_param(levels, nm.c_str(), &lvl);
+        if (!q) return nullptr;
+        std::vector<Param const*> path;
+        return param_tree(*q, Levels(levels.begin() + lvl, levels.end()), path);
+    }
+
+    // Egy (akár képletes) paraméter pillanatnyi értéke — a GUI kijelzéséhez.
+    // Hibánál (kör, ismeretlen név) NaN.
+    inline float param_value(Param const& p, Levels const& levels) {
+        try {
+            std::vector<Param const*> path;
+            return Kif(param_tree(p, levels, path)).at({0.0f, 0.0f, 0.0f});
+        } catch (std::exception const&) {
+            return std::nanf("");
+        }
+    }
+
     // Névfeloldó a parsernek. HÁROM HATÓKÖR, kifelé haladva; az első találat nyer,
     // tehát a belső ELFEDI a külsőt (mint C++-ban):
     //     alakzat lokálisai -> jelenet paraméterei -> program-szintűek
@@ -37,8 +119,7 @@ namespace Build {
         // A `t` (idő) beépített: foglalt név, tehát paraméterként nem vehető fel,
         // viszont bármelyik képletben használható.
         if (nm == "t") return Kif(SceneTime::ptr()).get();
-        if (float const* v = Scope::find({&owner.locals, &sc.params, &program}, nm.c_str()))
-            return Kif(v).get();
+        if (Tree t = param_ref({&owner.locals, &sc.params, &program}, nm)) return t;
         for (auto const& s : sc.shapes) {
             if (&s == &owner) break;               // csak a nála korábbiakra hivatkozhat
             if (s.name[0] && nm == s.name && s.tree) return s.tree;
@@ -69,8 +150,7 @@ namespace Build {
     inline Tree resolve_global(SceneDoc const& sc, std::list<Param> const& program,
                                std::string const& nm) {
         if (nm == "t") return Kif(SceneTime::ptr()).get();
-        if (float const* v = Scope::find({&sc.params, &program}, nm.c_str()))
-            return Kif(v).get();
+        if (Tree t = param_ref({&sc.params, &program}, nm)) return t;
         return nullptr;
     }
 

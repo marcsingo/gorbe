@@ -1,12 +1,14 @@
 #ifndef GORBE_UI_PARAMSPANEL_HPP
 #define GORBE_UI_PARAMSPANEL_HPP
 
+#include <cmath>
 #include <cstdio>
 #include <list>
 #include <vector>
 
 #include "imgui.h"
 #include "../app/Scene.hpp"
+#include "../scene/Build.hpp"
 #include "../scene/Names.hpp"
 #include "../scene/Validate.hpp"
 #include "Layout.hpp"
@@ -15,8 +17,11 @@
 namespace Ui {
 
     // Egy paramétertábla, paraméterenként két sorban:
-    //     [név] [pontos érték] [X]  (elfedés-jelzés)
+    //     [név] [pontos érték] [=] [X]  (elfedés-jelzés)
     //     [min] [====csúszka====] [max]
+    // vagy képletes paraméternél:
+    //     [név] [képlet, pl. 2*r + 1] [#] [X]
+    //       = kiszámított érték
     // A program-, a jelenet- és a lokális lista UI-ja ugyanaz. A törlést csak kéri:
     // a vezérlő előbb eldobja a fákat.
     //
@@ -37,15 +42,51 @@ namespace Ui {
             ImGui::InputText("##nev", p.name, sizeof(p.name));
             if (warn) ImGui::PopStyleColor();
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputFloat("##ertek", &p.value, 0.0f, 0.0f, "%.4g"))
-                p.fit_range_to_value();
+            if (p.derived()) {
+                // Képletes paraméter: a képlet szövege szerkeszthető. A szöveg
+                // változása újraépítést kér (a fákba a beolvasott képlet épül be).
+                ImGui::SetNextItemWidth(140.0f);
+                ImGui::InputText("##keplet", p.expr, sizeof(p.expr));
+                if (ImGui::IsItemDeactivatedAfterEdit()) rq.build = true;
+            } else {
+                ImGui::SetNextItemWidth(90.0f);
+                if (ImGui::InputFloat("##ertek", &p.value, 0.0f, 0.0f, "%.4g"))
+                    p.fit_range_to_value();
+            }
+            ImGui::SameLine();
+            // Váltás szám <-> képlet. Mindkét irányban a pillanatnyi érték marad meg,
+            // hogy a jelenet ne ugorjon; az átváltás újraépítést kér, mert változik,
+            // hogy a hivatkozók a címet vagy a képlet fáját kapják.
+            if (ImGui::SmallButton(p.derived() ? "#" : "=")) {
+                if (p.derived()) {
+                    float v = Build::param_value(p, levels);
+                    if (std::isfinite(v)) p.value = v;
+                    p.expr[0] = 0;
+                    p.fit_range_to_value();
+                } else {
+                    std::snprintf(p.expr, sizeof(p.expr), "%g", p.value);
+                }
+                rq.build = true;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(p.derived() ? "Vissza szamra"
+                                              : "Kepletbol szamolt ertek (pl. 2*r + 1):\n"
+                                                "mas parameterekre es a t-re hivatkozhat");
             ImGui::SameLine();
             if (ImGui::Button("X")) { rq.erase_from = &list; rq.erase_param = &p; }
             // Elfedés-jelzés: nem hiba, de ne legyen néma meglepetés.
             if (char const* sh = shadows(p.name, levels, sc.params, sc.shapes)) {
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", sh);
+            }
+
+            if (p.derived()) {
+                // A kiszámított érték (élőben: az alap-paraméterek csúszkáit követi).
+                float v = Build::param_value(p, levels);
+                if (std::isfinite(v)) ImGui::TextDisabled("  = %.4g", v);
+                else ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "  = ? (hibas keplet)");
+                ImGui::PopID();
+                continue;
             }
 
             // A csúszka élőben hat: a kifejezésfa a `value` CÍMÉT tárolja.
