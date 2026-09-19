@@ -2,11 +2,15 @@
 #define GORBE_APP_CONTROLLER_HPP
 
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <list>
+#include <sstream>
 #include <string>
 
 #include "../scene/Build.hpp"
 #include "../scene/Names.hpp"
+#include "../scene/ProjectFile.hpp"
 #include "../ui/Requests.hpp"
 #include "Photo.hpp"
 #include "Scene.hpp"
@@ -24,6 +28,11 @@ public:
     std::list<Scene> scenes;
 
     Photo::Settings photo;
+
+    // A megnyitott/mentett projektfájl (üres = még nincs mentve), és az utolsó
+    // fájlművelet eredménye a panelre.
+    std::string project_path;
+    std::string file_status;
 
     Controller() {
         auto& s0 = scenes.emplace_back();
@@ -62,6 +71,61 @@ public:
         if (rq.photo) Photo::take(sc, photo);
 
         switch_scenes(rq);
+
+        // A projekt-műveletek a legvégén: a betöltés és az új projekt MINDEN jelenetet
+        // lecserél, tehát a fenti hivatkozások (sc, cur_) utána érvénytelenek.
+        if (!rq.save_path.empty()) save_project(rq.save_path);
+        if (!rq.load_path.empty()) load_project(rq.load_path);
+        if (rq.new_project)        new_project();
+    }
+
+    // --- projekt (scene/ProjectFile.hpp) ------------------------------------------
+
+    void new_project() {
+        ProjectFile::Project pr;
+        std::snprintf(pr.scenes.emplace_back().name, 32, "Jelenet 1");
+        replace_all(std::move(pr));
+        project_path.clear();
+        file_status = "Uj projekt";
+    }
+
+    bool save_project(std::string const& path) {
+        // A futó kamerák állása a dokumentumba, hogy a nézőpont is mentődjön.
+        for (auto& s : scenes) {
+            s.view.eye    = s.camera.get_position();
+            s.view.target = s.view.eye + s.camera.get_front();
+            s.view.fov    = s.camera.get_fov_deg();
+        }
+        std::ofstream f(path, std::ios::binary);
+        if (f) f << ProjectFile::to_text(program_params, scenes);
+        if (!f) {
+            file_status = "HIBA: nem sikerult menteni: " + path;
+            return false;
+        }
+        project_path = path;
+        file_status = "Mentve: " + path;
+        return true;
+    }
+
+    bool load_project(std::string const& path) {
+        std::ifstream f(path, std::ios::binary);
+        if (!f) {
+            file_status = "HIBA: nem sikerult megnyitni: " + path;
+            return false;
+        }
+        std::stringstream text;
+        text << f.rdbuf();
+        std::vector<std::string> warnings;
+        try {
+            replace_all(ProjectFile::from_text(text.str(), warnings));
+        } catch (std::exception const& e) {
+            file_status = std::string("HIBA: ") + e.what();   // a régi projekt megmarad
+            return false;
+        }
+        project_path = path;
+        file_status = "Megnyitva: " + path;
+        for (auto const& w : warnings) file_status += "\n  figyelmeztetes: " + w;
+        return true;
     }
 
     // A jelenetek (bennük a Model-ek: VAO/VBO) felszabadítása MÉG élő GL-kontextussal.
@@ -69,6 +133,26 @@ public:
 
 private:
     Scene* cur_ = nullptr;
+
+    // Minden jelenet lecserélése egy betöltött projektre, és a felépítésük, hogy
+    // rögtön lássuk is. SORREND: előbb a régi jelenetek szűnnek meg (a fáik a régi
+    // program-paraméterek címére mutatnak), csak utána cserélődnek a paraméterek.
+    void replace_all(ProjectFile::Project&& pr) {
+        scenes.clear();
+        cur_ = nullptr;
+        program_params = std::move(pr.program_params);
+        for (auto& doc : pr.scenes) {
+            auto& ns = scenes.emplace_back();
+            static_cast<SceneDoc&>(ns) = std::move(doc);
+            ns.camera.look_at(ns.view.eye, ns.view.target);
+            ns.camera.set_fov_deg(ns.view.fov);
+            ns.sync_pool();
+            build(ns);
+            ns.set_active(false);
+        }
+        cur_ = &scenes.front();
+        cur_->set_active(true);
+    }
 
     // Az összes alakzat beparseolása (scene/Build.hpp) és a kész fák átadása a
     // mintavételezőknek.

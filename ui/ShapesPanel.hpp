@@ -2,6 +2,7 @@
 #define GORBE_UI_SHAPESPANEL_HPP
 
 #include <cstring>
+#include <string>
 
 #include "imgui.h"
 #include "../app/Photo.hpp"
@@ -15,6 +16,7 @@ namespace Ui {
 
     // 1. ablak: a jelenet alakzatai (lista + kijelölés) és a futtatás.
     inline void shapes_panel(Scene& sc, Problems const& pr, Photo::Settings& photo,
+                             std::string const& file_status,
                              UiState& ui, Requests& rq, Geometry const& g) {
         fixed_panel("Alakzatok", {g.O.x + PAD, g.O.y + PAD}, {ui.layout.left_w, g.h1});
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
@@ -89,6 +91,14 @@ namespace Ui {
         ImGui::Checkbox("arnyek", &photo.shadows);
         if (!photo.status.empty())
             ImGui::TextDisabled("%s", photo.status.c_str());
+        if (!file_status.empty()) {
+            // A betöltés figyelmeztetései is ide jönnek, soronként.
+            ImGui::PushTextWrapPos(0.0f);
+            bool const err = file_status.rfind("HIBA", 0) == 0;
+            if (err) ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.40f, 1.0f), "%s", file_status.c_str());
+            else     ImGui::TextDisabled("%s", file_status.c_str());
+            ImGui::PopTextWrapPos();
+        }
 
         if (!sc.error.empty())
             ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.40f, 1.0f), "%s", sc.error.c_str());

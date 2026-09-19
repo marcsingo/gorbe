@@ -111,8 +111,9 @@ void Window::event_handling() {
     static double t = glfwGetTime();
     static double dt = 0;
     glfwSwapBuffers(window);
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    // (Az Esc-es kilépést a GUI kezeli — ui/MenuBar.hpp —, mert csak ott tudható,
+    //  hogy az Esc épp egy ablakot vagy szövegbevitelt zár-e be. Itt, a nyers
+    //  billentyűállapotból kilépve egy mentés-ablak bezárása a programot is bezárná.)
 
     if (dt != 0.0)
         dispatch(time_passed_events, TimePassedEventInformation{t, dt});

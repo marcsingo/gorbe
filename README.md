@@ -74,6 +74,7 @@ ctest --test-dir build --output-on-failure
 | `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható |
+| `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -656,6 +657,47 @@ dokkolható panelek építőkövei stb.
 
 ---
 
+## Projekt mentése és betöltése
+
+**Fájl** menü: *Új projekt*, *Megnyitás…* (`Ctrl+O`), *Mentés* (`Ctrl+S`), *Mentés
+másként…*. A projekt egy olvasható JSON-fájl (`.gorbe.json`); az első mentést a
+program a bináris melletti `projektek/` mappába javasolja. A menüsoron látszik az
+aktuális fájl neve.
+
+Ami bekerül: a program-szintű paraméterek, és jelenetenként a név, a munkatér, a `d`
+és a görbület, a kamera állása, a paraméterek (tartománnyal), a saját függvények, és
+az objektumok minden beállítása (képlet, tartomány, láthatóság, szín, anyag, saját
+`d`, transzformáció, warpok, lokális paraméterek). Ami nem: a részecskék és a
+felépített képletek — betöltéskor a program minden jelenetet magától felépít.
+
+```json
+{
+  "format": "gorbe-projekt",
+  "version": 1,
+  "program_params": [ { "name": "g1", "value": 1.0, "min": -10, "max": 10 } ],
+  "scenes": [ {
+      "name": "Jelenet 1", "domain": "", "d": 2.0, "curvature": 1.0,
+      "camera": { "eye": [-14, -14, 16], "target": [0, 0, 0], "fov": 45 },
+      "params": [], "functions": [ { "name": "g", "params": "u", "body": "u^2" } ],
+      "objects": [ {
+          "name": "gomb1", "formula": "x^2 + y^2 + z^2 - r^2", "domain": "",
+          "visible": true, "color": "Kek", "material": "Uveg", "own_d": false, "d": 2.0,
+          "transform": { "pos": [0, 0, 0], "rot_deg": [0, 0, 0], "scale": [1, 1, 1] },
+          "warps": [], "params": [ { "name": "r", "value": 1.0, "min": -10, "max": 10 } ]
+      } ]
+  } ]
+}
+```
+
+- A **szín és az anyag név szerint** kerül a fájlba, így a paletta bővítése nem
+  színezi át a régi projekteket. A forgatás fokban van (olvashatóbb).
+- A betöltés **hibatűrő**: a hiányzó mező alapértéket kap, az ismeretlen szín/anyag
+  az elsőt, a túl hosszú szöveg levágódik — ezekről figyelmeztetés jelenik meg az
+  Alakzatok panelen, de a projekt betöltődik. Nem-JSON, más formátumú vagy újabb
+  verziójú fájlnál hibaüzenet jön, és a régi projekt érintetlen marad.
+- Az **Esc** kilép a programból, de csak ha épp nem egy ablakot (pl. a mentés
+  ablakát) vagy egy szövegmezőt zár be.
+
 ## Régi, fordítási idejű felületek
 
 Korábban a felületeket C++ osztályként is meg lehetett adni (`Sphere`, `Torus`,
@@ -753,13 +795,15 @@ minden kimenetre.
 | `scene/Build.hpp` | a képletek felépítése: névfeloldás, warp-lánc + transzformáció, tartományok |
 | `scene/Validate.hpp` | névellenőrzés és elfedés-jelzés |
 | `scene/Presets.hpp`, `scene/Names.hpp` | alakzat- és warp-sablonok felvétele; szabad nevek, foglalt nevek |
+| `scene/ProjectFile.hpp` | a projektfájl (JSON) írása és olvasása, GL nélkül |
+| `ui/MenuBar.hpp` | a Fájl menü és az útvonal-ablak |
 | `scene/Scope.hpp` | a három szintű hatókör-feloldás (elfedéssel) |
 | `scene/Time.hpp` | a képletekben használható `t` idő |
 | `app/` | **CONTROLLER**: `Controller` (a fülek gazdája, a kérések végrehajtása), `Scene` (kamera + mintavételezők), `Photo` |
 | `ui/` | **VIEW**: egy fájl panelenként; `Requests.hpp` a nézet → vezérlő kérések, `Layout.hpp` az elrendezés |
 | `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, anyagok, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
-| `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
+| `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`), nlohmann/json 3.11.3 (`nlohmann/json.hpp`, MIT) |
 
 **A térbeli objektum** (`object/SpaceObject.hpp`) szintén MVC: a modell
 (`ParticleSystem`) a felület és a részecskék, a szimulációval — nem tud a GL-ről és az

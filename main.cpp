@@ -5,6 +5,7 @@
 #include "scene/Validate.hpp"
 #include "ui/HelpPanel.hpp"
 #include "ui/Layout.hpp"
+#include "ui/MenuBar.hpp"
 #include "ui/ParamsPanel.hpp"
 #include "ui/PropsPanel.hpp"
 #include "ui/Requests.hpp"
@@ -34,10 +35,14 @@ int main() {
 
         Scene& sc = ctl.cur();
         Problems const pr = validate(ctl.program_params, sc);
-        Ui::Geometry const g = Ui::compute_geometry(ui.layout);
         Ui::Requests rq;
 
-        Ui::shapes_panel(sc, pr, ctl.photo, ui, rq, g);
+        // A menüsor ELŐSZÖR: a magasságát az ImGui a munkaterületből vonja le,
+        // az elrendezés pedig már ebből számol.
+        Ui::menu_bar(ctl.project_path, ui, rq);
+        Ui::Geometry const g = Ui::compute_geometry(ui.layout);
+
+        Ui::shapes_panel(sc, pr, ctl.photo, ctl.file_status, ui, rq, g);
         Ui::props_panel(sc, ctl.program_params, pr, ui, rq, g);
         Ui::help_panel(sc.camera, app.get_axes(), ui.layout, g);
         Ui::params_panel(sc, ctl.program_params, pr, rq, ui.layout, g);

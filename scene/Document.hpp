@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 
+#include <glm.hpp>
+
 #include "../matek/Kif.hpp"
 #include "../particle_sampling/Transform.hpp"
 #include "Scope.hpp"
@@ -88,6 +90,14 @@ struct UserFunc {
     char body[256]  = "";
 };
 
+// A jelenet nézőpontja, hogy betöltéskor ugyanonnan lássuk. Tiszta adat: a kamerát
+// (model/Camera.hpp) a vezérlő állítja be belőle, illetve menti bele.
+struct ViewDoc {
+    glm::vec3 eye{-14.0f, -14.0f, 16.0f};
+    glm::vec3 target{0.0f};
+    float     fov = 45.0f;
+};
+
 // Egy jelenet (fül) adatai. A futásidejű része (kamera, mintavételezők) az
 // app/Scene.hpp-ben van, ami ebből származik.
 struct SceneDoc {
@@ -105,6 +115,8 @@ struct SceneDoc {
 
     // A jelenet saját függvényei (lásd UserFunc).
     std::list<UserFunc> funcs;
+
+    ViewDoc view;   // csak mentéskor/betöltéskor frissül (a futó kamera a Scene-ben van)
 
     float d_ui    = 2.0f;   // globális méretskála (a saját d nélküli alakzatoknak)
     float curv_ui = 1.0f;   // görbület-adaptív taszítás (0 = egyenletes)

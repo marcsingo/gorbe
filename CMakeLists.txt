@@ -29,6 +29,8 @@ add_subdirectory(libraries/glfw)
 # 2. GLM és GLAD include útvonalak
 include_directories(libraries/glm)
 include_directories(libraries/glad/include)
+# nlohmann/json (egyetlen fejléc, MIT) a projektfájlokhoz: #include "nlohmann/json.hpp"
+include_directories(libraries)
 
 # 2b. Dear ImGui (GLFW + OpenGL3 backend) statikus könyvtárként
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libraries/imgui)
@@ -82,6 +84,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         scene/Names.hpp
         scene/Presets.hpp
         scene/Validate.hpp
+        scene/ProjectFile.hpp
         scene/Build.hpp
         app/Scene.hpp
         app/Photo.hpp
@@ -93,6 +96,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         ui/HelpPanel.hpp
         ui/ParamsPanel.hpp
         ui/ViewportPanel.hpp
+        ui/MenuBar.hpp
         raytrace/Raytracer.hpp
         raytrace/Palette.hpp
         raytrace/Material.hpp
@@ -137,7 +141,7 @@ target_compile_definitions(gorbe PRIVATE
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles test_project)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})

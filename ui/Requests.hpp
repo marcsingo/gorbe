@@ -2,6 +2,7 @@
 #define GORBE_UI_REQUESTS_HPP
 
 #include <list>
+#include <string>
 
 #include "../scene/Document.hpp"
 #include "../scene/Scope.hpp"
@@ -34,6 +35,11 @@ namespace Ui {
         bool   new_scene   = false;
         Scene* want_scene  = nullptr;   // a fülsávon kiválasztott fül
         Scene* close_scene = nullptr;
+
+        // Projekt (Fájl menü). Az új projekt és a betöltés MINDEN jelenetet lecserél.
+        bool        new_project = false;
+        std::string load_path;          // üres = nincs kérés
+        std::string save_path;
     };
 
     // A csak a nézethez tartozó, frame-ek KÖZÖTT megmaradó állapot. Nem lehet a
@@ -55,6 +61,11 @@ namespace Ui {
         int    preset_idx      = 0;   // alakzat-sablon a lenyílóban
         int    warp_preset_idx = 0;   // warp-sablon a lenyílóban
         bool   drag_latch      = false;
+
+        // A Fájl menü útvonal-ablaka (Megnyitás / Mentés másként).
+        enum class FileDialog { None, Open, SaveAs };
+        FileDialog file_dialog = FileDialog::None;
+        char       path_buf[512] = "";
     };
 
 }

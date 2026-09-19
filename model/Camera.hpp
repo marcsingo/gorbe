@@ -125,6 +125,8 @@ public:
     glm::vec3 get_position() const { return position; }
     glm::vec3 get_eye()     const override { return position; }
     float     get_fov_deg() const override { return fov; }
+    // A látószög (zoom) beállítása, ugyanazzal a korláttal, mint az egérgörgőé.
+    void      set_fov_deg(float deg) { fov = deg < 1.0f ? 1.0f : (deg > 45.0f ? 45.0f : deg); }
     glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;
 
     // Csak az AKTIV jelenet kameraja reagaljon a bevitelre. Fulenkent sajat kamera
