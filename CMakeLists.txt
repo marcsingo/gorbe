@@ -158,7 +158,35 @@ endif()
 add_custom_target(shaders ALL
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/vertex.vert"
+            "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/disk.vert"
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/fragment.glsl"
             "$<TARGET_FILE_DIR:gorbe>"
         COMMENT "Shaderek masolasa a binaris melle")
 add_dependencies(gorbe shaders)
+# 9. GL-kontextust igenylo tesztek — KULON kapcsolora, alapbol KI.
+#
+#      cmake -B <dir> -DGORBE_BUILD_GL_TESTS=ON && ctest --test-dir <dir>
+#
+# Valodi (rejtett) ablakot es GL-kontextust nyitnak, tehat fejgep nelkuli gepen es a
+# szokasos CI-n nincs mivel futniuk. A 7. pont tesztjei ezert GL-mentesek.
+#   test_gl_disks : az instancinges korong-rajzolas ugyanazt a kepet adja, mint a
+#                   korabbi CPU-s (pixelenkenti osszevetes)
+option(GORBE_BUILD_GL_TESTS "GL-kontextust igenylo tesztek forditasa" OFF)
+if(GORBE_BUILD_GL_TESTS)
+    enable_testing()
+    foreach(t test_gl_disks)
+        add_executable(${t} tests/gl/${t}.cpp
+                libraries/glad/src/glad.c
+                model/Window.cpp
+                model/Camera.cpp
+                model/Model.cpp
+                model/Shader.cpp
+                model/Gui.cpp
+                utils/init.cpp)
+        target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_link_libraries(${t} glfw OpenGL::GL imgui)
+        target_compile_definitions(${t} PRIVATE "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\"")
+        add_dependencies(${t} shaders)
+        add_test(NAME ${t} COMMAND ${t})
+    endforeach()
+endif()

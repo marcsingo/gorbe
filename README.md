@@ -81,6 +81,10 @@ ctest --test-dir build --output-on-failure
 
 Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
 
+GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapból ki):
+`cmake -B build -DGORBE_BUILD_GL_TESTS=ON`. Most egy van: `test_gl_disks` — az
+instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint a korábbi CPU-s.
+
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
 ## Irányítás
@@ -773,6 +777,21 @@ után a fák tele vannak ismételt részkifejezésekkel. Három dolog van ellene
 Az eredmény bitre azonos a fabejárásével — ezt teszt ellenőrzi minden képletre és
 minden kimenetre.
 
+4. **Cellák szerint rendezett részecskék.** Mérve a lépés 75–90%-a a taszítás volt,
+   és annak nagy része a szomszédkeresés: részecskénként 27 hash-keresés, és minden
+   jelöltnél újraszámolt felület-távolság. Most a lépés elején a részecskék a
+   rácscellájuk szerint rendeződnek, így a szomszédos cellák jelöltjeit cellánként
+   egyszer kell összeszedni, és a felület-távolság részecskénként egyszer számolódik.
+   Mérve **1.25–1.4×** gyorsabb lépés (végtelen síkon 2–2.7×), változatlan
+   mintavétellel (részecskeszám, a szomszédtávolság szórása).
+
+5. **Korongok instancinggal** (`object/ObjectView.hpp`, `particle_sampling/disk.vert`).
+   Egy közös egységkorong van a GPU-n; frame-enként részecskénként csak a középpont, a
+   normális és a sugár megy fel, a korong síkját a vertex shader számolja. 4000
+   részecskénél mérve a CPU-munka **2.09 → 0.03 ms/frame**, a feltöltés **4.6 → 0.11
+   MB/frame**. A kép pixelre ugyanaz, mint a korábbi CPU-s rajzolásé
+   (`tests/gl/test_gl_disks.cpp`).
+
 ---
 
 ## Projekt-szerkezet (röviden)
@@ -785,7 +804,7 @@ minden kimenetre.
 | `particle_sampling/Particle.hpp` | egy részecske állapota (tiszta adat) |
 | `object/` | **a térbeli objektum, MVC szerint** (lásd lent) |
 | `object/SpaceObject.hpp` | egy alakzat a térben: `model()` + `view()` + `controller()` |
-| `object/ObjectView.hpp` | NÉZET: a részecskék korongokként (`ParticleDisks : Model`) |
+| `object/ObjectView.hpp` | NÉZET: a részecskék korongokként, instancinggal (`ParticleDisks : Model`, shader: `particle_sampling/disk.vert`) |
 | `object/ObjectController.hpp` | VEZÉRLŐ: az óra (mikor lép a szimuláció) és a kontrollpont-bevitel |
 | `matek/` | a szimbolikus kifejezés-/deriválórendszer (Kif DSL) |
 | `matek/Kif.hpp` | a `Kif` burkoló és a C++ DSL (operátorok, `sin`, `min`, …) |

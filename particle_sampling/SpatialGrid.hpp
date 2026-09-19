@@ -36,6 +36,13 @@ class SpatialGrid {
     }
 
 public:
+    // A pont cellájának kulcsa adott cellaméret mellett. Két pont akkor és csak
+    // akkor ugyanabban a cellában van, ha a kulcsuk egyezik — erre rendezve a
+    // szomszédos pontok egymás mellé kerülnek (lásd ParticleSystem::rebuild_grid).
+    static std::int64_t key_at(glm::vec3 p, float cell) {
+        return key(coord(p.x, cell), coord(p.y, cell), coord(p.z, cell));
+    }
+
     // Újraépítés. A get_pos(i) adja az i-edik elem pozícióját.
     // A cellák vektorait csak ürítjük (a kapacitásuk megmarad), így a lépésenkénti
     // újraépítés nem allokál folyamatosan.
