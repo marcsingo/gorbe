@@ -142,12 +142,17 @@ namespace Matek {
             std::size_t size() const { return code.size(); }
             float slot(int i) const { return slots[static_cast<std::size_t>(i)]; }
 
-            void run(glm::vec3 v) const {
+            // Futtatás a saját munkaterületre (slot() olvassa). NEM szálbiztos: ugyanaz
+            // a példány egyszerre csak egy szálon futhat így.
+            void run(glm::vec3 v) const { run(v, slots.data()); }
+
+            // Futtatás KÜLSŐ munkaterületre (legalább size() elemű): így ugyanaz a
+            // program több szálon is futhat, szálanként külön munkaterülettel.
+            void run(glm::vec3 v, float* const s) const {
                 // Nyers mutatók helyi változóban: a Call1/Call2 ismeretlen függvényt hív,
                 // ezért a fordító a tagváltozókat minden hívás után újraolvasná (mérve:
                 // ~12%-kal lassabb volt a tórusz programja, amiben nincs is hívás).
                 Instr const* const code_ = code.data();
-                float* const s = slots.data();
                 std::size_t const n = code.size();
                 for (std::size_t i = 0; i < n; ++i) {
                     Instr const& c = code_[i];

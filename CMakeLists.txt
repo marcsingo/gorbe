@@ -106,7 +106,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         object/ObjectView.hpp
         object/ObjectController.hpp
         object/SpaceObject.hpp
-        app/Parallel.hpp
+        utils/Parallel.hpp
         particle_sampling/Surface.hpp
         particle_sampling/DomainConstraint.hpp
         particle_sampling/Transform.hpp

@@ -73,7 +73,7 @@ ctest --test-dir build --output-on-failure
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
 | `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok, alakzatonkénti `d`, **képletes paraméterek** (lánc élőben, `t`, körkörös hivatkozás Indítás előtt, önhivatkozás, `x/y/z`-tilalom, hatókör) |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
-| `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, egyszerre léptetett objektumok is helyesen mintavételeznek) |
+| `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
@@ -792,7 +792,7 @@ minden kimenetre.
    MB/frame**. A kép pixelre ugyanaz, mint a korábbi CPU-s rajzolásé
    (`tests/gl/test_gl_disks.cpp`).
 
-6. **Az objektumok párhuzamosan lépnek** (`app/Parallel.hpp`, `Controller::step_objects`).
+6. **Az objektumok párhuzamosan lépnek** (`utils/Parallel.hpp`, `Controller::step_objects`).
    A jelenet vezérlője frame-enként egyszer összegyűjti az esedékes objektumokat, és
    legfeljebb annyi szálon lépteti őket, ahány mag van. Biztonságos, mert minden
    objektumnak saját részecskéi, programjai és véletlenszám-generátora van, a közös
@@ -809,6 +809,17 @@ minden kimenetre.
    gyorsabb lépés, változatlan mintavétellel; és ez az előfeltétele annak, hogy egy
    objektumon belül is párhuzamosan lehessen számolni.
 
+8. **Egy objektumon belül is párhuzamosan.** A kiértékelés, a taszítás és a mozgás a
+   részecskék összefüggő (a rendezés miatt térben is összefüggő) darabjain fut, egy
+   tartós szálkészleten (`utils/Parallel.hpp`). A kiértékeléshez darabonként saját
+   program-munkaterület kell (`Surface::Workspace`, `Program::run(v, slots)`), a
+   taszítás pedig darabonként saját gyűjtőtömbbe ír, amiket a végén összeadunk — így
+   megmarad a „minden pár egyszer”, versenyhelyzet nélkül. A rács felépítése és a
+   fisszió/halál soros marad. Mérve (16 mag): tórusz 4000 részecske 3.13 → 1.09 ms
+   (2.9×), gömb 1.9×, sima unió 1.6×; a soros lépéssel az eltérés csak az összegzés
+   kerekítése (< 1e-6). Ha több objektum lép egyszerre, azok osztoznak a szálakon, és
+   az objektumon belüli rész sorosan fut.
+
 ---
 
 ## Projekt-szerkezet (röviden)
@@ -823,7 +834,7 @@ minden kimenetre.
 | `object/SpaceObject.hpp` | egy alakzat a térben: `model()` + `view()` + `controller()` |
 | `object/ObjectView.hpp` | NÉZET: a részecskék korongokként, instancinggal (`ParticleDisks : Model`, shader: `particle_sampling/disk.vert`) |
 | `object/ObjectController.hpp` | VEZÉRLŐ: az óra (mikor esedékes egy lépés) és a kontrollpont-bevitel |
-| `app/Parallel.hpp` | `Parallel::for_each`: feladatok magonként szétosztva (az objektumok párhuzamos léptetése) |
+| `utils/Parallel.hpp` | `Parallel::for_each` tartós szálkészleten: az objektumok, és egy objektumon belül a részecske-darabok párhuzamos léptetése |
 | `matek/` | a szimbolikus kifejezés-/deriválórendszer (Kif DSL) |
 | `matek/Kif.hpp` | a `Kif` burkoló és a C++ DSL (operátorok, `sin`, `min`, …) |
 | `matek/Parser.hpp` | string ↔ kifejezésfa, **mindkét irányban**: `make_kif(szöveg, resolver, funcs)` és `kif_text(fa, namer)`; implicit szorzás, hibaüzenet javaslattal |

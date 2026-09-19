@@ -12,6 +12,7 @@
 #include "Particle.hpp"
 #include "SpatialGrid.hpp"
 #include "Surface.hpp"
+#include "../utils/Parallel.hpp"
 
 // A részecske-szimuláció hangolható paraméterei; az alapértékek a cikk eredeti
 // beállításai.
@@ -37,8 +38,9 @@ struct SimParams {
 // ===========================================================================
 class ParticleSystem {
 public:
-    explicit ParticleSystem(SimParams params = {}) :
-        rng(std::random_device{}()),
+    // A `seed` alapból véletlen; tesztben rögzíthető, hogy két futás összevethető legyen.
+    explicit ParticleSystem(SimParams params = {}, unsigned seed = std::random_device{}()) :
+        rng(seed),
         dist_R(0.0f, 1.0f),
         d(params.d), alpha(params.alpha), sigma(params.sigma), PHI(params.phi),
         E_v(0.8f * params.alpha), rho(params.phi), beta(params.beta), gamma(params.gamma),
@@ -92,6 +94,10 @@ public:
     // fisszió sem indul be (ahhoz felületi részecske kell). Mérve: ez ritkán, de
     // előfordult. Nyolccal a "mind beragad" esély elhanyagolható.
     static constexpr int INITIAL_PARTICLES = 8;
+
+    // Legfeljebb ennyi szálon számol egy lépés (0 = ahány mag van). Egy lépésen belül
+    // a kiértékelés, a taszítás és a mozgás párhuzamos (lásd step()).
+    std::size_t max_threads = 0;
 
     // A görbület-adaptív taszítás erőssége (futásidőben állítható, pl. GUI-csúszka).
     // 0 = kikapcsolva (egyenletes mintavétel); nagyobb érték = a görbült helyek erősebben
@@ -151,25 +157,37 @@ public:
     void step(float dt) {
         rebuild_grid();   // a taszítás szomszédkeresése ezen megy (O(n) a O(n²) helyett)
 
+        // Az 1-3. fázis PÁRHUZAMOS: a részecskék összefüggő darabokra oszlanak (a
+        // rendezés miatt ezek térben is összefüggők), darabonként egy szálon.
+        std::size_t const C = chunk_count();
+        if (ws.size() < C) ws.resize(C);
+
         // 1. Kiértékelés (F, gradiens, görbület, tartomány), és a még repülők
-        //    ráhúzása a felületre.
-        for (std::size_t idx = 0; idx < floaters.size(); ++idx) {
-            Particle& i = floaters[idx];
-            calculate_particle(i);
-            dist[idx] = surface_distance(i);
-            if (i.state == ramozog) {
-                masik(i, dt);
-                // Geometriai közelség (nem nyers F): minden alakzatnál ugyanazt jelenti.
-                if (surface_distance(i) < 1e-2f) i.state = rajtamozog;
+        //    ráhúzása a felületre. Részecskénként független; darabonként saját
+        //    program-munkaterülettel.
+        for_chunks(C, [&](std::size_t k, std::size_t b, std::size_t e) {
+            for (std::size_t idx = b; idx < e; ++idx) {
+                Particle& i = floaters[idx];
+                calculate_particle(i, ws[k]);
+                dist[idx] = surface_distance(i);
+                if (i.state == ramozog) {
+                    masik(i, dt);
+                    // Geometriai közelség (nem nyers F): minden alakzatnál ugyanazt jelenti.
+                    if (surface_distance(i) < 1e-2f) i.state = rajtamozog;
+                }
             }
-        }
+        });
 
         // 2. Taszítás: minden pár egyszer.
-        accumulate_repulsion();
+        accumulate_repulsion(C);
 
-        // 3. Mozgás a teljes erőből.
-        for (auto& i : floaters)
-            if (i.state == rajtamozog) witkin_move(i, dt);
+        // 3. Mozgás a teljes erőből. Részecskénként független.
+        for_chunks(C, [&](std::size_t, std::size_t b, std::size_t e) {
+            for (std::size_t idx = b; idx < e; ++idx)
+                if (floaters[idx].state == rajtamozog) witkin_move(floaters[idx], dt);
+        });
+
+        // 4. Fisszió és halál — sorosan (a véletlenszámok sorrendje miatt).
 
         // 4. Fisszió és halál.
         std::vector<Particle> next;
@@ -298,7 +316,7 @@ private:
         }
     }
 
-    void calculate_particle(Particle& p) {
+    void calculate_particle(Particle& p, Surface::Workspace& w) {
         // A lefordított programokkal EGY menetben áll elő minden, amire szükség van,
         // a közös részkifejezések pedig csak egyszer futnak le (matek/Program.hpp).
         //
@@ -306,17 +324,17 @@ private:
         // kell: a Hesse a derivált-fák tömegének ~98%-a, és ha a görbület-taszítás
         // ki van kapcsolva, a curvature_scale() amúgy is 1-et ad.
         if (curvature_repulsion > 0.0f) {
-            surf.eval_full(p.p, p.F, p.F_x, p.K, p.F_t);
+            surf.eval_full(p.p, p.F, p.F_x, p.K, p.F_t, w);
             // Éles CSG-varraton (min/max) a Hesse nem véges — ilyenkor 0, mintha sík lenne.
             if (!std::isfinite(p.K)) p.K = 0.0f;
         } else {
-            surf.eval_grad(p.p, p.F, p.F_x, p.F_t);
+            surf.eval_grad(p.p, p.F, p.F_x, p.F_t, w);
             p.K = 0.0f;
         }
         // Tartomány-feltétel (ha van): érték + gradiens + a felület menti irány.
         // Hesse NEM kell hozzá, ezért ez sokkal olcsóbb, mint a feltételt beépíteni F-be.
         if (surf.has_domain) {
-            surf.eval_domain(p.p, p.dom, p.dom_x);
+            surf.eval_domain(p.p, p.dom, p.dom_x, w);
             p.dom_g    = Domain::tangential_gradient(p.dom_x, p.F_x);
             p.dom_dist = Domain::distance(p.dom, p.dom_g);
         } else {
@@ -363,12 +381,37 @@ private:
     // EGYSZER számolva — a taszítás minden jelöltnél ezt nézi.
     std::vector<float> dist;
 
-    // A szomszéd-jelöltek (a 27 cella tartalma) az utoljára nézett cellához. A
-    // részecskék cellák szerint rendezve jönnek, tehát egy cella jelöltjeit elég
-    // EGYSZER összeszedni, nem részecskénként 27 hash-kereséssel.
-    std::vector<int> cand;
-    std::int64_t     cand_key   = 0;
-    bool             cand_valid = false;
+    // --- párhuzamosítás ----------------------------------------------------------
+
+    // Egy darab legalább ennyi részecske: ennél kisebb munkánál a szálak
+    // összehangolása többe kerül, mint amennyit hoz.
+    static constexpr std::size_t MIN_CHUNK = 256;
+
+    // Darabonként: a program-munkaterület (a kiértékeléshez), és a taszítás
+    // gyűjtőtömbjei. Tagként, hogy lépésenként ne kelljen újrafoglalni.
+    std::vector<Surface::Workspace> ws;
+    struct Acc {
+        std::vector<glm::vec3> P;
+        std::vector<float> D, D_sigma;
+        // A szomszéd-jelöltek (a 27 cella tartalma) az utoljára nézett cellához. A
+        // részecskék cellák szerint rendezve jönnek, tehát egy cella jelöltjeit elég
+        // EGYSZER összeszedni, nem részecskénként 27 hash-kereséssel.
+        std::vector<int> cand;
+    };
+    std::vector<Acc> acc;
+
+    std::size_t chunk_count() const {
+        std::size_t t = Parallel::threads();
+        if (max_threads > 0) t = std::min(t, max_threads);
+        return std::clamp<std::size_t>(floaters.size() / MIN_CHUNK, 1, t);
+    }
+
+    // fn(k, eleje, vége) a k-adik darabra, a darabok párhuzamosan.
+    template<class Fn>
+    void for_chunks(std::size_t C, Fn&& fn) {
+        std::size_t const n = floaters.size();
+        Parallel::for_each(C, [&](std::size_t k) { fn(k, k * n / C, (k + 1) * n / C); }, C);
+    }
 
     // A taszításhoz használt rács újraépítése a lépés eleji pozíciókkal.
     //
@@ -393,8 +436,6 @@ private:
         grid.build(floaters.size(), [&](std::size_t k) { return floaters[k].p; }, grid_cell);
 
         dist.resize(floaters.size());
-        for (std::size_t k = 0; k < floaters.size(); ++k) dist[k] = surface_distance(floaters[k]);
-        cand_valid = false;
     }
 
     // A Witkin-taszítás összegei (P, D, D_sigma) a felületi részecskékre, MINDEN PÁRT
@@ -404,38 +445,66 @@ private:
     //
     // Egy tag akkor számít egy részecskének, ha ő a felületen mozog, és a párja
     // közel van a felülethez (a még messze repülők nem taszítanak).
-    void accumulate_repulsion() {
-        for (std::size_t a = 0; a < floaters.size(); ++a) {
-            Particle& i = floaters[a];
+    //
+    // Párhuzamosan: a j-re ható tag egy MÁSIK darab részecskéjére is eshet, ezért
+    // minden darab a saját gyűjtőtömbjébe ír (nincs versenyhelyzet), és a végén
+    // részecskénként összeadjuk őket, rögzített sorrendben.
+    void accumulate_repulsion(std::size_t C) {
+        std::size_t const n = floaters.size();
+        if (acc.size() < C) acc.resize(C);
 
-            std::int64_t const key = SpatialGrid::key_at(i.p, grid_cell);
-            if (!cand_valid || key != cand_key) {
-                cand.clear();
-                grid.for_each_near(i.p, [&](int jdx) { cand.push_back(jdx); });
-                cand_key = key;
-                cand_valid = true;
-            }
-            for (int jdx : cand) {
-                auto const b = static_cast<std::size_t>(jdx);
-                if (b <= a) continue;                          // minden pár egyszer
-                Particle& j = floaters[b];
-                bool const to_i = i.state == rajtamozog && dist[b] <= 5e-1f;
-                bool const to_j = j.state == rajtamozog && dist[a] <= 5e-1f;
-                if (!to_i && !to_j) continue;
+        for_chunks(C, [&](std::size_t k, std::size_t b, std::size_t e) {
+            Acc& A = acc[k];
+            A.P.assign(n, glm::vec3(0.0f));
+            A.D.assign(n, 0.0f);
+            A.D_sigma.assign(n, 0.0f);
+            std::int64_t cand_key = 0;
+            bool cand_valid = false;
 
-                auto  r  = i.p - j.p;
-                float r2 = glm::dot(r, r);
-                // A rács 27 cellája a hatósugárnál nagyobb területet fed le, ezért itt
-                // még pontosan is ellenőrizzük — ez a drága exp() elé kerülő olcsó szűrő.
-                float cut = REPULSION_CUTOFF * std::max(i.sigma, j.sigma);
-                if (r2 > cut * cut) continue;
-                float const E_ij = alpha*std::exp(-r2 / (i.sigma*i.sigma*2));
-                float const E_ji = alpha*std::exp(-r2 / (j.sigma*j.sigma*2));
-                glm::vec3 const f = r / (i.sigma*i.sigma) * E_ij + r / (j.sigma*j.sigma) * E_ji;
-                if (to_i) { i.P += f; i.D += E_ij; i.D_sigma += r2*E_ij; }
-                if (to_j) { j.P -= f; j.D += E_ji; j.D_sigma += r2*E_ji; }
+            for (std::size_t a = b; a < e; ++a) {
+                Particle const& i = floaters[a];
+
+                std::int64_t const key = SpatialGrid::key_at(i.p, grid_cell);
+                if (!cand_valid || key != cand_key) {
+                    A.cand.clear();
+                    grid.for_each_near(i.p, [&](int jdx) { A.cand.push_back(jdx); });
+                    cand_key = key;
+                    cand_valid = true;
+                }
+                for (int jdx : A.cand) {
+                    auto const jb = static_cast<std::size_t>(jdx);
+                    if (jb <= a) continue;                     // minden pár egyszer
+                    Particle const& j = floaters[jb];
+                    bool const to_i = i.state == rajtamozog && dist[jb] <= 5e-1f;
+                    bool const to_j = j.state == rajtamozog && dist[a] <= 5e-1f;
+                    if (!to_i && !to_j) continue;
+
+                    auto  r  = i.p - j.p;
+                    float r2 = glm::dot(r, r);
+                    // A rács 27 cellája a hatósugárnál nagyobb területet fed le, ezért itt
+                    // még pontosan is ellenőrizzük — ez a drága exp() elé kerülő olcsó szűrő.
+                    float cut = REPULSION_CUTOFF * std::max(i.sigma, j.sigma);
+                    if (r2 > cut * cut) continue;
+                    float const E_ij = alpha*std::exp(-r2 / (i.sigma*i.sigma*2));
+                    float const E_ji = alpha*std::exp(-r2 / (j.sigma*j.sigma*2));
+                    glm::vec3 const f = r / (i.sigma*i.sigma) * E_ij + r / (j.sigma*j.sigma) * E_ji;
+                    if (to_i) { A.P[a]  += f; A.D[a]  += E_ij; A.D_sigma[a]  += r2*E_ij; }
+                    if (to_j) { A.P[jb] -= f; A.D[jb] += E_ji; A.D_sigma[jb] += r2*E_ji; }
+                }
             }
-        }
+        });
+
+        // Összegzés részecskénként (a calculate_particle már lenullázta őket).
+        for_chunks(C, [&](std::size_t, std::size_t b, std::size_t e) {
+            for (std::size_t idx = b; idx < e; ++idx) {
+                Particle& p = floaters[idx];
+                for (std::size_t k = 0; k < C; ++k) {
+                    p.P       += acc[k].P[idx];
+                    p.D       += acc[k].D[idx];
+                    p.D_sigma += acc[k].D_sigma[idx];
+                }
+            }
+        });
     }
 
     // A Witkin-lépés többi része egy felületi részecskére, a már összegyűjtött

@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <vector>
 
 #include <glm.hpp>
 
@@ -139,42 +140,52 @@ struct Surface {
     int out_full[11]{};   // + a Hesse 6 eleme
     int out_dom[4]{};
 
+    // A programok munkaterülete. Szálanként egy kell: a kiértékelés így több szálon
+    // párhuzamosan futhat ugyanazon a felületen (lásd ParticleSystem::step).
+    struct Workspace {
+        std::vector<float> grad, full, dom;
+    };
+
     // F, a gradiens és az idő szerinti derivált egy menetben.
-    void eval_grad(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& Ft_out) const {
-        prog_grad.run(at);
-        F_out    = prog_grad.slot(out_grad[0]);
-        grad_out = {prog_grad.slot(out_grad[1]),
-                    prog_grad.slot(out_grad[2]),
-                    prog_grad.slot(out_grad[3])};
-        Ft_out   = prog_grad.slot(out_grad[4]);
+    void eval_grad(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& Ft_out,
+                   Workspace& w) const {
+        float const* s = run(prog_grad, at, w.grad);
+        F_out    = s[out_grad[0]];
+        grad_out = {s[out_grad[1]], s[out_grad[2]], s[out_grad[3]]};
+        Ft_out   = s[out_grad[4]];
     }
 
     // F, a gradiens és a közepes görbület egy menetben.
     void eval_full(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& K_out,
-                   float& Ft_out) const {
-        prog_full.run(at);
-        F_out    = prog_full.slot(out_full[0]);
-        grad_out = {prog_full.slot(out_full[1]),
-                    prog_full.slot(out_full[2]),
-                    prog_full.slot(out_full[3])};
-        Ft_out   = prog_full.slot(out_full[4]);
+                   float& Ft_out, Workspace& w) const {
+        float const* s = run(prog_full, at, w.full);
+        F_out    = s[out_full[0]];
+        grad_out = {s[out_full[1]], s[out_full[2]], s[out_full[3]]};
+        Ft_out   = s[out_full[4]];
         K_out = mean_curvature(grad_out,
-                               prog_full.slot(out_full[5]),    // fxx
-                               prog_full.slot(out_full[8]),    // fyy
-                               prog_full.slot(out_full[10]),   // fzz
-                               prog_full.slot(out_full[6]),    // fxy
-                               prog_full.slot(out_full[7]),    // fxz
-                               prog_full.slot(out_full[9]));   // fyz
+                               s[out_full[5]],    // fxx
+                               s[out_full[8]],    // fyy
+                               s[out_full[10]],   // fzz
+                               s[out_full[6]],    // fxy
+                               s[out_full[7]],    // fxz
+                               s[out_full[9]]);   // fyz
     }
 
     // A tartomány-feltétel és a gradiense egy menetben.
-    void eval_domain(glm::vec3 at, float& dom_out, glm::vec3& grad_out) const {
-        prog_dom.run(at);
-        dom_out  = prog_dom.slot(out_dom[0]);
-        grad_out = {prog_dom.slot(out_dom[1]),
-                    prog_dom.slot(out_dom[2]),
-                    prog_dom.slot(out_dom[3])};
+    void eval_domain(glm::vec3 at, float& dom_out, glm::vec3& grad_out, Workspace& w) const {
+        float const* s = run(prog_dom, at, w.dom);
+        dom_out  = s[out_dom[0]];
+        grad_out = {s[out_dom[1]], s[out_dom[2]], s[out_dom[3]]};
     }
+
+private:
+    static float const* run(Program const& prog, glm::vec3 at, std::vector<float>& buf) {
+        if (buf.size() < prog.size()) buf.resize(prog.size());
+        prog.run(at, buf.data());
+        return buf.data();
+    }
+
+public:
 
     void calculate() {
         F_dx = F.derive('x');

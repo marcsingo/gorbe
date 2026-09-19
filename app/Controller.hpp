@@ -14,7 +14,7 @@
 #include "../scene/Names.hpp"
 #include "../scene/ProjectFile.hpp"
 #include "../ui/Requests.hpp"
-#include "Parallel.hpp"
+#include "../utils/Parallel.hpp"
 #include "Photo.hpp"
 #include "Scene.hpp"
 
@@ -50,7 +50,7 @@ public:
         }));
     }
 
-    // Az esedékes objektumok egy-egy lépése, párhuzamosan (app/Parallel.hpp).
+    // Az esedékes objektumok egy-egy lépése, párhuzamosan (utils/Parallel.hpp).
     //
     // Biztonságos: minden objektumnak saját részecskéi, lefordított programjai (a
     // munkaterületükkel) és véletlenszám-generátora van; a közös adatokat

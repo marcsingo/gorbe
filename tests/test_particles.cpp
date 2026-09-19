@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-#include "app/Parallel.hpp"
+#include "utils/Parallel.hpp"
 #include "particle_sampling/ParticleSystem.hpp"
 
 static int failures = 0;
@@ -105,7 +105,7 @@ int main() {
         ok("a normalisa kovette (a gombon kifele)", ps.controls()[0].F_x.y > 3.0f);
     }
 
-    std::printf("\n=== 5. Parhuzamos leptetes (app/Parallel.hpp) ===\n");
+    std::printf("\n=== 5. Parhuzamos leptetes (utils/Parallel.hpp) ===\n");
     {
         // Minden index pontosan egyszer fut, akkor is, ha tobb feladat van, mint mag.
         std::size_t const n = 4 * std::max(1u, std::thread::hardware_concurrency()) + 3;
@@ -142,6 +142,44 @@ int main() {
             ok(std::string("parhuzamosan: ") + F[i], objs[i]->particles().size() > 30 && r > 0.9f,
                std::to_string(objs[i]->particles().size()) + " db, feluleten " + std::to_string(r));
         }
+    }
+
+    std::printf("\n=== 6. Egy objektumon belul: parhuzamos == soros ===\n");
+    {
+        // Beagyazott es egyideju hivas: nincs holtpont, minden lefut.
+        std::atomic<int> total{0};
+        Parallel::for_each(8, [&](std::size_t) {
+            Parallel::for_each(8, [&](std::size_t) { total++; });
+        });
+        std::thread other([&] { Parallel::for_each(50, [&](std::size_t) { total++; }); });
+        Parallel::for_each(50, [&](std::size_t) { total++; });
+        other.join();
+        ok("beagyazott es egyideju hivas is lefut", total == 64 + 100, std::to_string(total.load()));
+
+        // Ugyanabbol az allapotbol (azonos seed, sorosan felepitve) egy-egy lepes sorosan
+        // es parhuzamosan: az eredmeny csak az osszegzesi sorrend kerekiteseben terhet el.
+        auto make = [] {
+            auto ps = std::make_unique<ParticleSystem>(SimParams{}, 12345u);
+            ps->d = 1.0f;
+            ps->max_threads = 1;
+            ps->surface().set_tree(Matek::Analizis::make_kif("x^2 + y^2 + z^2 - 16").get());
+            ps->restart();
+            for (int k = 0; k < 300; ++k) ps->step(0.03f);
+            return ps;
+        };
+        auto serial = make(), parallel = make();
+        parallel->max_threads = 0;
+        std::size_t const n0 = serial->particles().size();
+        ok("azonos seed -> azonos kiindulas", n0 == parallel->particles().size() && n0 >= 1024,
+           std::to_string(n0) + " db (tobb darabra oszlik)");
+        for (int k = 0; k < 5; ++k) { serial->step(0.03f); parallel->step(0.03f); }
+        bool same_n = serial->particles().size() == parallel->particles().size();
+        float worst = 0.0f;
+        if (same_n)
+            for (std::size_t i = 0; i < serial->particles().size(); ++i)
+                worst = std::max(worst, glm::length(serial->particles()[i].p - parallel->particles()[i].p));
+        ok("5 lepes utan ugyanannyi reszecske", same_n);
+        ok("es ugyanott (elteres < 1e-4)", same_n && worst < 1e-4f, "max elteres " + std::to_string(worst));
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);
