@@ -14,8 +14,11 @@
 
 namespace Ui {
 
-    // Egy paramétertábla (név | érték | törlés). A program-, a jelenet- és a lokális
-    // lista UI-ja ugyanaz. A törlést csak kéri: a vezérlő előbb eldobja a fákat.
+    // Egy paramétertábla, paraméterenként két sorban:
+    //     [név] [pontos érték] [X]  (elfedés-jelzés)
+    //     [min] [====csúszka====] [max]
+    // A program-, a jelenet- és a lokális lista UI-ja ugyanaz. A törlést csak kéri:
+    // a vezérlő előbb eldobja a fákat.
     //
     // `levels`: a lista SAJÁT maga, majd kifelé a külsőbb hatókörök — az elfedés
     // jelzéséhez (lásd scene/Validate.hpp, shadows).
@@ -35,7 +38,8 @@ namespace Ui {
             if (warn) ImGui::PopStyleColor();
             ImGui::SameLine();
             ImGui::SetNextItemWidth(90.0f);
-            ImGui::InputFloat("##ertek", &p.value);
+            if (ImGui::InputFloat("##ertek", &p.value, 0.0f, 0.0f, "%.4g"))
+                p.fit_range_to_value();
             ImGui::SameLine();
             if (ImGui::Button("X")) { rq.erase_from = &list; rq.erase_param = &p; }
             // Elfedés-jelzés: nem hiba, de ne legyen néma meglepetés.
@@ -43,6 +47,20 @@ namespace Ui {
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", sh);
             }
+
+            // A csúszka élőben hat: a kifejezésfa a `value` CÍMÉT tárolja.
+            // A határokat a szerkesztés BEFEJEZÉSEKOR tesszük rendbe, különben
+            // gépelés közben (pl. "-" után) ugrálna az érték.
+            ImGui::SetNextItemWidth(55.0f);
+            ImGui::InputFloat("##min", &p.min, 0.0f, 0.0f, "%.3g");
+            if (ImGui::IsItemDeactivatedAfterEdit()) p.fix_range();
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-63.0f);
+            ImGui::SliderFloat("##csuszka", &p.value, p.min, p.max, "%.3f");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(55.0f);
+            ImGui::InputFloat("##max", &p.max, 0.0f, 0.0f, "%.3g");
+            if (ImGui::IsItemDeactivatedAfterEdit()) p.fix_range();
             ImGui::PopID();
         }
     }

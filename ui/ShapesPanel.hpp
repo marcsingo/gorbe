@@ -96,7 +96,10 @@ namespace Ui {
             ImGui::TextColored(ImVec4(1.0f, 0.60f, 0.35f, 1.0f), "%s", m.c_str());
 
         ImGui::Separator();
-        ImGui::SliderFloat("d (meretskala)", &sc.d_ui, 0.5f, 10.0f);
+        ImGui::SliderFloat("d (globalis)", &sc.d_ui, 0.5f, 10.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("A meretskala minden alakzatnak, aminek nincs sajat d-je.\n"
+                              "(Tulajdonsagok -> Mintavetelezes)");
         ImGui::SliderFloat("gorbulet-taszitas", &sc.curv_ui, 0.0f, 5.0f);
         ImGui::End();
     }

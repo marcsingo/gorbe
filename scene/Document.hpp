@@ -58,6 +58,12 @@ struct Shape {
     int color_idx = 0;
     int material_idx = 0;
 
+    // Saját méretskála (d): ha `own_d` igaz, az alakzat ezt használja, és a jelenet
+    // globális d-je nem hat rá; ha hamis, a globálisat követi. Így egy finomabb
+    // részlet sűrűbben mintavételezhető, a többi alakzat maradhat durvább.
+    bool  own_d = false;
+    float d     = 2.0f;
+
     // --- az utolsó Indításkor felépített állapot (scene/Build.hpp) ----------
     // A `dom_tree` a globális ÉS a saját (transzformált) feltétel ÉS-kapcsolata —
     // a fénykép ezt használja, hogy pontosan azt lássa, amit a szimuláció.
@@ -100,8 +106,13 @@ struct SceneDoc {
     // A jelenet saját függvényei (lásd UserFunc).
     std::list<UserFunc> funcs;
 
-    float d_ui    = 2.0f;   // közös méretskála minden samplerre
+    float d_ui    = 2.0f;   // globális méretskála (a saját d nélküli alakzatoknak)
     float curv_ui = 1.0f;   // görbület-adaptív taszítás (0 = egyenletes)
 };
+
+// Az alakzat ténylegesen használt méretskálája.
+inline float effective_d(Shape const& s, SceneDoc const& sc) {
+    return s.own_d ? s.d : sc.d_ui;
+}
 
 #endif //GORBE_SCENE_DOCUMENT_HPP

@@ -1,6 +1,7 @@
 #ifndef GORBE_SCOPE_HPP
 #define GORBE_SCOPE_HPP
 
+#include <algorithm>
 #include <cstring>
 #include <list>
 #include <vector>
@@ -16,6 +17,25 @@
 struct Param {
     char  name[32] = "";
     float value    = 0.0f;
+
+    // A csúszka tartománya. Csak a GUI-t érinti: a kifejezésfa a `value` címét
+    // tárolja, a tartomány nem kerül bele.
+    float min = -10.0f;
+    float max =  10.0f;
+
+    // A pontosan beírt érték SOSEM vész el: ha kilóg, a tartomány tágul hozzá.
+    void fit_range_to_value() {
+        min = std::min(min, value);
+        max = std::max(max, value);
+    }
+
+    // A kézzel állított tartomány rendbetétele: a fordított határokat megcseréli,
+    // az üres tartományt kinyitja, és az értéket a tartományba húzza.
+    void fix_range() {
+        if (min > max) std::swap(min, max);
+        if (min == max) max = min + 1.0f;
+        value = std::clamp(value, min, max);
+    }
 };
 
 namespace Scope {

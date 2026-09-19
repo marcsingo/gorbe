@@ -6,8 +6,7 @@
 #include <vector>
 
 #include "../App.hpp"
-#include "../particle_sampling/Surface.hpp"
-#include "../particle_sampling/ImplicitSurface.hpp"
+#include "../object/SpaceObject.hpp"
 #include "../scene/Build.hpp"
 #include "../scene/Document.hpp"
 
@@ -23,8 +22,6 @@
 // fül kamerája együtt mozogna.
 // ---------------------------------------------------------------------------
 struct Scene : SceneDoc {
-    using EqSurface = ImplicitSurface<StringSurface>;
-
     Shape* selected = nullptr;
 
     std::string error;      // parse-hiba az utolsó Indításból
@@ -32,10 +29,10 @@ struct Scene : SceneDoc {
     // Fülönként saját kamera: a nézet megmarad fülváltáskor.
     Camera3D camera{glm::vec4(0.0f, 0.0f, 1200.0f, 800.0f), App::DEFAULT_EYE, -90.0f, 45.0f};
 
-    // Alakzatonként egy önálló mintavételező. A lista i-edik alakzata a pool i-edik
-    // felületére kerül; a méret együtt mozog (az ImplicitSurface a destruktorában
-    // leiratkozik az ablak eseményeiről, ezért szabadon megszüntethető).
-    std::vector<std::unique_ptr<EqSurface>> pool;
+    // Alakzatonként egy térbeli objektum (object/SpaceObject.hpp). A lista i-edik
+    // alakzata a pool i-edik objektuma; a méret együtt mozog (a vezérlő a
+    // destruktorában leiratkozik az ablak eseményeiről, ezért szabadon megszüntethető).
+    std::vector<std::unique_ptr<SpaceObject>> pool;
 
     Scene() { camera.look_at(App::DEFAULT_EYE, glm::vec3(0.0f)); }
 
@@ -43,8 +40,8 @@ struct Scene : SceneDoc {
     void set_active(bool a) {
         camera.input_enabled = a;
         for (auto& p : pool) {
-            p->set_running(a);
-            p->set_input_enabled(a);
+            p->controller().set_running(a);
+            p->controller().set_input_enabled(a);
         }
     }
 
@@ -57,19 +54,16 @@ struct Scene : SceneDoc {
     void sync_pool() {
         while (pool.size() > shapes.size()) pool.pop_back();
         while (pool.size() < shapes.size()) {
-            // A jelenet SAJÁT kamerája: a mintavételezők kontrollpontjai ehhez
-            // vetítenek vissza, tehát fülenként külön kell.
-            auto p = std::make_unique<EqSurface>(camera);
-            p->set_manual_diameter(true);  // a d-t a GUI állítja
-            p->clear();                    // induláskor üres, álló
-            pool.push_back(std::move(p));
+            // A jelenet SAJÁT kamerája: a kontrollpontok ehhez vetítenek vissza,
+            // tehát fülenként külön kell. Induláskor üres és áll.
+            pool.push_back(std::make_unique<SpaceObject>(camera));
         }
         std::size_t i = 0;
         for (auto& s : shapes) {
             auto& p = *pool[i++];
-            p.set_visible(s.visible);
-            p.d = d_ui;
-            p.curvature_repulsion = curv_ui;
+            p.view().visible = s.visible;
+            p.model().d = effective_d(s, *this);
+            p.model().curvature_repulsion = curv_ui;
         }
     }
 
@@ -78,9 +72,9 @@ struct Scene : SceneDoc {
     // CÍMÉT tárolják, onnantól felszabadított memóriára mutatnának.
     void drop() {
         for (auto& p : pool) {
-            p->clear();
-            p->get_surface().set_tree(Kif(0.0f).get());
-            p->get_surface().clear_domain();
+            p->stop();
+            p->model().surface().set_tree(Kif(0.0f).get());
+            p->model().surface().clear_domain();
         }
         Build::drop_trees(*this);
         error.clear();

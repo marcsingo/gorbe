@@ -23,6 +23,8 @@ namespace WarpPresets {
     struct ParamDesc {
         char const* name;    // csak ALAP: az ütközésmentes név ebből képződik
         float       value;
+        float       min = -10.0f;   // a csúszka tartománya
+        float       max =  10.0f;
     };
 
     struct Preset {
@@ -47,26 +49,26 @@ namespace WarpPresets {
          "x*cos($1*pi/180) + y*sin($1*pi/180)",
          "-x*sin($1*pi/180) + y*cos($1*pi/180)",
          "z",
-         {{"rz", 0.0f}},
+         {{"rz", 0.0f, -180.0f, 180.0f}},
          "FOKBAN (a pi/180 valtja radianra)"},
 
         {"Forgatas x korul",
          "x",
          "y*cos($1*pi/180) + z*sin($1*pi/180)",
          "-y*sin($1*pi/180) + z*cos($1*pi/180)",
-         {{"rx", 0.0f}},
+         {{"rx", 0.0f, -180.0f, 180.0f}},
          "FOKBAN"},
 
         {"Forgatas y korul",
          "x*cos($1*pi/180) - z*sin($1*pi/180)",
          "y",
          "x*sin($1*pi/180) + z*cos($1*pi/180)",
-         {{"ry", 0.0f}},
+         {{"ry", 0.0f, -180.0f, 180.0f}},
          "FOKBAN"},
 
         {"Skalazas",
          "x/$1", "y/$2", "z/$3",
-         {{"sx", 1.0f}, {"sy", 1.0f}, {"sz", 1.0f}},
+         {{"sx", 1.0f, 0.1f, 5.0f}, {"sy", 1.0f, 0.1f, 5.0f}, {"sz", 1.0f, 0.1f, 5.0f}},
          "tengelyenkent; 1 = valtozatlan, 0 NEM lehet"},
 
         // --- Deformációk ---

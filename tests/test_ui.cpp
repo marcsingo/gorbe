@@ -235,6 +235,31 @@ int main() {
         ParticleView::gap = 0.0f;      // ne szivarogjon at masik tesztre
     }
 
+    std::printf("\n=== Parameter-csuszka: tartomany ===\n");
+    {
+        Param p = mk("r", 1.0f);
+        ok("alap tartomany -10..10", p.min == -10.0f && p.max == 10.0f);
+
+        p.value = 25.0f;                // pontosan beirt ertek, kilog
+        p.fit_range_to_value();
+        ok("a beirt ertek megmarad", p.value == 25.0f);
+        ok("a tartomany kitagul hozza", p.max == 25.0f && p.min == -10.0f);
+
+        p.min = 5.0f; p.max = 2.0f;     // forditott hatarok
+        p.fix_range();
+        ok("forditott hatarok megcserelve", p.min == 2.0f && p.max == 5.0f);
+        ok("az ertek a tartomanyba huzva", p.value == 5.0f);
+
+        p.min = 3.0f; p.max = 3.0f;     // ures tartomany
+        p.fix_range();
+        ok("ures tartomany kinyitva", p.max > p.min, std::to_string(p.min) + ".." + std::to_string(p.max));
+
+        // A csuszka a CIMEN at hat: a kifejezes elo marad a tartomany valtoztatasa utan is.
+        float const* addr = &p.value;
+        p.min = -1.0f; p.max = 1.0f; p.fix_range();
+        ok("a tartomany allitasa nem mozgatja a parametert", addr == &p.value && p.value == 1.0f);
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);
     return failures != 0;
 }

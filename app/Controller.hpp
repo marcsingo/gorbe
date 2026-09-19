@@ -83,10 +83,11 @@ private:
         std::size_t i = 0;
         for (auto& s : sc.shapes) {
             auto& p = *sc.pool[i++];
-            p.get_surface().set_tree(s.tree);
-            if (s.dom_tree) p.get_surface().set_domain(s.dom_tree);
-            else            p.get_surface().clear_domain();
-            p.restart();   // saját kezdő részecskék + futó állapot
+            auto& surf = p.model().surface();
+            surf.set_tree(s.tree);
+            if (s.dom_tree) surf.set_domain(s.dom_tree);
+            else            surf.clear_domain();
+            p.start();     // saját kezdő részecskék + futó állapot
         }
     }
 

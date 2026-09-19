@@ -73,6 +73,7 @@ ctest --test-dir build --output-on-failure
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
 | `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
+| `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -83,12 +84,8 @@ Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
 ## Irányítás
 
-A képernyőn háromféle elem látszik: a **szürke** referencia-felület (occluder), a felületet
-mintavételező **lebegő részecskék** (kék korongok), és a **piros kontrollpontok**, amelyekkel
-a felületet lehet irányítani.
-
-Kétféle dolgot lehet vezérelni: a **nézőpontot** (kamera) és magát a **felületet**
-(kontrollpontokon keresztül).
+A képernyőn kétféle elem látszik: a felületet mintavételező **részecskék** (kék korongok)
+és a **piros kontrollpontok**.
 
 ### Kamera (nézőpont)
 
@@ -101,16 +98,17 @@ Kétféle dolgot lehet vezérelni: a **nézőpontot** (kamera) és magát a **fe
 | egérgörgő | zoom (látószög 1°–45° között) |
 | `Esc` | kilépés |
 
-### Felület irányítása (kontrollpontok)
+### Kontrollpontok
 
-A kontrollpontok a felületre tett kényszerek: ha egy pontot megmozgatsz, a rendszer úgy
-mozgatja/deformálja a felületet (a `q` paramétereit), hogy a pont a felületen maradjon
-(ez a cikk szerinti constraint-megoldás). Így a felületet közvetlenül, „kézzel" lehet húzni.
+> **Jelenleg csak jelölők**: letehetők és húzhatók, de a felületre **nincsenek
+> hatással**. A cikk szerinti megoldó a felület `q` paramétereit mozgatta; a képletből
+> épülő felületnek ilyen paramétere nincs, ezért ott hatástalan volt, és kikerült
+> (`regi-feluletek` tag). Visszakötni pl. az alakzat transzformációjára lehetne.
 
 | Bevitel | Hatás |
 |---|---|
 | `Shift` + bal kattintás | új kontrollpont lerakása a kurzor helyén |
-| bal kattintás egy ponton + húzás | a pont mozgatása → a felület követi (deformálódik / mozog) |
+| bal kattintás egy ponton + húzás | a pont mozgatása |
 | bal gomb elengedése | a pont elengedése |
 
 Megjegyzések:
@@ -273,6 +271,19 @@ Ami **hiba** marad: két azonos nevű paraméter **ugyanazon a szinten**, foglal
 
 > A paraméterek **előbb** oldódnak fel, mint az alakzatnevek, tehát egy paraméter egy
 > azonos nevű alakzatot is elfed — ezt `elfedi: alakzat` jelzi.
+
+Minden paraméter két sorban jelenik meg:
+
+```
+[név      ] [pontos érték] [X]
+[min] [=======o========] [max]
+```
+
+A **csúszka** élőben hat (újraindítás nélkül), a **pontos érték** mezőbe bármi
+beírható: ha kilóg a tartományból, a `min`/`max` magától kitágul hozzá. A `min` és
+`max` átírásakor a fordított határokat a program megcseréli, és az értéket a
+tartományba húzza. Alapból −10…10; a forgatás-warpok fokban −180…180, a skálázás
+0.1…5 tartománnyal indul.
 
 ### Árnyalás
 
@@ -714,8 +725,12 @@ minden kimenetre.
 |---|---|
 | `App.hpp` | ablak + kamera + render loop wrapper |
 | `particle_sampling/Surface.hpp` | a felület: F, deriváltak, lefordított programok, tartomány |
-| `particle_sampling/ImplicitSurface.hpp` | a szimuláció (taszítás, fisszió, halál) és `SimParams` |
-| `particle_sampling/Particle.hpp` | részecske + a `Particles`/`Floaters`/`ControlPoints` modellek |
+| `particle_sampling/ParticleSystem.hpp` | a szimuláció (taszítás, fisszió, halál) és `SimParams` — **GL nélkül** |
+| `particle_sampling/Particle.hpp` | egy részecske állapota (tiszta adat) |
+| `object/` | **a térbeli objektum, MVC szerint** (lásd lent) |
+| `object/SpaceObject.hpp` | egy alakzat a térben: `model()` + `view()` + `controller()` |
+| `object/ObjectView.hpp` | NÉZET: a részecskék korongokként (`ParticleDisks : Model`) |
+| `object/ObjectController.hpp` | VEZÉRLŐ: az óra (mikor lép a szimuláció) és a kontrollpont-bevitel |
 | `matek/` | a szimbolikus kifejezés-/deriválórendszer (Kif DSL) |
 | `matek/Kif.hpp` | a `Kif` burkoló és a C++ DSL (operátorok, `sin`, `min`, …) |
 | `matek/Parser.hpp` | string ↔ kifejezésfa, **mindkét irányban**: `make_kif(szöveg, resolver, funcs)` és `kif_text(fa, namer)`; implicit szorzás, hibaüzenet javaslattal |
@@ -745,6 +760,11 @@ minden kimenetre.
 | `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, anyagok, BMP-mentés) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`) |
+
+**A térbeli objektum** (`object/SpaceObject.hpp`) szintén MVC: a modell
+(`ParticleSystem`) a felület és a részecskék, a szimulációval — nem tud a GL-ről és az
+óráról. A nézet (`ObjectView`) csak olvassa, és a meglévő `Model` ősosztállyal rajzol; a
+vezérlő (`ObjectController`) lépteti a modellt és kezeli a kontrollpontok bevitelét.
 
 A frontend szabálya: a nézet (`ui/`) élőben írhatja az **értékeket**, és a listák végére
 is szúrhat, de amire egy kifejezésfa címmel mutathat (paraméter, alakzat, jelenet), azt

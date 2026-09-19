@@ -98,7 +98,10 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         raytrace/Material.hpp
         raytrace/Image.hpp
         App.hpp
-        particle_sampling/ImplicitSurface.hpp
+        particle_sampling/ParticleSystem.hpp
+        object/ObjectView.hpp
+        object/ObjectController.hpp
+        object/SpaceObject.hpp
         particle_sampling/Surface.hpp
         particle_sampling/DomainConstraint.hpp
         particle_sampling/Transform.hpp
@@ -134,7 +137,7 @@ target_compile_definitions(gorbe PRIVATE
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})

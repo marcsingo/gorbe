@@ -5,9 +5,9 @@
 #include <map>
 #include <memory>
 
+#include <glm.hpp>
+
 #include "../matek/Kif.hpp"
-#include "../matek/Analizis.hpp"
-#include "Particle.hpp"
 #include "../scene/Time.hpp"
 
 // Célzott using-deklarációk a régi globális `using namespace Matek::Analizis;` helyett:
@@ -26,18 +26,11 @@ using Matek::Analizis::y;
 using Matek::Analizis::z;
 using Matek::Analizis::operator""_k;
 
-template<size_t L>
+// Egy implicit felület, F(x,y,z) = 0, a szimulációhoz előkészítve: a deriváltjai
+// (gradiens, dF/dt, Hesse) és a belőlük lefordított lapos programok. Az F-et KÉSZ
+// (már beparseolt) kifejezésfaként kapja (set_tree); egy felület EGY alakzatot
+// mintavételez. GL és ablak nélkül működik.
 struct Surface {
-private:
-    Surface(Surface const & s) = default;
-
-public:
-    // A felület paramétereinek (q) száma. Innen tudja az ImplicitSurface és az App
-    // automatikusan levezetni az L sablonparamétert, így a main-ben elég a felület
-    // típusát megadni (pl. Sphere, Torus), a számot nem kell ismerni.
-    static constexpr size_t param_count = L;
-
-    std::map<float const *, Kif> F_dp_s;
     Kif F_dx, F_dy, F_dz;
     // Második deriváltak (Hesse-mátrix) a görbület-számításhoz. Szimmetrikus, ezért
     // elég a felső háromszög: dxy = dyx, stb.
@@ -50,53 +43,19 @@ public:
     // nem függ t-től, a szimbolikus deriválás konstans 0-t ad, tehát ingyen van.)
     Kif F_dt;
 
-    glm::vec<L, float> q;
-    glm::vec<L, float> q_dot;
-
-    // Ide írjuk folyamatosan az alakzat aktuális átmérőjét, ha valaki (pl. az
-    // ImplicitSurface) megkérte rá a cím átadásával. Így a hívó d-je mindig a
-    // felület valódi átmérőjét tükrözi, akkor is, ha a q paraméterek mozognak.
-    float* d_ptr = nullptr;
-
-    std::function<void(float, float)> q_dot_function = [](float t, float dt){};
-
-    // A `this`-t kapó eseménykezelő élettartama a példányhoz kötve: a Subscription
-    // a destruktorban magától leiratkozik, így nem marad az ablakban megszűnt
-    // objektumra mutató lambda.
-    Window::Subscription tick_sub;
-
     Surface() {
-        q_dot = glm::vec<L, float>(0);
-        tick_sub = Window::Subscription(Window::add_time_passed_event([this](auto p) {
-            this->q_dot_function(p.t, p.dt);
-            if (this->d_ptr) *this->d_ptr = this->diameter();
-        }));
+        F = Kif(0.0f);    // üres placeholder, amíg nem kap képletet
+        calculate();
     }
 
-    virtual ~Surface() = default;
-
-    // Az eseménykezelő `this`-re mutat, ezért a példány nem másolható/mozgatható.
-    Surface(Surface&&) = delete;
+    // A programok a saját tagjaikra hivatkoznak; nincs értelme másolni.
+    Surface(Surface const&) = delete;
     Surface& operator=(Surface const&) = delete;
-    Surface& operator=(Surface&&) = delete;
 
-    // Az alakzat aktuális átmérője a q paraméterekből. Felületenként más a képlet,
-    // ezért virtuális; a folyamatos kiszámítást és kiírást viszont az ős intézi.
-    virtual float diameter() const = 0;
-
-    // A megadott cím alá folyamatosan az átmérőt írjuk; rögtön be is állítjuk,
-    // hogy az első frame előtt is helyes legyen az érték.
-    void bind_diameter(float* target) {
-        d_ptr = target;
-        if (d_ptr) *d_ptr = diameter();
-    }
-
-    glm::vec<L, float> get_F_q(glm::vec3 at) const {
-        glm::vec<L, float> res{0};
-        for (int i = 0; i < L; i++) {
-            res[i] = F_dp_s.at(&q[i]).at(at);
-        }
-        return res;
+    // Az F-et egy KÉSZ kifejezésfára állítja, és újraszámolja a deriváltakat.
+    void set_tree(std::shared_ptr<Kifejezes const> tree) {
+        F = Kif(std::move(tree));
+        calculate();
     }
 
     glm::vec3 grad(glm::vec3 at) const {
@@ -218,9 +177,6 @@ public:
     }
 
     void calculate() {
-        for (int i = 0; i < L; i++) {
-            F_dp_s[&q[i]] = F.derive(&q[i]);
-        }
         F_dx = F.derive('x');
         F_dy = F.derive('y');
         F_dz = F.derive('z');
@@ -253,26 +209,4 @@ public:
         for (int i = 0; i < 11; ++i) out_full[i] = all[i]->get()->compile(prog_full);
         prog_full.finish();
     }
-};
-
-
-
-// Futásidőben megadott implicit felület: F(x,y,z)=0, ahol az F-et KÉSZ (már beparseolt)
-// kifejezésfaként kapja (set_tree). Egy-egy ilyen felület EGY alakzatot mintavételez; a
-// több alakzatot a hívó (main) külön-külön StringSurface-ekhez rendeli (sampler-pool),
-// így mindegyiknek saját ImplicitSurface-lefutása és saját kezdő részecskéi vannak.
-// A q paraméterekre nincs szükség (a képlet csak x,y,z + paraméterek), de a glm::vec<0>
-// nem létezik, ezért egyetlen, nem használt dummy paramétert tartunk (Surface<1>).
-struct StringSurface : Surface<1> {
-    StringSurface() {
-        q.x = 0.0f;       // dummy, nem használt (glm::vec<1> nincs {…}-értékadás)
-        F = Kif(0.0f);    // üres placeholder, amíg nem kap képletet (a pool addig áll)
-        calculate();
-    }
-    // Az F-et egy KÉSZ kifejezésfára állítja, és újraszámolja a deriváltakat.
-    void set_tree(std::shared_ptr<Kifejezes const> tree) {
-        F = Kif(std::move(tree));
-        calculate();
-    }
-    float diameter() const override { return 2.0f; }
 };

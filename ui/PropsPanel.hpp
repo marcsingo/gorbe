@@ -167,6 +167,21 @@ namespace Ui {
         }
         ImGui::TextDisabled("A szin es az anyag a FENYKEPRE hat (nem a nezetre).");
 
+        // Méretskála: a globálisat követi, vagy saját értéke van.
+        if (ImGui::CollapsingHeader("Mintavetelezes", ImGuiTreeNodeFlags_DefaultOpen)) {
+            // Bekapcsoláskor a pillanatnyi globális értékről indul, hogy a
+            // mintavétel sűrűsége ne ugorjon.
+            if (ImGui::Checkbox("sajat d", &s.own_d) && s.own_d) s.d = sc.d_ui;
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!s.own_d);
+            ImGui::SetNextItemWidth(-1.0f);
+            float shown = effective_d(s, sc);
+            if (ImGui::SliderFloat("##sajatd", &shown, 0.5f, 10.0f, "d = %.2f")) s.d = shown;
+            ImGui::EndDisabled();
+            ImGui::TextDisabled(s.own_d ? "A globalis d nem hat erre az alakzatra."
+                                        : "A globalis d-t koveti (Alakzatok panel).");
+        }
+
         if (ImGui::CollapsingHeader("Tartomany")) {
             ImGui::Text("Csak itt jelenjen meg (opcionalis):");
             ImGui::SetNextItemWidth(-1.0f);

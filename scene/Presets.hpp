@@ -97,6 +97,7 @@ inline Shape& add_preset(std::list<Shape>& shapes, Preset const& pr) {
         auto& p = s.locals.emplace_back();
         std::snprintf(p.name, sizeof(p.name), "%s", pp.name);
         p.value = pp.value;
+        p.fit_range_to_value();
     }
     return s;
 }
@@ -111,6 +112,8 @@ inline void add_warp(Shape& s, WarpPresets::Preset const& wp) {
         auto& p = s.locals.emplace_back();
         next_name(s.locals, pp.name, p.name, sizeof(p.name));
         p.value = pp.value;
+        p.min   = pp.min;
+        p.max   = pp.max;
         names.emplace_back(p.name);
     }
     WarpPresets::fill_template(w.fx, sizeof(w.fx), wp.fx, names);

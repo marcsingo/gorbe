@@ -6,7 +6,7 @@
 #include <glm.hpp>
 
 // A tartomány-feltétel (dom > 0) matematikája, GL és részecske-típus nélkül, hogy
-// önállóan tesztelhető legyen. Az ImplicitSurface ezeket hívja.
+// önállóan tesztelhető legyen. A ParticleSystem ezeket hívja.
 //
 // Alapötlet: a részecskét EGYSZERRE két kényszer tartja.
 //   1. F(p) = 0        — rajta a felületen (ezt a Witkin-lépés intézi)
@@ -28,7 +28,7 @@ namespace Domain {
     }
 
     // Előjeles GEOMETRIAI távolság a peremtől, a felület mentén (Taubin-közelítés,
-    // ugyanaz az elv, mint az ImplicitSurface::surface_distance-nél). Erre azért van
+    // ugyanaz az elv, mint az ParticleSystem::surface_distance-nél). Erre azért van
     // szükség, mert a nyers dom-érték skálafüggő: "x > 2" és "100*x > 200" ugyanazt a
     // peremet jelenti, de százszoros értékkel. Így viszont a küszöbök hosszban
     // értelmezhetők, és minden feltételnél ugyanazt jelentik.

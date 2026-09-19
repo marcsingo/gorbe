@@ -175,7 +175,29 @@ int main() {
         near("g visszaolvasva koveti r-t", back_g.at({1, 0, 0}), -9.0f);
     }
 
-    std::printf("\n=== 7. A jelenet sajat fuggvenyei ===\n");
+    std::printf("\n=== 7. Meretskala: globalis vagy sajat d ===\n");
+    {
+        SceneDoc sc;
+        sc.d_ui = 2.0f;
+        auto& a = shape(sc, "a", "x");                 // globalisat koveti
+        auto& b = shape(sc, "b", "y");
+        b.own_d = true; b.d = 0.8f;                    // sajat d
+        near("hamis: a globalis d-t kapja", effective_d(a, sc), 2.0f);
+        near("igaz: a sajat d-t kapja", effective_d(b, sc), 0.8f);
+
+        sc.d_ui = 5.0f;                                // a globalis modosul
+        near("globalis valtozas -> hamisnal kovet", effective_d(a, sc), 5.0f);
+        near("globalis valtozas -> igaznal NEM", effective_d(b, sc), 0.8f);
+
+        b.d = 1.2f;                                    // a sajat modosul
+        near("sajat valtozas -> igaznal kovet", effective_d(b, sc), 1.2f);
+        near("sajat valtozas -> a masik alakzat marad", effective_d(a, sc), 5.0f);
+
+        b.own_d = false;                               // visszakapcsolva
+        near("visszakapcsolva ujra a globalist koveti", effective_d(b, sc), 5.0f);
+    }
+
+    std::printf("\n=== 8. A jelenet sajat fuggvenyei ===\n");
     {
         std::list<Param> program;
         SceneDoc sc;

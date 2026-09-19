@@ -1,4 +1,4 @@
-// A tartomany-kenyszer tesztje. Ugyanazt a kodot hivja, amit az ImplicitSurface
+// A tartomany-kenyszer tesztje. Ugyanazt a kodot hivja, amit a ParticleSystem
 // (particle_sampling/DomainConstraint.hpp), es valodi idolepteteses szimulaciot fut.
 //
 // A ket kritikus allitas:
@@ -36,7 +36,7 @@ struct Field {
 };
 
 // Egy reszecske idoleptetese: felulet-visszacsatolas (PHI*F) + tartomany-kenyszer.
-// Ez az ImplicitSurface::witkin() vaza, taszitas nelkul (P = kulso sebesseg).
+// Ez a ParticleSystem::witkin() vaza, taszitas nelkul (P = kulso sebesseg).
 struct Sim {
     Field F, D;
     float sigma = 0.5f, dt = 0.03f, PHI = 15.0f;
