@@ -127,9 +127,33 @@ namespace Ui {
         ImGui::InputText("nev", s.name, sizeof(s.name));
         if (name_warn) ImGui::PopStyleColor();
 
+        // Variációs szerkesztő (Turk–O'Brien): képletes alakzatnál előbb átalakít a
+        // részecskékből, és külön fület nyit, az alakzat közepével az origóban.
+        if (!sc.editor) {
+            if (ImGui::Button(s.vari ? "Szerkesztes" : "Atalakitas es szerkesztes")) rq.edit_shape = &s;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(s.vari ? "Kulon fulon, az alakzat kozepe az origoban."
+                                         : "A reszecskekbol variacios feluletet kesz (a kepletet,\n"
+                                           "a warpokat es a tartomanyt felvaltja), es kulon\n"
+                                           "fulon megnyitja. Elotte inditsd el az alakzatot.");
+        }
+        if (s.vari) {
+            int bound = 0;
+            for (float v : s.vari->values) bound += (v == 0.0f);
+            ImGui::TextDisabled("Variacios alakzat: %d feluleti pont, %d normalis", bound,
+                                static_cast<int>(s.vari->values.size()) - bound);
+            if (sc.editor) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("Huzz egy kockat: a felulet atmegy rajta. Shift + kattintas "
+                                    "a feluletre: uj pont (a felulet nem valtozik). "
+                                    "Ctrl + kattintas: torles.");
+                ImGui::PopTextWrapPos();
+            }
+        }
+
         // A panel szekciói összecsukhatók: különben a lentebbi részek (warpok,
         // paraméterek) lelógnának a panel aljáról és észrevehetetlenek lennének.
-        if (ImGui::CollapsingHeader("Keplet", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!s.vari && ImGui::CollapsingHeader("Keplet", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Text("F(x, y, z) =");
             ImGui::InputTextMultiline("##keplet", s.formula, sizeof(s.formula),
                                       ImVec2(-1.0f, ImGui::GetTextLineHeight() * 3.5f));
@@ -212,6 +236,25 @@ namespace Ui {
         }
 
         warp_editor(s, ui, rq);
+
+        // Kontrollpontok (a cikk kényszerei). A lerakás és a húzás a 3D nézetben van
+        // (app/Controller.hpp); itt csak az áttekintés és a törlés.
+        if (!s.vari && ImGui::CollapsingHeader("Kontrollpontok", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("%d pont", static_cast<int>(s.controls.size()));
+            ImGui::SameLine();
+            ImGui::BeginDisabled(s.controls.empty());
+            if (ImGui::SmallButton("Mind torol")) s.controls.clear();
+            ImGui::EndDisabled();
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("Shift + bal kattintas az alakzatra: uj pont. Egy pontot "
+                                "huzva az alakzat ugy valtozik, hogy a felulet minden "
+                                "ponton atmenjen. Ctrl + kattintas: torles.");
+            std::string moves = "Ezeket allitja: pozicio";
+            for (auto const& p : s.locals)
+                if (!p.derived() && p.name[0]) (moves += ", ") += p.name;
+            ImGui::TextDisabled("%s", moves.c_str());
+            ImGui::PopTextWrapPos();
+        }
 
         if (ImGui::CollapsingHeader("Lokalis parameterek", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::TextDisabled("Csak ez az alakzat latja oket.");

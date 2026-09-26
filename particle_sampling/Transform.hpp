@@ -88,9 +88,11 @@ inline InverseWarp make_inverse_warp(TransformParams const& t) {
 }
 
 // F (vagy egy tartomány-feltétel) transzformált alakja.
+// `force`: egységtranszformációnál is beépül (a kontrollpontok megoldójának kell,
+// hogy a pozíció paraméterként benne legyen a képletben).
 inline Matek::Analizis::Kif apply_transform(Matek::Analizis::Kif const& f,
-                                            TransformParams const& t) {
-    if (t.is_identity()) return f;
+                                            TransformParams const& t, bool force = false) {
+    if (t.is_identity() && !force) return f;
     return Matek::Analizis::substitute(f, make_inverse_warp(t).as_map());
 }
 

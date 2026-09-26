@@ -55,23 +55,17 @@ public:
     std::vector<Particle>&       particles()       { return floaters; }
     std::vector<Particle> const& particles() const { return floaters; }
 
-    // A kontrollpontok: a felhasználó által letett, húzható jelölők.
-    // ponytail: a felületre nincsenek hatással — a régi q-paraméteres megoldó a
-    // képletből épülő felületnél hatástalan volt, ezért kikerült (regi-feluletek tag).
-    std::vector<Particle> const& controls() const { return ctrl; }
-
     // Új futás: friss részecskékkel. A felület F-jének beállítása UTÁN hívandó
     // (Surface::set_tree), mert a kezdő gradiensekhez már az új F kell.
     void restart() {
         floaters.clear();
-        ctrl.clear();
         spawn_random_particles(INITIAL_PARTICLES, 3);
     }
 
-    // Minden részecske törlése (üres jelenet).
+    // Minden részecske törlése (üres jelenet), és a kontrollpontok elengedése.
     void clear() {
         floaters.clear();
-        ctrl.clear();
+        unbind_controls();
     }
 
     // Az alakzat jellemző mérete: ebből jön a részecskék cél-távolsága. A GUI
@@ -126,26 +120,90 @@ public:
 
     // --- kontrollpontok ------------------------------------------------------
 
-    // A kontrollpont FIX méretű: az elkapási sugara (CONTROL_RADIUS) is fix, a
-    // kettőnek együtt kell mozognia, különben mellényúlna a felhasználó.
+    // A cikk (Witkin–Heckbert, 3. fejezet) kényszerei: pontok, amiken a felületnek át
+    // kell mennie. Ha egyet húzunk, a megoldó a felület q paramétereit (az alakzat
+    // lokális paramétereit és pozícióját — Build::control_params) úgy változtatja,
+    // hogy a húzott pont kövesse az egeret, a többi pedig a felületen maradjon.
+    //
+    // A pontok helye KÍVÜL van (az alakzat dokumentumában, hogy mentődjön); a modell
+    // csak mutatót tart rá, és a q-kat is cím szerint írja — a GUI csúszkái így élőben
+    // követik a húzást.
+
+    // A kontrollpont elkapási sugara (a kocka a nézetben ennél kisebb).
     static constexpr float CONTROL_RADIUS = 0.5f;
 
-    void add_control(glm::vec3 pos) {
-        Particle cp{pos};
-        cp.sigma = CONTROL_RADIUS;
-        cp.F_x = surf.grad(pos);
-        ctrl.push_back(cp);
+    void bind_controls(std::vector<glm::vec3>* pts, std::vector<float*> q) {
+        ctrl = pts;
+        qs = std::move(q);
+        q_dot.assign(qs.size(), 0.0f);
+        surf.set_params(std::vector<float const*>(qs.begin(), qs.end()));
+    }
+    void unbind_controls() {
+        ctrl = nullptr;
+        qs.clear();
+        q_dot.clear();
+        surf.set_params({});
     }
 
-    // Egy kontrollpont húzása a cél felé (csillapítva, mint egy rugó). A normálisát
-    // is frissíti, hogy a korongja kövesse a felszínt.
-    void drag_control(int idx, glm::vec3 target, float dt) {
-        if (idx < 0 || idx >= static_cast<int>(ctrl.size())) return;
-        auto& c = ctrl[static_cast<std::size_t>(idx)];
-        c.p_dot = 10.0f * (target - c.p);
-        c.p += c.p_dot * dt;
-        c.F_x = surf.grad(c.p);
+    // A kontrollpontok (nullptr, ha nincsenek bekötve).
+    std::vector<glm::vec3> const* controls() const { return ctrl; }
+    std::vector<glm::vec3>*       controls()       { return ctrl; }
+
+    // A húzás sebessége (1/s): a pont ennyiszer a hátralévő távolsággal mozdul.
+    static constexpr float DRAG_GAIN = 10.0f;
+
+    // Egy megoldó-lépés: a `dragged` pont a `target` felé mozdul, a többi helyben
+    // marad, és q úgy változik (a lehető legkevésbé), hogy a felület mindegyik ponton
+    // átmenjen. A cikk 7-8. egyenlete:
+    //     M·λ = b,   M_ij = ∂F/∂q(c_i) · ∂F/∂q(c_j),   b_i = ∇F(c_i)·ċ_i + φ·F(c_i)
+    //     q̇ = -Σ_j λ_j ∂F/∂q(c_j)
+    void solve_controls(int dragged, glm::vec3 target, float dt) {
+        if (!ctrl || ctrl->empty() || qs.empty() || dt <= 0.0f) return;
+        auto& cs = *ctrl;
+        std::size_t const n = cs.size(), m = qs.size();
+
+        glm::vec3 vel{0.0f};
+        if (dragged >= 0 && dragged < static_cast<int>(n)) {
+            vel = DRAG_GAIN * (target - cs[static_cast<std::size_t>(dragged)]);
+            cs[static_cast<std::size_t>(dragged)] += vel * dt;
+        }
+
+        std::vector<std::vector<float>> Fq(n);
+        std::vector<float> b(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            float F;
+            glm::vec3 Fx;
+            surf.eval_params(cs[i], F, Fx, Fq[i], ws_ctrl);
+            glm::vec3 const P = (static_cast<int>(i) == dragged) ? vel : glm::vec3(0.0f);
+            b[i] = glm::dot(Fx, P) + PHI * F;
+        }
+        std::vector<std::vector<float>> M(n, std::vector<float>(n, 0.0f));
+        for (std::size_t i = 0; i < n; ++i)
+            for (std::size_t j = 0; j < n; ++j)
+                for (std::size_t k = 0; k < m; ++k) M[i][j] += Fq[i][k] * Fq[j][k];
+
+        // Csillapítás (Tikhonov / damped least squares): M + εI. Ha több a pont, mint a
+        // szabad paraméter, M szinguláris, de kerekítés miatt a főelem nem pontosan 0 —
+        // λ elszállna (mérve: 6 pont egy gömbön -> r ~ 1e9). Így a rendszer mindig
+        // megoldható, és a teljesíthetetlen kényszereket "amennyire lehet" követi.
+        // Az ε M skálájához mért, hogy bármilyen F-nél ugyanannyit jelentsen.
+        float trace = 0.0f;
+        for (std::size_t i = 0; i < n; ++i) trace += M[i][i];
+        float const eps = CONTROL_DAMPING * trace / static_cast<float>(n) + 1e-12f;
+        for (std::size_t i = 0; i < n; ++i) M[i][i] += eps;
+
+        std::vector<float> const lambda = solve_linear(std::move(M), std::move(b));
+
+        for (std::size_t k = 0; k < m; ++k) {
+            float qd = 0.0f;
+            for (std::size_t j = 0; j < n; ++j) qd -= lambda[j] * Fq[j][k];
+            q_dot[k] = std::isfinite(qd) ? qd : 0.0f;
+            *qs[k] += q_dot[k] * dt;
+        }
     }
+
+    // A húzás vége: a felület nem változik tovább.
+    void end_drag() { std::fill(q_dot.begin(), q_dot.end(), 0.0f); }
 
     // --- egy szimulációs lépés -------------------------------------------------
 
@@ -160,6 +218,7 @@ public:
         // Az 1-3. fázis PÁRHUZAMOS: a részecskék összefüggő darabokra oszlanak (a
         // rendezés miatt ezek térben is összefüggők), darabonként egy szálon.
         std::size_t const C = chunk_count();
+        moving = std::any_of(q_dot.begin(), q_dot.end(), [](float v) { return v != 0.0f; });
         if (ws.size() < C) ws.resize(C);
 
         // 1. Kiértékelés (F, gradiens, görbület, tartomány), és a még repülők
@@ -272,7 +331,42 @@ public:
 private:
     Surface surf;
     std::vector<Particle> floaters;   // a mintavételező részecskék
-    std::vector<Particle> ctrl;       // a kontrollpontok
+
+    // A kontrollpontok (kívül tárolva) és a megoldó paraméterei.
+    std::vector<glm::vec3>* ctrl = nullptr;
+    std::vector<float*>     qs;
+    std::vector<float>      q_dot;    // a legutóbbi megoldó-lépés q̇-ja (0, ha nincs húzás)
+    Surface::Workspace      ws_ctrl;
+
+    // A megoldó csillapítása, M átlagos átlóelemének arányában (lásd solve_controls).
+    // Kisebb: pontosabban követi a teljesíthető kényszereket, de túlhatározottnál
+    // nagyobbat rándul; nagyobb: simább, de a húzott pont kicsit lemarad.
+    static constexpr float CONTROL_DAMPING = 1e-3f;
+
+    // Gauss-elimináció részleges főelem-kereséssel: M·x = b. A csillapítás miatt M
+    // szimmetrikus pozitív definit, tehát a főelem sosem nulla.
+    static std::vector<float> solve_linear(std::vector<std::vector<float>> M, std::vector<float> b) {
+        int const n = static_cast<int>(b.size());
+        for (int col = 0; col < n; ++col) {
+            int pivot = col;
+            for (int row = col + 1; row < n; ++row)
+                if (std::abs(M[row][col]) > std::abs(M[pivot][col])) pivot = row;
+            std::swap(M[col], M[pivot]);
+            std::swap(b[col], b[pivot]);
+            for (int row = col + 1; row < n; ++row) {
+                float f = M[row][col] / M[col][col];
+                for (int k = col; k < n; ++k) M[row][k] -= f * M[col][k];
+                b[row] -= f * b[col];
+            }
+        }
+        std::vector<float> x(static_cast<std::size_t>(n), 0.0f);
+        for (int i = n - 1; i >= 0; --i) {
+            float sum = b[i];
+            for (int j = i + 1; j < n; ++j) sum -= M[i][j] * x[j];
+            x[i] = sum / M[i][i];
+        }
+        return x;
+    }
 
     std::mt19937 rng;
     std::uniform_real_distribution<float> dist_R;
@@ -331,6 +425,14 @@ private:
             surf.eval_grad(p.p, p.F, p.F_x, p.F_t, w);
             p.K = 0.0f;
         }
+        // Ha a kontrollpontok épp mozgatják a felületet, a részecske is kövesse:
+        // a felület "saját mozgása" a ∂F/∂t mellett q̇·∂F/∂q (a cikk 5. egyenlete).
+        if (moving) {
+            float F;
+            glm::vec3 g;
+            surf.eval_params(p.p, F, g, w.dq, w);
+            for (std::size_t k = 0; k < q_dot.size(); ++k) p.F_t += q_dot[k] * w.dq[k];
+        }
         // Tartomány-feltétel (ha van): érték + gradiens + a felület menti irány.
         // Hesse NEM kell hozzá, ezért ez sokkal olcsóbb, mint a feltételt beépíteni F-be.
         if (surf.has_domain) {
@@ -376,6 +478,7 @@ private:
 
     SpatialGrid grid;
     float grid_cell = 1.0f;
+    bool  moving = false;   // mozgatják-e épp a kontrollpontok a felületet (q̇ ≠ 0)
 
     // A részecskék felülettől mért távolsága (surface_distance), részecskénként
     // EGYSZER számolva — a taszítás minden jelöltnél ezt nézi.

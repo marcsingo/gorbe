@@ -9,6 +9,7 @@
 
 #include "../matek/Kif.hpp"
 #include "../particle_sampling/Transform.hpp"
+#include "../particle_sampling/Variational.hpp"
 #include "Scope.hpp"
 
 // ---------------------------------------------------------------------------
@@ -65,6 +66,17 @@ struct Shape {
     // részlet sűrűbben mintavételezhető, a többi alakzat maradhat durvább.
     bool  own_d = false;
     float d     = 2.0f;
+
+    // Kontrollpontok (a cikk szerinti kényszerek): pontok a felületen. Ha egyet
+    // húzunk, a megoldó az alakzat számmal megadott lokális paramétereit és a
+    // pozícióját úgy állítja, hogy a felület mindegyiken átmenjen (lásd
+    // ParticleSystem::solve_controls, és Build::control_params).
+    std::vector<glm::vec3> controls;
+
+    // Variációs alakzat (Turk–O'Brien): ha van, a képlet HELYETT ez adja F-et, az
+    // alakzat saját (lokális) koordinátáiban. Közös (shared_ptr): a szerkesztő fül
+    // alakzata ugyanezt látja, így egy kényszer húzása mindkét fülön élőben hat.
+    std::shared_ptr<Variational> vari;
 
     // --- az utolsó Indításkor felépített állapot (scene/Build.hpp) ----------
     // A `dom_tree` a globális ÉS a saját (transzformált) feltétel ÉS-kapcsolata —

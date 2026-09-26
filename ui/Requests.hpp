@@ -31,6 +31,7 @@ namespace Ui {
         Shape*            erase_shape = nullptr;
         std::list<Param>* erase_from  = nullptr;   // melyik listából ...
         Param*            erase_param = nullptr;   // ... melyik paramétert
+        Shape*            edit_shape  = nullptr;   // variációs szerkesztő fül nyitása
 
         bool   new_scene   = false;
         Scene* want_scene  = nullptr;   // a fülsávon kiválasztott fül

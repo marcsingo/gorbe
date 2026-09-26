@@ -113,6 +113,7 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         particle_sampling/WarpPresets.hpp
         particle_sampling/SpatialGrid.hpp
         particle_sampling/ParticleView.hpp
+        particle_sampling/Variational.hpp
         matek/Program.hpp
         matek/Kif.hpp
         matek/Parser.hpp
@@ -142,7 +143,7 @@ target_compile_definitions(gorbe PRIVATE
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles test_project)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles test_project test_variational)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})

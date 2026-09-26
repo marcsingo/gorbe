@@ -273,6 +273,29 @@ int main() {
         ok("program-szint nem lat jelenet-parametert", !validate(program, sc).empty());
     }
 
+    std::printf("\n=== 10. Kontrollpontok: a megoldo parameterei ===\n");
+    {
+        std::list<Param> program;
+        SceneDoc sc;
+        param(sc.params, "k", 1.0f);                            // jelenet-szintu: nem q
+        auto& s = shape(sc, "g", "x^2 + y^2 + z^2 - r^2");
+        auto& r = param(s.locals, "r", 1.0f);
+        auto& d = param(s.locals, "d2", 0.0f);
+        std::snprintf(d.expr, sizeof(d.expr), "2*r");          // kepletes: nem q
+        auto q = Build::control_params(s);
+        ok("q = a szamos lokalisok + a pozicio (3)", q.size() == 4 && q[0] == &r.value &&
+           q[1] == &s.xform.pos[0], std::to_string(q.size()));
+
+        ok("build kontrollpont nelkul", Build::build(sc, program).empty());
+        bool const pos_in = !Matek::Analizis::is_const(Kif(s.tree).derive(&s.xform.pos[0]).get(), 0.0f);
+        ok("kontrollpont nelkul a pozicio nincs a kepletben", !pos_in && !s.warped);
+
+        s.controls.push_back({1, 0, 0});
+        ok("build kontrollponttal", Build::build(sc, program).empty());
+        bool const pos_in2 = !Matek::Analizis::is_const(Kif(s.tree).derive(&s.xform.pos[0]).get(), 0.0f);
+        ok("kontrollponttal a pozicio a kepletben van (a megoldo mozgathatja)", pos_in2 && s.warped);
+    }
+
     std::printf("\n=== 9. A jelenet sajat fuggvenyei ===\n");
     {
         std::list<Param> program;

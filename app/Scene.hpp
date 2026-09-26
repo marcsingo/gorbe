@@ -26,6 +26,9 @@ struct Scene : SceneDoc {
 
     std::string error;      // parse-hiba az utolsó Indításból
 
+    // A húzott kontrollpont: melyik objektum (a pool indexe) hányadik pontja; -1 = nincs.
+    int drag_obj = -1, drag_ctrl = -1;
+
     // Fülönként saját kamera: a nézet megmarad fülváltáskor.
     Camera3D camera{glm::vec4(0.0f, 0.0f, 1200.0f, 800.0f), App::DEFAULT_EYE, -90.0f, 45.0f};
 
@@ -39,14 +42,35 @@ struct Scene : SceneDoc {
     // Aktív fül: fut a szimuláció és megkapja a bevitelt.
     void set_active(bool a) {
         camera.input_enabled = a;
-        for (auto& p : pool) {
-            p->controller().set_running(a);
-            p->controller().set_input_enabled(a);
-        }
+        for (auto& p : pool) p->controller().set_running(a);
     }
 
+    // Variációs szerkesztő fül: egy alakzat az origó körül, a kényszerei húzhatók
+    // (app/Controller.hpp). Nem mentődik, a forrás-alakzat viszont igen.
+    bool editor = false;
+
+    // A következő frame-ben a fülsáv erre a fülre váltson (egy már nyitott
+    // szerkesztő újbóli megnyitásakor).
+    bool focus_tab = false;
+
     void draw() {
-        for (auto& p : pool) p->draw(camera);
+        auto it = shapes.begin();
+        for (std::size_t i = 0; i < pool.size(); ++i, ++it) {
+            int const dragged = static_cast<int>(i) == drag_obj ? drag_ctrl : -1;
+            if (!editor || !it->vari) { pool[i]->draw(camera, dragged); continue; }
+            // A szerkesztőben a határkényszerek a kontrollpontok (a normálkényszerek
+            // a felület mellett ülnek, azokat nem rajzoljuk). A kiemelés indexe a
+            // rajzolt listában értendő.
+            Variational const& v = *it->vari;
+            std::vector<glm::vec3> pts;
+            int shown = -1;
+            for (std::size_t k = 0; k < v.centers.size(); ++k)
+                if (v.values[k] == 0.0f) {
+                    if (static_cast<int>(k) == dragged) shown = static_cast<int>(pts.size());
+                    pts.push_back(v.centers[k]);
+                }
+            pool[i]->draw(camera, shown, &pts);
+        }
     }
 
     // A samplerek számát az alakzatokéhoz igazítja (felvétel/törlés után), és
@@ -54,9 +78,8 @@ struct Scene : SceneDoc {
     void sync_pool() {
         while (pool.size() > shapes.size()) pool.pop_back();
         while (pool.size() < shapes.size()) {
-            // A jelenet SAJÁT kamerája: a kontrollpontok ehhez vetítenek vissza,
-            // tehát fülenként külön kell. Induláskor üres és áll.
-            pool.push_back(std::make_unique<SpaceObject>(camera));
+            // Induláskor üres és áll.
+            pool.push_back(std::make_unique<SpaceObject>());
         }
         std::size_t i = 0;
         for (auto& s : shapes) {
@@ -78,6 +101,7 @@ struct Scene : SceneDoc {
         }
         Build::drop_trees(*this);
         error.clear();
+        drag_obj = drag_ctrl = -1;
     }
 };
 

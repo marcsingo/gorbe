@@ -49,11 +49,20 @@ int main() {
     Warp w; set(w.name, "Csavaras"); set(w.fx, "x*cos(tw*z)"); w.enabled = false;
     a.warps.push_back(w);
     param(a.locals, "r", 1.25f, 0.0f, 3.0f);
+    a.controls = {{1, 0, 0}, {0, 1.5f, -2}};
 
     auto& b = sc.shapes.emplace_back();
     set(b.name, "unio1"); set(b.formula, "unio(gomb1, z)");
     auto& sc2 = scenes.emplace_back();
     set(sc2.name, "Masodik");
+    // Variacios alakzat: tetraeder csucsai a feluleten, a kozepe belul (negativ).
+    auto& vs = sc2.shapes.emplace_back();
+    set(vs.name, "vari1");
+    vs.vari = std::make_shared<Variational>();
+    for (glm::vec3 c : {glm::vec3{1, 1, 1}, glm::vec3{1, -1, -1}, glm::vec3{-1, 1, -1}, glm::vec3{-1, -1, 1}})
+        vs.vari->add(c, 0.0f);
+    vs.vari->add({0, 0, 0}, -1.0f);
+    vs.vari->solve();
 
     std::string const text = ProjectFile::to_text(program, scenes);
 
@@ -88,6 +97,15 @@ int main() {
     ok("objektum: warp", o.warps.size() == 1 && !o.warps[0].enabled &&
        std::string(o.warps[0].fx) == "x*cos(tw*z)");
     ok("objektum: lokalis parameter", o.locals.front().value == 1.25f && o.locals.front().max == 3.0f);
+    ok("objektum: kontrollpontok", o.controls.size() == 2 && o.controls[1] == glm::vec3(0, 1.5f, -2));
+
+    {
+        Shape const& v = pr.scenes.back().shapes.front();
+        glm::vec3 const p{0.4f, -0.2f, 0.7f};
+        ok("variacios alakzat: kenyszerek es a fuggveny",
+           v.vari && v.vari->centers == vs.vari->centers && v.vari->values == vs.vari->values &&
+           std::abs(v.vari->at(p) - vs.vari->at(p)) < 1e-5f);
+    }
 
     ok("masodszor mentve betu szerint ugyanaz", ProjectFile::to_text(pr.program_params, pr.scenes) == text);
 

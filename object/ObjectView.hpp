@@ -118,21 +118,90 @@ public:
     }
 };
 
+// A kontrollpontok: fix méretű, árnyalt kockák. A húzott kocka más színű.
+//
+// Kevés pont van, ezért a csúcsokat egyszerűen a CPU rakja össze (kockánként 36);
+// a húzott kocka csúcsai kerülnek a végére, így két rajzolással más színt kaphat.
+class ControlCubes : public Model {
+    std::vector<glm::vec3> const* source = nullptr;
+    int highlighted = -1;
+
+    // A kocka fél élhossza. Kisebb, mint az elkapási sugár (CONTROL_RADIUS): a kocka ne
+    // takarja az alakzatot, de a megfogásához ne kelljen pontosan rákattintani.
+    static constexpr float CUBE_HALF = 0.05f;
+
+    static inline glm::vec3 const COLOR{0.90f, 0.27f, 0.25f};
+    static inline glm::vec3 const DRAGGED_COLOR{1.00f, 0.80f, 0.20f};
+
+    // Egy kocka hat lapja: a normális és a lap két élvektora (a sarkok ±1 egységben).
+    static void add_cube(std::vector<glm::vec3>& v, std::vector<glm::vec3>& n, glm::vec3 c, float h) {
+        struct Face { glm::vec3 N, U, V; };
+        static Face const F[6] = {
+            {{ 1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0}},
+            {{ 0, 1, 0}, {0, 0, 1}, {1, 0, 0}}, {{ 0,-1, 0}, {1, 0, 0}, {0, 0, 1}},
+            {{ 0, 0, 1}, {1, 0, 0}, {0, 1, 0}}, {{ 0, 0,-1}, {0, 1, 0}, {1, 0, 0}},
+        };
+        for (auto const& f : F) {
+            glm::vec3 const o = c + h * f.N;
+            glm::vec3 const a = o + h * (-f.U - f.V), b = o + h * (f.U - f.V);
+            glm::vec3 const d = o + h * (f.U + f.V), e = o + h * (-f.U + f.V);
+            for (glm::vec3 q : {a, b, d, a, d, e}) { v.push_back(q); n.push_back(f.N); }
+        }
+    }
+
+protected:
+    void render(Camera const&) override {
+        if (!source || source->empty()) return;
+        vertices.clear();
+        normals.clear();
+        float const h = CUBE_HALF;
+        for (int i = 0; i < static_cast<int>(source->size()); ++i)
+            if (i != highlighted) add_cube(vertices, normals, (*source)[static_cast<std::size_t>(i)], h);
+        GLsizei const normal_count = static_cast<GLsizei>(vertices.size());
+        if (highlighted >= 0 && highlighted < static_cast<int>(source->size()))
+            add_cube(vertices, normals, (*source)[static_cast<std::size_t>(highlighted)], h);
+
+        update_buffers();
+        set_uniform("color", COLOR);
+        glDrawArrays(GL_TRIANGLES, 0, normal_count);
+        if (static_cast<GLsizei>(vertices.size()) > normal_count) {
+            set_uniform("color", DRAGGED_COLOR);
+            glDrawArrays(GL_TRIANGLES, normal_count, static_cast<GLsizei>(vertices.size()) - normal_count);
+        }
+    }
+
+public:
+    ControlCubes() {
+        update_buffers_on_draw = false;   // a render() tölti fel a csúcsokat
+        set_shader(Builder::get_or_build(SHADER_DIR "/vertex.vert", SHADER_DIR "/fragment.glsl"));
+    }
+
+    void draw(std::vector<glm::vec3> const* pts, int dragged, Camera const& camera) {
+        source = pts;
+        highlighted = dragged;
+        Model::draw(camera);
+        source = nullptr;
+    }
+};
+
 class ObjectView {
-    // Nem a tiszta (0,0,1) / (1,0,0): a telített alapszínen az árnyalás alig
-    // olvasható (a kék csatorna egyedül nem ad elég kontrasztot). Egy kissé
-    // világosabb, kevertebb szín viszont szépen mutatja a formát.
+    // Nem a tiszta (0,0,1): a telített alapszínen az árnyalás alig olvasható (a kék
+    // csatorna egyedül nem ad elég kontrasztot). Egy kissé világosabb, kevertebb szín
+    // viszont szépen mutatja a formát.
     ParticleDisks floaters{{0.20f, 0.45f, 0.90f}, true};
-    ParticleDisks controls{{0.90f, 0.27f, 0.25f}, false};
+    ControlCubes  controls;
 
 public:
     // Megjelenjen-e (a szimuláció attól még futhat a háttérben).
     bool visible = true;
 
-    void draw(ParticleSystem const& model, Camera const& camera) {
+    // `dragged`: a húzott kontrollpont indexe (kiemelve), vagy -1. `pts`: ha nem
+    // nullptr, ezeket rajzolja kontrollpontként (a variációs szerkesztő kényszerei).
+    void draw(ParticleSystem const& model, Camera const& camera, int dragged = -1,
+              std::vector<glm::vec3> const* pts = nullptr) {
         if (!visible) return;
         floaters.draw(model.particles(), camera);
-        controls.draw(model.controls(), camera);
+        controls.draw(pts ? pts : model.controls(), dragged, camera);
     }
 };
 

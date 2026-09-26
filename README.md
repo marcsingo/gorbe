@@ -73,8 +73,9 @@ ctest --test-dir build --output-on-failure
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
 | `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok, alakzatonkénti `d`, **képletes paraméterek** (lánc élőben, `t`, körkörös hivatkozás Indítás előtt, önhivatkozás, `x/y/z`-tilalom, hatókör) |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
-| `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
+| `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a **kontrollpontok megoldója** (egy gömb két ponton át: a húzott ponton és a helyben maradón is átmegy, r és a középpont pontosan a várt értékre áll, a részecskék követik); a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
+| `test_variational` | a variációs felületek: képletes alakzat (gömb, tórusz) részecskéiből átalakítva visszaadja az alakot, a kifejezésfa = a közvetlen kiértékelés, a kényszerben véges a gradiens és a görbület, húzás után újraépítés nélkül követ, új felületi pont nem változtat a felületen, a részecskék mintavételezik |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -83,7 +84,8 @@ Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
 
 GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapból ki):
 `cmake -B build -DGORBE_BUILD_GL_TESTS=ON`. Most egy van: `test_gl_disks` — az
-instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint a korábbi CPU-s.
+instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint a korábbi CPU-s, és a
+kontrollpont-kockák kirajzolódnak (a húzott kiemelve).
 
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
@@ -105,22 +107,51 @@ A képernyőn kétféle elem látszik: a felületet mintavételező **részecsk�
 
 ### Kontrollpontok
 
-> **Jelenleg csak jelölők**: letehetők és húzhatók, de a felületre **nincsenek
-> hatással**. A cikk szerinti megoldó a felület `q` paramétereit mozgatta; a képletből
-> épülő felületnek ilyen paramétere nincs, ezért ott hatástalan volt, és kikerült
-> (`regi-feluletek` tag). Visszakötni pl. az alakzat transzformációjára lehetne.
+A cikk kényszerei: pontok az alakzat felületén (piros **kockák**). Ha egyet húzol, a
+program az alakzat **számmal megadott lokális paramétereit és a pozícióját** úgy
+változtatja — a lehető legkevésbé —, hogy a felület a húzott ponton és az összes
+többin is átmenjen. Egy gömbnél kifelé húzva nő az `r`, oldalra húzva elmozdul; a
+csúszkák élőben követik, a részecskék pedig a felülettel együtt mozognak.
 
 | Bevitel | Hatás |
 |---|---|
-| `Shift` + bal kattintás | új kontrollpont lerakása a kurzor helyén |
-| bal kattintás egy ponton + húzás | a pont mozgatása |
-| bal gomb elengedése | a pont elengedése |
+| `Shift` + bal kattintás az alakzaton | új pont a felületre (arra a részecskére, amelyikre kattintottál) |
+| bal gomb + húzás egy kockán | a pont mozgatása (a nézőirányra merőleges síkban) — az alakzat követi |
+| `Ctrl` + bal kattintás egy kockán | a pont törlése |
 
-Megjegyzések:
-- A bal egérgomb `Alt` **nélkül** a kontrollpontoké, `Alt`-tal a kameráé — így nem ütköznek.
-- A kontrollpont a kamera nézőirányára merőleges síkban mozog (a mélységet a nézet
-  forgatásával lehet beállítani).
-- Egy ponttól `0.5` egységnél közelebbi kattintás számít megfogásnak.
+- Egy kattintás mindig **egy** objektumot érint: azt, amelyikre kattintottál.
+- A megoldó **csak húzás közben** fut: a paraméter-csúszkák egyébként szabadon
+  állíthatók (a pontok nem „húzzák vissza” őket).
+- Amit állít: a számmal megadott lokális paraméterek és a pozíció. A képletes, a
+  jelenet- és program-szintű paraméterekhez, és a forgatáshoz/mérethez nem nyúl.
+- A pontok az alakzattal együtt mentődnek a projektfájlba. A Tulajdonságok panelen
+  látszik a számuk, és egyszerre törölhetők.
+- A húzott kocka sárga. `Alt` + bal gomb továbbra is a kameráé.
+
+### Variációs szerkesztő (Turk–O'Brien)
+
+A Tulajdonságok panel **`Atalakitas es szerkesztes`** gombja egy elindított alakzatot
+*variációs implicit felületté* alakít, és külön fülön megnyitja, **az alakzat
+közepével az origóban**.
+
+- **Átalakítás:** a felületi részecskék helye határkényszer (`F = 0`), a gradiensük
+  irányában, kicsit kijjebb egy normálkényszer (`F = ε`). Ebből a cikk (8)
+  egyenletrendszere adja az `F(x) = Σ dⱼ·|x − cⱼ|³ + P(x)` függvényt. A részecskék a
+  középponthoz képest kerülnek be, az alakzat pozíciója pedig a középpont lesz.
+  A képletet, a warpokat és a tartományt a függvény felváltja, mert azok már „bele
+  vannak sütve”.
+- **A szerkesztő fülön** a kockák a határkényszerek. Egy kockát húzva maga a pont
+  mozog (a normálkényszer-párja vele együtt), és az egyenletrendszert újra
+  megoldjuk. Ez közvetlen, nincs benne a Witkin-féle közvetett megoldó.
+  `Shift` + kattintás a felületre új pontot tesz le, amitől a felület nem változik
+  (a cikkben „csomópont-beszúrás”). `Ctrl` + kattintás egy kockára törli a pontot.
+- A két fül **ugyanazt** a függvényt látja (`Shape::vari`, közös), tehát a húzás az
+  eredeti jelenetben is azonnal hat.
+- A kényszerek a projektfájlba mentődnek, a súlyok betöltéskor újraszámolódnak. A
+  szerkesztő fül nem mentődik.
+- Legfeljebb 150 felületi pontot használ (egyenletes lépésközzel). A megoldás
+  `O(k³)`, a kiértékelés részecskénként `O(k)`, ezért ennél sokkal több pont már
+  lassú.
 
 ## Alakzatok szerkesztése (GUI)
 
@@ -685,7 +716,7 @@ aktuális fájl neve.
 Ami bekerül: a program-szintű paraméterek, és jelenetenként a név, a munkatér, a `d`
 és a görbület, a kamera állása, a paraméterek (tartománnyal), a saját függvények, és
 az objektumok minden beállítása (képlet, tartomány, láthatóság, szín, anyag, saját
-`d`, transzformáció, warpok, lokális paraméterek). Ami nem: a részecskék és a
+`d`, transzformáció, warpok, lokális paraméterek, kontrollpontok). Ami nem: a részecskék és a
 felépített képletek — betöltéskor a program minden jelenetet magától felépít.
 
 ```json
@@ -701,7 +732,8 @@ felépített képletek — betöltéskor a program minden jelenetet magától fe
           "name": "gomb1", "formula": "x^2 + y^2 + z^2 - r^2", "domain": "",
           "visible": true, "color": "Kek", "material": "Uveg", "own_d": false, "d": 2.0,
           "transform": { "pos": [0, 0, 0], "rot_deg": [0, 0, 0], "scale": [1, 1, 1] },
-          "warps": [], "params": [ { "name": "r", "value": 1.0, "min": -10, "max": 10 } ]
+          "warps": [], "params": [ { "name": "r", "value": 1.0, "min": -10, "max": 10 } ],
+          "controls": [ [1.0, 0.0, 0.0] ]
       } ]
   } ]
 }
@@ -889,5 +921,6 @@ A gyökérben lévő cikkek:
 | fájl | mi |
 |---|---|
 | `witkin_andrew_1994_1.pdf` | Witkin–Heckbert: *Using Particles to Sample and Control Implicit Surfaces* (SIGGRAPH '94) — a mintavételezés módszere |
+| `Variational_implicit_surfaces.pdf` | Turk–O'Brien: *Variational Implicit Surfaces* (1999) — a variációs szerkesztő alapja |
 | `1999-blobtree-model.pdf` | Wyvill–Guy–Galin: *Extending the CSG Tree* (CGF 18(2), 1999) — a BlobTree, a halmazműveletek és a warpok forrása |
 | `[2005, Goldman] Curvature formulas...pdf` | implicit felületek görbületi képletei (`Surface::curvature`) |

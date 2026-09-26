@@ -11,7 +11,7 @@
 // Három részből áll, MVC szerint:
 //   model()      ParticleSystem    a felület és a részecskék + a szimuláció (GL nélkül)
 //   view()       ObjectView        a kirajzolás (a meglévő Model ősosztályra épül)
-//   controller() ObjectController  az óra (mikor lép) és a bevitel (kontrollpontok)
+//   controller() ObjectController  az óra (mikor lép)
 //
 // A modell nem tud a másik kettőről; a nézet csak olvassa, a vezérlő lépteti.
 // Induláskor üres és áll: a jelenet a képlet beállítása után indítja (start()).
@@ -22,7 +22,7 @@ class SpaceObject {
     ObjectController controller_;
 
 public:
-    explicit SpaceObject(Camera const& camera) : controller_(model_, camera) {}
+    SpaceObject() = default;
 
     SpaceObject(SpaceObject const&) = delete;
     SpaceObject& operator=(SpaceObject const&) = delete;
@@ -43,7 +43,10 @@ public:
         controller_.set_running(false);
     }
 
-    void draw(Camera const& camera) { view_.draw(model_, camera); }
+    // `dragged`: a húzott kontrollpont indexe (kiemelve rajzoljuk), vagy -1.
+    void draw(Camera const& camera, int dragged = -1, std::vector<glm::vec3> const* pts = nullptr) {
+        view_.draw(model_, camera, dragged, pts);
+    }
 };
 
 #endif //GORBE_SPACE_OBJECT_HPP

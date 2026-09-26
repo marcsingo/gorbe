@@ -94,15 +94,81 @@ int main() {
            std::to_string(ps.particles().size()) + " db");
     }
 
-    std::printf("\n=== 4. Kontrollpont: letesz, huz ===\n");
+    std::printf("\n=== 4. Kontrollpontok: a felulet koveti a huzott pontot (a cikk megoldoja) ===\n");
     {
+        // Gomb a (cx, cy, cz) kozepponttal es r sugarral; a megoldo parameterei (q)
+        // cim szerint: ezeket irja, ahogy a GUI csuszkai is.
+        float r = 1.0f, cx = 0.0f, cy = 0.0f, cz = 0.0f;
+        auto res = [&](std::string const& n) -> Matek::Analizis::Tree {
+            if (n == "r")  return Matek::Analizis::Kif(&r).get();
+            if (n == "cx") return Matek::Analizis::Kif(&cx).get();
+            if (n == "cy") return Matek::Analizis::Kif(&cy).get();
+            if (n == "cz") return Matek::Analizis::Kif(&cz).get();
+            return nullptr;
+        };
+        auto F = [&](glm::vec3 p) { return (p.x-cx)*(p.x-cx) + (p.y-cy)*(p.y-cy) + (p.z-cz)*(p.z-cz) - r*r; };
+
         ParticleSystem ps;
-        ps.surface().set_tree(Matek::Analizis::make_kif("x^2 + y^2 + z^2 - 4").get());
-        ps.add_control({2, 0, 0});
-        for (int k = 0; k < 200; ++k) ps.drag_control(0, {0, 2, 0}, 0.01f);
-        glm::vec3 p = ps.controls()[0].p;
-        ok("a huzott pont a celhoz ert", glm::length(p - glm::vec3{0, 2, 0}) < 0.05f);
-        ok("a normalisa kovette (a gombon kifele)", ps.controls()[0].F_x.y > 3.0f);
+        ps.d = 0.6f;
+        ps.surface().set_tree(Matek::Analizis::make_kif("(x-cx)^2 + (y-cy)^2 + (z-cz)^2 - r^2", res).get());
+        std::vector<glm::vec3> pts = {{1, 0, 0}, {-1, 0, 0}};   // mindketto a gombon
+        ps.bind_controls(&pts, {&r, &cx, &cy, &cz});
+        ps.restart();
+        for (int k = 0; k < 300; ++k) ps.step(0.03f);            // mintavetel a gombon
+
+        // Az elso pontot kifele huzzuk (1.5, 0, 0)-ig; a masik helyben marad.
+        for (int k = 0; k < 400; ++k) {
+            ps.solve_controls(0, {1.5f, 0.0f, 0.0f}, 0.01f);
+            if (k % 3 == 0) ps.step(0.03f);                      // a reszecskek kozben kovetik
+        }
+        ps.end_drag();
+        ok("a huzott pont a celhoz ert", glm::length(pts[0] - glm::vec3{1.5f, 0, 0}) < 0.02f);
+        ok("a felulet atmegy a huzott ponton", std::abs(F(pts[0])) < 0.02f, std::to_string(F(pts[0])));
+        ok("es a helyben maradt ponton is", std::abs(F(pts[1])) < 0.02f, std::to_string(F(pts[1])));
+        ok("a gomb nott es eltolodott (r ~ 1.25, cx ~ 0.25)",
+           std::abs(r - 1.25f) < 0.03f && std::abs(cx - 0.25f) < 0.03f,
+           "r=" + std::to_string(r) + " cx=" + std::to_string(cx));
+        ok("oldalra nem mozdult (cy, cz ~ 0)", std::abs(cy) < 1e-3f && std::abs(cz) < 1e-3f);
+        for (int k = 0; k < 100; ++k) ps.step(0.03f);
+        ok("a reszecskek az uj feluleten vannak", on_surface_ratio(ps, 0.05f) > 0.9f,
+           std::to_string(on_surface_ratio(ps, 0.05f)));
+
+        ps.unbind_controls();
+        ok("elengedve nincs kontrollpont", ps.controls() == nullptr);
+    }
+
+    std::printf("\n=== 4b. Kontrollpontok: tobb pont, mint parameter (tulhatarozott) ===\n");
+    {
+        // 6 pont a gombon, de csak 4 parameter (r + kozeppont): M = J*J^T szingularis.
+        // A huzas nem teljesitheto pontosan — de a parameterek nem ugralhatnak el.
+        float r = 1.0f, cx = 0.0f, cy = 0.0f, cz = 0.0f;
+        auto res = [&](std::string const& n) -> Matek::Analizis::Tree {
+            if (n == "r")  return Matek::Analizis::Kif(&r).get();
+            if (n == "cx") return Matek::Analizis::Kif(&cx).get();
+            if (n == "cy") return Matek::Analizis::Kif(&cy).get();
+            if (n == "cz") return Matek::Analizis::Kif(&cz).get();
+            return nullptr;
+        };
+        ParticleSystem ps;
+        ps.surface().set_tree(Matek::Analizis::make_kif("(x-cx)^2 + (y-cy)^2 + (z-cz)^2 - r^2", res).get());
+        std::vector<glm::vec3> pts = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        ps.bind_controls(&pts, {&r, &cx, &cy, &cz});
+
+        float max_jump = 0.0f;
+        bool finite = true;
+        for (int k = 0; k < 400; ++k) {
+            float const r0 = r, x0 = cx, y0 = cy, z0 = cz;
+            ps.solve_controls(0, {1.5f, 0.0f, 0.0f}, 0.01f);
+            finite = finite && std::isfinite(r) && std::isfinite(cx) && std::isfinite(cy) && std::isfinite(cz);
+            max_jump = std::max({max_jump, std::abs(r - r0), std::abs(cx - x0),
+                                 std::abs(cy - y0), std::abs(cz - z0)});
+        }
+        ok("a parameterek vegesek", finite);
+        ok("nincs ugras (lepesenkent < 0.05)", max_jump < 0.05f, std::to_string(max_jump));
+        ok("a gomb korlatos marad (0.5 < r < 2, |c| < 1)",
+           r > 0.5f && r < 2.0f && glm::length(glm::vec3{cx, cy, cz}) < 1.0f,
+           "r=" + std::to_string(r) + " c=(" + std::to_string(cx) + "," + std::to_string(cy) +
+           "," + std::to_string(cz) + ")");
     }
 
     std::printf("\n=== 5. Parhuzamos leptetes (utils/Parallel.hpp) ===\n");

@@ -1,9 +1,12 @@
 #ifndef GORBE_APP_CONTROLLER_HPP
 #define GORBE_APP_CONTROLLER_HPP
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <list>
 #include <sstream>
 #include <string>
@@ -46,8 +49,55 @@ public:
         // A szimuláció órája: frame-enként egyszer, az aktuális fül esedékes
         // objektumait PÁRHUZAMOSAN lépteti (a háttérben lévők úgysem futnak).
         sim_sub = Window::Subscription(Window::add_time_passed_event([this](auto ev) {
-            step_objects(static_cast<float>(ev.dt));
+            float const dt = static_cast<float>(ev.dt);
+            drag_controls(dt);     // előbb a kontrollpontok mozgatják a felületet,
+            step_objects(dt);      // utána lépnek a részecskék
         }));
+        btn_sub = Window::Subscription(Window::add_mouse_button_event([this](auto e) {
+            on_mouse_button(e.button, e.action, e.mods);
+        }));
+    }
+
+    // --- kontrollpontok (a jelenet szintjén: egy kattintás EGY objektumot érint) ----
+    //
+    //   Shift + bal kattintás az alakzaton : új kontrollpont oda (a legközelebbi
+    //                                        részecskére, tehát a felületre)
+    //   bal gomb + húzás egy kockán         : a pont mozog, a felület követi
+    //   Ctrl + bal kattintás egy kockán     : a pont törlése
+    // (Alt + bal gomb a kameráé.)
+
+    void on_mouse_button(int button, int action, int mods) {
+        if (!cur_ || button != GLFW_MOUSE_BUTTON_LEFT || (mods & GLFW_MOD_ALT)) return;
+        Scene& sc = *cur_;
+        if (action == GLFW_RELEASE) { end_drag(sc); return; }
+        if (action != GLFW_PRESS) return;
+        if (sc.editor) { editor_mouse(sc, mods); return; }
+
+        if (mods & GLFW_MOD_SHIFT) { add_control_at_mouse(sc); return; }
+
+        auto [obj, idx] = pick_control(sc);
+        if (obj < 0) return;
+        if (mods & GLFW_MOD_CONTROL) {
+            auto& cs = shape_at(sc, obj).controls;
+            cs.erase(cs.begin() + idx);
+        } else {
+            sc.drag_obj = obj;
+            sc.drag_ctrl = idx;
+        }
+    }
+
+    // A húzott pont követi az egeret (a kamera nézőirányára merőleges síkban), és a
+    // megoldó ehhez igazítja az alakzat paramétereit (ParticleSystem::solve_controls).
+    void drag_controls(float dt) {
+        if (!cur_ || cur_->drag_obj < 0) return;
+        Scene& sc = *cur_;
+        if (sc.editor) { drag_constraint(sc); return; }
+        auto& model = sc.pool[static_cast<std::size_t>(sc.drag_obj)]->model();
+        auto const* cs = model.controls();
+        if (!cs || sc.drag_ctrl >= static_cast<int>(cs->size())) { end_drag(sc); return; }
+        glm::vec3 const c = (*cs)[static_cast<std::size_t>(sc.drag_ctrl)];
+        glm::vec3 const target = sc.camera.get_mouse_pos_on_plane(c, sc.camera.get_front());
+        model.solve_controls(sc.drag_ctrl, target, dt);
     }
 
     // Az esedékes objektumok egy-egy lépése, párhuzamosan (utils/Parallel.hpp).
@@ -94,8 +144,9 @@ public:
         sc.sync_pool();
         if (rq.build) build(sc);
         if (rq.photo) Photo::take(sc, photo);
+        Scene* const opened = rq.edit_shape ? open_editor(sc, *rq.edit_shape) : nullptr;
 
-        switch_scenes(rq);
+        switch_scenes(rq, opened);
 
         // A projekt-műveletek a legvégén: a betöltés és az új projekt MINDEN jelenetet
         // lecserél, tehát a fenti hivatkozások (sc, cur_) utána érvénytelenek.
@@ -121,8 +172,12 @@ public:
             s.view.target = s.view.eye + s.camera.get_front();
             s.view.fov    = s.camera.get_fov_deg();
         }
+        // A szerkesztő fülek nem mentődnek: az alakzatuk a forrás-jelenetben van.
+        std::vector<std::reference_wrapper<Scene const>> saved;
+        for (auto const& s : scenes)
+            if (!s.editor) saved.emplace_back(s);
         std::ofstream f(path, std::ios::binary);
-        if (f) f << ProjectFile::to_text(program_params, scenes);
+        if (f) f << ProjectFile::to_text(program_params, saved);
         if (!f) {
             file_status = "HIBA: nem sikerult menteni: " + path;
             return false;
@@ -158,7 +213,228 @@ public:
 
 private:
     Scene* cur_ = nullptr;
-    Window::Subscription sim_sub;
+    Window::Subscription sim_sub, btn_sub;
+
+    static Shape& shape_at(Scene& sc, int i) {
+        auto it = sc.shapes.begin();
+        std::advance(it, i);
+        return *it;
+    }
+
+    // Az egér alatti sugár (a kamerából a kurzor felé).
+    static void mouse_ray(Scene const& sc, glm::vec3& eye, glm::vec3& dir) {
+        eye = sc.camera.get_position();
+        glm::vec3 const front = sc.camera.get_front();
+        dir = glm::normalize(sc.camera.get_mouse_pos_on_plane(eye + front, front) - eye);
+    }
+
+    // Az egér alatti LEGKÖZELEBBI kocka: (objektum, pont), vagy (-1, -1).
+    std::pair<int, int> pick_control(Scene& sc) const {
+        glm::vec3 eye, dir;
+        mouse_ray(sc, eye, dir);
+        std::pair<int, int> best{-1, -1};
+        float best_t = 1e30f;
+        int obj = 0;
+        for (auto& s : sc.shapes) {
+            if (s.visible)
+                for (std::size_t k = 0; k < s.controls.size(); ++k) {
+                    glm::vec3 const v = s.controls[k] - eye;
+                    float const t = glm::dot(v, dir);
+                    if (t > 0.0f && t < best_t &&
+                        glm::length(glm::cross(v, dir)) < ParticleSystem::CONTROL_RADIUS) {
+                        best = {obj, static_cast<int>(k)};
+                        best_t = t;
+                    }
+                }
+            ++obj;
+        }
+        return best;
+    }
+
+    // Új kontrollpont a felületre: az egér alatti legközelebbi (látható) részecske
+    // helyére, annak az objektumnak, amelyikhez a részecske tartozik.
+    void add_control_at_mouse(Scene& sc) {
+        int best_obj = -1;
+        glm::vec3 best_p{0.0f};
+        if (!pick_particle(sc, best_obj, best_p)) return;
+        Shape& s = shape_at(sc, best_obj);
+        bool const first = s.controls.empty();
+        s.controls.push_back(best_p);
+        // Az első pontnál újra kell építeni: a pozíció csak így kerül paraméterként a
+        // képletbe (Build::place). A részecskék nem indulnak újra.
+        if (first) build(sc, false);
+    }
+
+    // Az egér alatti legközelebbi (látható) részecske: melyik objektumé, és hol van.
+    bool pick_particle(Scene& sc, int& best_obj, glm::vec3& best_p) const {
+        glm::vec3 eye, dir;
+        mouse_ray(sc, eye, dir);
+        best_obj = -1;
+        float best_t = 1e30f;
+        int obj = 0;
+        for (auto& s : sc.shapes) {
+            if (s.visible && s.tree)
+                for (auto const& p : sc.pool[static_cast<std::size_t>(obj)]->model().particles()) {
+                    if (Domain::is_outside(p.dom_dist, p.sigma)) continue;
+                    glm::vec3 const v = p.p - eye;
+                    float const t = glm::dot(v, dir);
+                    // Egy korongra kattintva (a sugara σ/2, de legalább egy kicsi hely).
+                    float const hit = std::max(0.5f * p.sigma, 0.1f);
+                    if (t > 0.0f && t < best_t && glm::length(glm::cross(v, dir)) < hit) {
+                        best_obj = obj;
+                        best_p = p.p;
+                        best_t = t;
+                    }
+                }
+            ++obj;
+        }
+        return best_obj >= 0;
+    }
+
+    // --- variációs szerkesztő (Turk–O'Brien) ------------------------------------
+    //
+    // A szerkesztő fülön a kontrollpontok az alakzat HATÁRKÉNYSZEREI: húzáskor maga a
+    // pont mozog, és a (8) egyenletrendszert újra megoldjuk — nincs közvetett megoldó.
+    //   Shift + bal kattintás az alakzaton : új határkényszer (a felület nem változik)
+    //   bal gomb + húzás egy kockán         : a kényszer mozog, a felület követi
+    //   Ctrl + bal kattintás egy kockán     : a kényszer törlése
+
+    // Egy képletes alakzat átalakítása variációssá (ha még nem az), és a szerkesztő
+    // fül megnyitása. A megnyitandó fület adja vissza (nullptr, ha nem sikerült).
+    Scene* open_editor(Scene& sc, Shape& s) {
+        for (auto& e : scenes)
+            if (e.editor && s.vari && !e.shapes.empty() && e.shapes.front().vari == s.vari) {
+                e.focus_tab = true;
+                return &e;
+            }
+
+        if (!s.vari) {
+            int idx = 0;
+            for (auto& o : sc.shapes) { if (&o == &s) break; ++idx; }
+            auto const& ps = sc.pool[static_cast<std::size_t>(idx)]->model().particles();
+            glm::vec3 const center = Variational::centroid(ps);
+            float const eps = 0.03f * effective_d(s, sc);
+            auto v = std::make_shared<Variational>(Variational::from_particles(ps, center, eps));
+            if (v->centers.size() < 20 || !v->solve()) {
+                sc.error = std::string(s.name) + ": a szerkeszteshez elobb inditsd el, "
+                           "es varj, amig a reszecskek bevonjak a feluletet";
+                return nullptr;
+            }
+            // A részecskék világbeli helyéből készült, tehát a warpok, a tartomány és a
+            // forgatás/méret már "bele van sütve": csak az eltolás marad (a középpont).
+            s.vari = v;
+            s.xform.reset();
+            for (int i = 0; i < 3; ++i) s.xform.pos[i] = center[i];
+            s.warps.clear();
+            s.domain[0] = '\0';
+            s.controls.clear();
+            build(sc, false);
+        }
+
+        auto& ns = scenes.emplace_back();
+        ns.editor = true;
+        std::snprintf(ns.name, sizeof(ns.name), "Szerk: %s", s.name);
+        Shape& e = ns.shapes.emplace_back();
+        std::snprintf(e.name, sizeof(e.name), "%s", s.name);
+        e.vari = s.vari;
+        e.color_idx = s.color_idx;
+        e.material_idx = s.material_idx;
+        e.own_d = true;
+        e.d = effective_d(s, sc);
+        ns.selected = &e;
+        ns.sync_pool();
+        build(ns);
+        float R = 1.0f;
+        for (glm::vec3 c : s.vari->centers) R = std::max(R, glm::length(c));
+        ns.camera.look_at(glm::normalize(App::DEFAULT_EYE) * (3.5f * R + 2.0f), glm::vec3(0.0f));
+        ns.set_active(false);
+        return &ns;
+    }
+
+    // Az egér alatti határkényszer (a legelöl lévő): (objektum, kényszer-index).
+    std::pair<int, int> pick_constraint(Scene& sc) const {
+        glm::vec3 eye, dir;
+        mouse_ray(sc, eye, dir);
+        std::pair<int, int> best{-1, -1};
+        float best_t = 1e30f;
+        int obj = 0;
+        for (auto& s : sc.shapes) {
+            if (s.visible && s.vari)
+                for (std::size_t k = 0; k < s.vari->centers.size(); ++k) {
+                    if (s.vari->values[k] != 0.0f) continue;
+                    glm::vec3 const v = s.vari->centers[k] - eye;
+                    float const t = glm::dot(v, dir);
+                    // A kockák sűrűn ülnek: az elkapás sugara csak kicsit nagyobb a kockánál.
+                    if (t > 0.0f && t < best_t && glm::length(glm::cross(v, dir)) < 0.2f) {
+                        best = {obj, static_cast<int>(k)};
+                        best_t = t;
+                    }
+                }
+            ++obj;
+        }
+        return best;
+    }
+
+    // Minden jelenet újraépítése, amelyik ezt a variációs függvényt használja. Kell,
+    // ha a kényszerek SZÁMA változik: a vektorok átfoglalódhatnak, a fák pedig a régi
+    // címekre mutatnak. (Húzásnál nem kell: ott csak az értékek változnak.)
+    void rebuild_using(Variational const* v) {
+        for (auto& other : scenes)
+            for (auto const& o : other.shapes)
+                if (o.vari.get() == v) { build(other, false); break; }
+    }
+
+    void editor_mouse(Scene& sc, int mods) {
+        if (mods & GLFW_MOD_SHIFT) {
+            int obj = -1;
+            glm::vec3 p{0.0f};
+            if (!pick_particle(sc, obj, p)) return;
+            Shape& s = shape_at(sc, obj);
+            if (!s.vari) return;
+            s.vari->add(p, 0.0f);
+            if (!s.vari->solve()) { s.vari->remove(s.vari->centers.size() - 1); s.vari->solve(); }
+            rebuild_using(s.vari.get());
+            return;
+        }
+        auto [obj, idx] = pick_constraint(sc);
+        if (obj < 0) return;
+        if (mods & GLFW_MOD_CONTROL) {
+            Variational& v = *shape_at(sc, obj).vari;
+            Variational const backup = v;
+            v.remove(static_cast<std::size_t>(idx));
+            if (!v.solve()) { v = backup; v.solve(); }   // túl kevés maradt: nem töröljük
+            rebuild_using(&v);
+        } else {
+            sc.drag_obj = obj;
+            sc.drag_ctrl = idx;
+        }
+    }
+
+    // A húzott határkényszer az egérrel (a nézősíkban) mozog, a normálkényszer-párja
+    // vele együtt; utána a (8) újra megoldva. A részecskék a PHI·F visszacsatolással
+    // követik a felületet.
+    void drag_constraint(Scene& sc) {
+        Shape& s = shape_at(sc, sc.drag_obj);
+        if (!s.vari || sc.drag_ctrl >= static_cast<int>(s.vari->centers.size())) { end_drag(sc); return; }
+        Variational& v = *s.vari;
+        auto const i = static_cast<std::size_t>(sc.drag_ctrl);
+        glm::vec3 const c = v.centers[i];
+        glm::vec3 const delta = sc.camera.get_mouse_pos_on_plane(c, sc.camera.get_front()) - c;
+        if (glm::length(delta) < 1e-5f) return;
+        int const p = v.partner(i);
+        v.centers[i] += delta;
+        if (p >= 0) v.centers[static_cast<std::size_t>(p)] += delta;
+        if (!v.solve()) {                          // szinguláris állás: visszalépünk
+            v.centers[i] -= delta;
+            if (p >= 0) v.centers[static_cast<std::size_t>(p)] -= delta;
+        }
+    }
+
+    void end_drag(Scene& sc) {
+        if (sc.drag_obj >= 0 && sc.drag_obj < static_cast<int>(sc.pool.size()))
+            sc.pool[static_cast<std::size_t>(sc.drag_obj)]->model().end_drag();
+        sc.drag_obj = sc.drag_ctrl = -1;
+    }
 
     // Minden jelenet lecserélése egy betöltött projektre, és a felépítésük, hogy
     // rögtön lássuk is. SORREND: előbb a régi jelenetek szűnnek meg (a fáik a régi
@@ -182,7 +458,9 @@ private:
 
     // Az összes alakzat beparseolása (scene/Build.hpp) és a kész fák átadása a
     // mintavételezőknek.
-    void build(Scene& sc) {
+    // `restart`: a részecskék újraindulnak-e (az Indításnál igen; egy kontrollpont
+    // lerakásakor nem — a felület ugyanaz, csak a képlet kap új paramétert).
+    void build(Scene& sc, bool restart = true) {
         std::string err = Build::build(sc, program_params);
         if (!err.empty()) {
             sc.drop();
@@ -197,12 +475,15 @@ private:
             surf.set_tree(s.tree);
             if (s.dom_tree) surf.set_domain(s.dom_tree);
             else            surf.clear_domain();
-            p.start();     // saját kezdő részecskék + futó állapot
+            p.model().bind_controls(&s.controls, Build::control_params(s));
+            if (restart) p.start();     // saját kezdő részecskék + futó állapot
         }
     }
 
-    void switch_scenes(Ui::Requests const& rq) {
-        Scene* want = rq.want_scene ? rq.want_scene : cur_;
+    // `opened`: az épp megnyitott szerkesztő fül — elsőbbsége van a fülsáv kiválasztásával szemben.
+    void switch_scenes(Ui::Requests const& rq, Scene* opened = nullptr) {
+        Scene* want = opened ? opened : rq.want_scene ? rq.want_scene : cur_;
+        if (want != cur_ || rq.close_scene || rq.new_scene) end_drag(*cur_);
 
         // Új jelenet (a "+" fülről). Csak itt, a fülsáv ciklusa után: a ciklus
         // minden frame-ben a KIVÁLASZTOTT fülre állítja a want_scene-t.

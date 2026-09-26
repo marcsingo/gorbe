@@ -128,6 +128,33 @@ int main() {
         ok("hezag " + std::to_string(gap).substr(0, 3) + ": a kep lenyegeben azonos", ratio < 0.005, info);
     }
     ParticleView::gap = 0.0f;
+
+    std::printf("\n=== Kontrollpontok: kockak, a huzott kiemelve ===\n");
+    {
+        ControlCubes cubes;
+        // A kockák kicsik (fél él 0.0375): negyedannyi távolságra a kamerától, hogy a
+        // képen elég pixelt adjanak a számláláshoz.
+        glm::vec3 const eye{-9, -9, 7};
+        std::vector<glm::vec3> pts;
+        for (glm::vec3 p : {glm::vec3{3, 0, 0}, glm::vec3{0, 3, 0}, glm::vec3{0, 0, 3}})
+            pts.push_back(eye + 0.25f * (p - eye));
+        auto count = [&](std::vector<unsigned char> const& px, int r, int g, int b) {
+            long n = 0;
+            for (std::size_t i = 0; i < px.size(); i += 4)
+                if (std::abs(px[i] - r) < 60 && std::abs(px[i + 1] - g) < 60 && std::abs(px[i + 2] - b) < 60) ++n;
+            return n;
+        };
+        auto none = render(fb, W, H, [&] { cubes.draw(&pts, -1, cam); });
+        auto one  = render(fb, W, H, [&] { cubes.draw(&pts, 1, cam); });
+        long red0 = count(none, 230, 70, 64), yellow0 = count(none, 255, 204, 51);
+        long red1 = count(one, 230, 70, 64),  yellow1 = count(one, 255, 204, 51);
+        ok("a kockak kirajzolodnak (piros)", red0 > 60, std::to_string(red0) + " px");
+        ok("huzas nelkul nincs kiemelt", yellow0 == 0);
+        ok("a huzott kocka sarga, a tobbi piros", yellow1 > 20 && red1 < red0,
+           "sarga " + std::to_string(yellow1) + " px, piros " + std::to_string(red1) + " px");
+        auto empty = render(fb, W, H, [&] { cubes.draw(nullptr, -1, cam); });
+        ok("kontrollpont nelkul nincs rajz", count(empty, 230, 70, 64) == 0);
+    }
     }
 
     Builder::clear_shader_cache();

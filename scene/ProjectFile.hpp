@@ -65,7 +65,9 @@ namespace ProjectFile {
                 warps.push_back({{"name", w.name}, {"x", w.fx}, {"y", w.fy}, {"z", w.fz},
                                  {"enabled", w.enabled}});
             float rot_deg[3] = {s.xform.rot[0] * DEG, s.xform.rot[1] * DEG, s.xform.rot[2] * DEG};
-            return {
+            json controls = json::array();
+            for (glm::vec3 c : s.controls) controls.push_back(vec3(c));
+            json o = {
                 {"name", s.name},
                 {"formula", s.formula},
                 {"domain", s.domain},
@@ -78,7 +80,15 @@ namespace ProjectFile {
                                {"scale", vec3(s.xform.scale)}}},
                 {"warps", warps},
                 {"params", params(s.locals)},
+                {"controls", controls},
             };
+            // Variációs alakzatnál a kényszerek (a súlyok betöltéskor újraszámolódnak).
+            if (s.vari) {
+                json cs = json::array();
+                for (glm::vec3 c : s.vari->centers) cs.push_back(vec3(c));
+                o["variational"] = {{"centers", cs}, {"values", s.vari->values}};
+            }
+            return o;
         }
 
         inline json scene(SceneDoc const& sc) {
@@ -193,6 +203,31 @@ namespace ProjectFile {
                         s.warps.push_back(wp);
                     }
                 params(j, "params", s.locals, w);
+                if (auto cs = j.find("controls"); cs != j.end() && cs->is_array())
+                    for (auto const& cj : *cs) {
+                        float c[3] = {0.0f, 0.0f, 0.0f};
+                        json const wrap = {{"c", cj}};
+                        vec3(wrap, "c", c, w + " kontrollpontja");
+                        s.controls.push_back({c[0], c[1], c[2]});
+                    }
+                if (auto vj = j.find("variational"); vj != j.end() && vj->is_object()) {
+                    auto v = std::make_shared<Variational>();
+                    std::vector<float> values;
+                    get(*vj, "values", values, w);
+                    if (auto cs = vj->find("centers"); cs != vj->end() && cs->is_array())
+                        for (auto const& cj : *cs) {
+                            float c[3] = {0.0f, 0.0f, 0.0f};
+                            json const wrap = {{"c", cj}};
+                            vec3(wrap, "c", c, w + " kenyszere");
+                            v->centers.push_back({c[0], c[1], c[2]});
+                        }
+                    if (values.size() == v->centers.size()) {
+                        v->values = std::move(values);
+                        if (v->solve()) s.vari = std::move(v);
+                    }
+                    if (!s.vari)
+                        warnings.push_back(w + ": a variacios kenyszerek hibasak, a keplet marad");
+                }
             }
 
             void scene(json const& j, SceneDoc& sc, std::string const& where) {

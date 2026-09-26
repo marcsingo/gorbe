@@ -185,7 +185,20 @@ namespace Build {
             auto fr = funcs(sc, program);
             f = apply_warp(f, make_kif(w.fx, r, fr), make_kif(w.fy, r, fr), make_kif(w.fz, r, fr));
         }
-        return apply_transform(f, s.xform);
+        // Kontrollpontoknál a pozíció akkor is beépül, ha nulla: a megoldó ezt mozgatja.
+        return apply_transform(f, s.xform, !s.controls.empty());
+    }
+
+    // A kontrollpontok megoldójának paraméterei (q): az alakzat SZÁMMAL megadott
+    // lokális paraméterei és a pozíciója. A képletes paraméterek nem (azok
+    // számoltak), a jelenet- és program-szintűek sem (azokon más alakzatok is
+    // osztoznak), és a forgatás/méret sem (a húzás így kiszámítható marad).
+    inline std::vector<float*> control_params(Shape& s) {
+        std::vector<float*> q;
+        for (auto& p : s.locals)
+            if (!p.derived()) q.push_back(&p.value);
+        for (float& v : s.xform.pos) q.push_back(&v);
+        return q;
     }
 
     inline void drop_trees(SceneDoc& sc) {
@@ -213,7 +226,7 @@ namespace Build {
             for (auto& s : sc.shapes) {
                 try {
                     auto own = [&](std::string const& nm) { return resolve(sc, program, s, nm); };
-                    s.tree = make_kif(s.formula, own, fr).get();
+                    s.tree = s.vari ? s.vari->tree().get() : make_kif(s.formula, own, fr).get();
 
                     // Tér-transzformáció: az alakzat saját képletén ÉS a saját
                     // tartományán is alkalmazzuk (a "véges hosszú henger" végei
@@ -223,7 +236,7 @@ namespace Build {
                     // A transzformált alakot tesszük vissza s.tree-be, hogy a rá
                     // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
                     // (két elhelyezett gömb uniója a helyükön legyen).
-                    s.warped = !s.xform.is_identity();
+                    s.warped = !s.xform.is_identity() || !s.controls.empty();
                     s.tree = place(Kif(s.tree), s, sc, program).get();
 
                     // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.

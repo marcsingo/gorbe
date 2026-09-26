@@ -28,7 +28,7 @@ namespace Ui {
             swatch(ImVec4(0.20f, 0.42f, 0.85f, 1.0f), "Z tengely  (ez a 'fuggoleges')");
             ImGui::Spacing();
             swatch(ImVec4(0.00f, 0.00f, 1.00f, 1.0f), "mintavetelezo reszecskek");
-            swatch(ImVec4(1.00f, 0.00f, 0.00f, 1.0f), "kontrollpontok");
+            swatch(ImVec4(1.00f, 0.00f, 0.00f, 1.0f), "kontrollpontok (kockak)");
             ImGui::Spacing();
             ImGui::TextDisabled("A racs a z = 0 sikban van, 1 egyseg osztassal");
             ImGui::TextDisabled("(minden 5. vonal es osztas hangsulyos).");
@@ -79,9 +79,9 @@ namespace Ui {
                 {"Esc",                    "kilepes"},
             };
             static Row const point_rows[] = {
-                {"Shift + bal kattintas",  "uj kontrollpont"},
-                {"bal kattintas + huzas",  "pont mozgatasa"},
-                {"bal gomb elengedese",    "pont elengedese"},
+                {"Shift + bal kattintas",  "uj pont az alakzatra"},
+                {"bal gomb + huzas",       "pont huzasa: az alakzat koveti"},
+                {"Ctrl + bal kattintas",   "pont torlese"},
             };
             // Fix oszlop-eltolás, nem ImGui-tábla: a monospace alapfonttal így biztosan
             // nem vágódik el a hosszabb bevitel-leírás (a táblás arányos osztás elvágta).

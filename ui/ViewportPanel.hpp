@@ -35,7 +35,9 @@ namespace Ui {
                 // Csak akkor adunk bezáró gombot, ha van mit bezárni.
                 bool* p_open = (scenes.size() > 1) ? &open : nullptr;
                 ImGui::PushID(&one);
-                if (ImGui::BeginTabItem(one.name, p_open)) {
+                ImGuiTabItemFlags const sel = one.focus_tab ? ImGuiTabItemFlags_SetSelected : 0;
+                one.focus_tab = false;
+                if (ImGui::BeginTabItem(one.name, p_open, sel)) {
                     rq.want_scene = &one;
 
                     ImVec2 avail = ImGui::GetContentRegionAvail();

@@ -143,8 +143,32 @@ struct Surface {
     // A programok munkaterülete. Szálanként egy kell: a kiértékelés így több szálon
     // párhuzamosan futhat ugyanazon a felületen (lásd ParticleSystem::step).
     struct Workspace {
-        std::vector<float> grad, full, dom;
+        std::vector<float> grad, full, dom, q;
+        std::vector<float> dq;   // eval_params kimenete (a részecskénkénti foglalás elkerülésére)
     };
+
+    // --- Paraméterek szerinti deriváltak (a kontrollpontok megoldójához) ---------
+    // A q paraméterek CÍMEI (pl. az alakzat lokális paraméterei és a pozíciója): a
+    // ∂F/∂q deriváltakból áll össze a megoldó egyenlete, és a részecskék ebből
+    // követik a felület változását (q̇·∂F/∂q, mint a ∂F/∂t az időnél).
+    std::vector<float const*> params;
+    Program prog_q;                 // F, ∂F/∂x, ∂F/∂y, ∂F/∂z, majd ∂F/∂q_k
+    std::vector<int> out_q;
+
+    void set_params(std::vector<float const*> q) {
+        params = std::move(q);
+        compile_params();
+    }
+
+    // F, a gradiens és a ∂F/∂q értékek egy menetben; a ∂F/∂q-k a `dq`-ba kerülnek.
+    void eval_params(glm::vec3 at, float& F_out, glm::vec3& grad_out,
+                     std::vector<float>& dq, Workspace& w) const {
+        float const* s = run(prog_q, at, w.q);
+        F_out    = s[out_q[0]];
+        grad_out = {s[out_q[1]], s[out_q[2]], s[out_q[3]]};
+        dq.resize(params.size());
+        for (std::size_t k = 0; k < params.size(); ++k) dq[k] = s[out_q[4 + k]];
+    }
 
     // F, a gradiens és az idő szerinti derivált egy menetben.
     void eval_grad(glm::vec3 at, float& F_out, glm::vec3& grad_out, float& Ft_out,
@@ -205,6 +229,16 @@ public:
         F_dzz = F_dz.derive('z');
 
         compile_programs();
+        compile_params();
+    }
+
+    void compile_params() {
+        std::vector<Kif> all = {F, F_dx, F_dy, F_dz};
+        for (float const* q : params) all.push_back(F.derive(q));
+        prog_q = Program{};
+        out_q.clear();
+        for (auto const& k : all) out_q.push_back(k.get()->compile(prog_q));
+        prog_q.finish();
     }
 
     void compile_programs() {
