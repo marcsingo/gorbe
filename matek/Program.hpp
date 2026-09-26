@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -39,7 +40,21 @@ namespace Matek {
         enum class Op : std::uint8_t {
             Const, VarX, VarY, VarZ, Param,
             Add, Sub, Mul, Div, Pow,
-            Call1, Call2
+            Call1, Call2,
+            Native
+        };
+
+        // Egy háromargumentumú NATÍV függvény hívása (pl. a variációs felület,
+        // particle_sampling/Variational.hpp): fn(obj, kind, x, y, z). Akkor kell, ha egy
+        // függvényt — és a deriváltjait — zárt alakban, C++-ban olcsóbb számolni, mint
+        // kifejezésfaként. Az első két argumentum slotja az utasítás a/b mezője, a
+        // harmadiké itt van. A `keep` életben tartja az `obj`-ot, amíg a program él.
+        struct NativeCall {
+            float (*fn)(void const* obj, int kind, float x, float y, float z);
+            void const* obj;
+            int kind;
+            int c;
+            std::shared_ptr<void const> keep;
         };
 
         // Kicsi (24 bájt) marad: a műveletkódtól függően csak EGY adat kell hozzá,
@@ -54,6 +69,7 @@ namespace Matek {
                 float const* p;    // Param
                 Fn1          f1;   // Call1
                 Fn2          f2;   // Call2
+                NativeCall const* n;   // Native
             };
         };
 
@@ -88,6 +104,9 @@ namespace Matek {
             std::vector<Instr>                        code;
             std::unordered_map<Key, int, KeyHash>     seen;   // csak fordítás közben
             mutable std::vector<float>                slots;
+            // A natív hívások leírói (a Native utasítás ezekre mutat). shared_ptr: a
+            // program másolata (a sugárkövető szálanként másol) ugyanazokat látja.
+            std::vector<std::shared_ptr<NativeCall const>> natives;
 
             // Egy művelet az operandusaira (a levelek kivételével).
             static float apply(Instr const& c, float x, float y) {
@@ -132,6 +151,22 @@ namespace Matek {
                 return idx;
             }
 
+            // Egy natív hívás kibocsátása (lásd NativeCall). Ugyanaz a hívás ugyanazokkal
+            // az argumentum-slotokkal csak egyszer kerül a programba (CSE, mint emit-nél).
+            int emit_native(NativeCall call, int a, int b) {
+                for (std::size_t i = 0; i < code.size(); ++i) {
+                    Instr const& in = code[i];
+                    if (in.op == Op::Native && in.a == a && in.b == b && in.n->fn == call.fn &&
+                        in.n->obj == call.obj && in.n->kind == call.kind && in.n->c == call.c)
+                        return static_cast<int>(i);
+                }
+                natives.push_back(std::make_shared<NativeCall const>(std::move(call)));
+                Instr in{Op::Native, a, b};
+                in.n = natives.back().get();
+                code.push_back(in);
+                return static_cast<int>(code.size()) - 1;
+            }
+
             // Fordítás vége: a CSE-tábla eldobható, a munkaterület megkapja a méretét.
             void finish() {
                 seen.clear();
@@ -170,6 +205,7 @@ namespace Matek {
                         case Op::Pow:   r = std::pow(s[c.a], s[c.b]); break;
                         case Op::Call1: r = c.f1(s[c.a]); break;
                         case Op::Call2: r = c.f2(s[c.a], s[c.b]); break;
+                        case Op::Native: r = c.n->fn(c.n->obj, c.n->kind, s[c.a], s[c.b], s[c.n->c]); break;
                         default:        r = 0.0f; break;
                     }
                     s[i] = r;

@@ -17,23 +17,23 @@ static void ok(std::string const& what, bool c, std::string const& info = "") {
 }
 
 // Egy kepletes alakzat mintavetelezese, majd atalakitasa.
-static Variational convert(char const* formula, float d, glm::vec3 center) {
+static std::shared_ptr<Variational> convert(char const* formula, float d, glm::vec3 center) {
     ParticleSystem ps({}, 1234u);
     ps.d = d;
     ps.surface().set_tree(Matek::Analizis::make_kif(formula).get());
     ps.restart();
     for (int k = 0; k < 700; ++k) ps.step(0.03f);
-    Variational v = Variational::from_particles(ps.particles(), center, 0.05f);
-    v.solve();
+    auto v = std::make_shared<Variational>(Variational::from_particles(ps.particles(), center, 0.05f));
+    v->solve();
     return v;
 }
 
 // A variacios felulet legnagyobb geometriai elterese (|F|/|grad F|) az eredeti
 // felulet mintapontjain, a kozepponthoz kepest eltolva.
 template<class Pts>
-static float max_dev(Variational const& v, Pts const& pts) {
+static float max_dev(std::shared_ptr<Variational> const& v, Pts const& pts) {
     Surface s;
-    s.set_tree(v.tree().get());
+    s.set_tree(Variational::tree(v).get());
     float m = 0.0f;
     for (glm::vec3 p : pts) {
         float const g = glm::length(s.grad(p));
@@ -45,7 +45,8 @@ static float max_dev(Variational const& v, Pts const& pts) {
 int main() {
     std::printf("=== 1. Gomb (r = 2, kozeppont (1, 0, 0)) reszecskeibol ===\n");
     {
-        Variational v = convert("(x-1)^2 + y^2 + z^2 - 4", 1.5f, {1, 0, 0});
+        auto vp = convert("(x-1)^2 + y^2 + z^2 - 4", 1.5f, {1, 0, 0});
+        Variational& v = *vp;
         std::size_t const k = v.centers.size();
         ok("van eleg kenyszer", k >= 40, std::to_string(k / 2) + " pont + normalis");
 
@@ -53,7 +54,7 @@ int main() {
         for (std::size_t i = 0; i < k; ++i) worst = std::max(worst, std::abs(v.at(v.centers[i]) - v.values[i]));
         ok("a kenyszereket pontosan teljesiti", worst < 1e-3f, std::to_string(worst));
 
-        auto t = v.tree();
+        auto t = Variational::tree(vp);
         float diff = 0.0f;
         for (glm::vec3 p : {glm::vec3{0.3f, -1, 2}, glm::vec3{3, 1, 0}, glm::vec3{-0.5f, 0.2f, 0.1f}})
             diff = std::max(diff, std::abs(t.at(p) - v.at(p)) / (1.0f + std::abs(v.at(p))));
@@ -68,7 +69,7 @@ int main() {
                 float const th = i * 0.5236f, ph = j * 0.5236f;
                 sphere.push_back(2.0f * glm::vec3{std::sin(ph) * std::cos(th), std::sin(ph) * std::sin(th), std::cos(ph)});
             }
-        float const dev = max_dev(v, sphere);
+        float const dev = max_dev(vp, sphere);
         ok("visszaadja a gombot (elteres < 0.05)", dev < 0.05f, std::to_string(dev));
 
         // A kenyszerpontokban (ahol a reszecskek ulnek) a gradiens es a Hesse veges.
@@ -83,7 +84,7 @@ int main() {
         ok("|grad F| ~ 1 a feluleten (tavolsagszeru)", std::abs(glm::length(g) - 1.0f) < 0.3f,
            std::to_string(glm::length(g)));
 
-        // Egy pont kihuzasa: csak ujra kell oldani, a fa a cimeken at koveti.
+        // Egy pont kihuzasa: csak ujra kell oldani, a fa (a Variational-t olvassa) koveti.
         glm::vec3 const pulled = v.centers[0] * 1.3f;
         v.centers[0] = pulled;
         v.centers[1] = pulled + 0.05f * glm::normalize(pulled);
@@ -94,9 +95,9 @@ int main() {
 
     std::printf("\n=== 2. Torusz (R = 2, r = 0.7): a lyuk megmarad ===\n");
     {
-        Variational v = convert("(x^2 + y^2 + z^2 + 4 - 0.49)^2 - 16*(x^2 + y^2)", 0.8f, {0, 0, 0});
-        ok("a lyuk kozepe kivul van", v.at({0, 0, 0}) > 0.0f, std::to_string(v.at({0, 0, 0})));
-        ok("a cso belseje belul van", v.at({2, 0, 0}) < 0.0f, std::to_string(v.at({2, 0, 0})));
+        auto v = convert("(x^2 + y^2 + z^2 + 4 - 0.49)^2 - 16*(x^2 + y^2)", 0.8f, {0, 0, 0});
+        ok("a lyuk kozepe kivul van", v->at({0, 0, 0}) > 0.0f, std::to_string(v->at({0, 0, 0})));
+        ok("a cso belseje belul van", v->at({2, 0, 0}) < 0.0f, std::to_string(v->at({2, 0, 0})));
         std::vector<glm::vec3> torus;
         for (int i = 0; i < 16; ++i)
             for (int j = 0; j < 8; ++j) {
@@ -110,10 +111,10 @@ int main() {
 
     std::printf("\n=== 3. A reszecske-szimulacio a variacios feluleten ===\n");
     {
-        Variational v = convert("x^2 + y^2 + z^2 - 4", 1.5f, {0, 0, 0});
+        auto v = convert("x^2 + y^2 + z^2 - 4", 1.5f, {0, 0, 0});
         ParticleSystem ps({}, 99u);
         ps.d = 1.5f;
-        ps.surface().set_tree(v.tree().get());
+        ps.surface().set_tree(Variational::tree(v).get());
         ps.restart();
         for (int k = 0; k < 500; ++k) ps.step(0.03f);
         int good = 0;
@@ -159,6 +160,66 @@ int main() {
             s.vari->remove(s.vari->centers.size() - 1);
             ok("torles utan ujra megoldhato", s.vari->solve() && std::abs(s.vari->at(q) - before) < 1e-4f);
         }
+    }
+
+    std::printf("\n=== 5. Nativ csomopont: derivaltak a lancszabalyon at, kis program ===\n");
+    {
+        auto v = convert("x^2 + y^2/2 + z^2 - 3", 1.5f, {0, 0, 0});
+        SceneDoc sc;
+        auto& s = sc.shapes.emplace_back();
+        s.vari = v;
+        s.xform.pos[0] = 1.0f; s.xform.pos[1] = -2.0f; s.xform.pos[2] = 0.5f;
+        s.xform.rot[2] = 0.5f; s.xform.rot[0] = 0.3f;
+        s.xform.scale[0] = 1.2f; s.xform.scale[1] = 0.8f;
+        std::string const err = Build::build(sc, {});
+        ok("elhelyezve felepul", err.empty(), err);
+
+        Surface surf;
+        surf.set_tree(s.tree);
+        ok("a program kicsi (nem tagonkent derival)", surf.prog_full.size() < 400,
+           std::to_string(surf.prog_full.size()) + " utasitas (szimbolikusan ~24000 volt)");
+
+        // Gradiens es Hesse vs. kozepponti differencia, harom pontban (egy a feluleten).
+        float const h = 1e-3f;
+        float worst_g = 0.0f, worst_h = 0.0f;
+        for (glm::vec3 p : {glm::vec3{1.3f, -1.1f, 0.9f}, glm::vec3{2.5f, -2.0f, 0.0f}, glm::vec3{0.2f, -3.0f, 1.5f}}) {
+            glm::vec3 const g = surf.grad(p);
+            Kif const* D[3] = {&surf.F_dx, &surf.F_dy, &surf.F_dz};
+            float const H[3][3] = {{surf.F_dxx.at(p), surf.F_dxy.at(p), surf.F_dxz.at(p)},
+                                   {surf.F_dxy.at(p), surf.F_dyy.at(p), surf.F_dyz.at(p)},
+                                   {surf.F_dxz.at(p), surf.F_dyz.at(p), surf.F_dzz.at(p)}};
+            for (int i = 0; i < 3; ++i) {
+                glm::vec3 e{0.0f}; e[i] = h;
+                float const fd = (surf.F.at(p + e) - surf.F.at(p - e)) / (2 * h);
+                worst_g = std::max(worst_g, std::abs(fd - g[i]) / (1.0f + std::abs(g[i])));
+                for (int m = 0; m < 3; ++m) {
+                    float const fdh = (D[m]->at(p + e) - D[m]->at(p - e)) / (2 * h);
+                    worst_h = std::max(worst_h, std::abs(fdh - H[m][i]) / (1.0f + std::abs(H[m][i])));
+                }
+            }
+        }
+        ok("gradiens = numerikus", worst_g < 2e-2f, std::to_string(worst_g));
+        ok("Hesse = numerikus", worst_h < 2e-2f, std::to_string(worst_h));
+
+        // A lefordított program ugyanazt adja, mint a fabejárás.
+        Surface::Workspace ws;
+        float F, K, Ft;
+        glm::vec3 g;
+        glm::vec3 const q{1.3f, -1.1f, 0.9f};
+        surf.eval_full(q, F, g, K, Ft, ws);
+        ok("program = fabejaras", std::abs(F - surf.F.at(q)) < 1e-5f && glm::length(g - surf.grad(q)) < 1e-4f);
+
+        // Uj kenyszer ujraepites nelkul: a fa a Variational-t olvassa, tehat rogton koveti.
+        glm::vec3 const local{0.0f, 0.0f, 2.2f};
+        v->add(local, 0.0f);
+        v->solve();
+        float const Fw = v->at(local);
+        ok("uj kenyszer utan a fa ujraepites nelkul is koveti", std::abs(Fw) < 1e-4f && std::abs(v->at(local)) < 1e-4f);
+        Surface::Workspace ws2;
+        float F2, K2, Ft2;
+        glm::vec3 g2;
+        surf.eval_full(q, F2, g2, K2, Ft2, ws2);
+        ok("a program is az uj fuggvenyt szamolja", std::abs(F2 - surf.F.at(q)) < 1e-5f);
     }
 
     std::printf("\n%s\n", failures ? "VAN HIBA" : "minden rendben");

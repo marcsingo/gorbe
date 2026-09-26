@@ -1,6 +1,7 @@
 #ifndef GORBE_APP_PHOTO_HPP
 #define GORBE_APP_PHOTO_HPP
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -78,8 +79,9 @@ namespace Photo {
         st->img.resize(static_cast<std::size_t>(rs.width) * rs.height);
 
         job.add("Feluletek forditasa", [st, objs = std::move(objs)] { st->prepared = Raytrace::prepare(objs); });
-        int const BANDS = 20;
-        int const rows = (rs.height + BANDS - 1) / BANDS;
+        // Kicsi sávok (~60): egy lépés rövid marad, így a jelző gyakran frissül és a
+        // megszakítás hamar hat; a gyors sávokból a 30 ms-os keret többet is lefuttat.
+        int const rows = std::max(1, rs.height / 60);
         for (int y = 0; y < rs.height; y += rows)
             job.add("Sugarkovetes", [st, rc, rs, y, rows] {
                 Raytrace::render_rows(st->prepared, rc, rs, y, y + rows, st->img);

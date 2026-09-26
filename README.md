@@ -75,7 +75,7 @@ ctest --test-dir build --output-on-failure
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a **kontrollpontok megoldója** (egy gömb két ponton át: a húzott ponton és a helyben maradón is átmegy, r és a középpont pontosan a várt értékre áll, a részecskék követik); a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
-| `test_variational` | a variációs felületek: képletes alakzat (gömb, tórusz) részecskéiből átalakítva visszaadja az alakot, a kifejezésfa = a közvetlen kiértékelés, a kényszerben véges a gradiens és a görbület, húzás után újraépítés nélkül követ, új felületi pont nem változtat a felületen, a részecskék mintavételezik |
+| `test_variational` | a variációs felületek: képletes alakzat (gömb, tórusz) részecskéiből átalakítva visszaadja az alakot, a kifejezésfa = a közvetlen kiértékelés, a kényszerben véges a gradiens és a görbület, húzás után újraépítés nélkül követ, új felületi pont nem változtat a felületen, a részecskék mintavételezik; a natív csomópont: elhelyezett (eltolt, forgatott, méretezett) alakzaton a gradiens és a Hesse-mátrix = a numerikus, a program kicsi (188 utasítás), új kényszer után újraépítés nélkül is az új függvényt számolja |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -149,6 +149,21 @@ közepével az origóban**.
   eredeti jelenetben is azonnal hat.
 - A kényszerek a projektfájlba mentődnek, a súlyok betöltéskor újraszámolódnak. A
   szerkesztő fül nem mentődik.
+- **Natív csomópont** (`RbfNode`): a függvény a kifejezésfában egyetlen csomópont. Az
+  `F`-et, a gradienst és a Hesse-mátrixot zárt alakban, C++-ban, egyetlen ciklusban
+  számolja, és szálanként gyorsítótárazza, így a 10 érték pontonként egyszer
+  számolódik. A transzformáció a láncszabállyal egyszer hat, nem tagonként.
+  Kezdetben ez szimbolikus összeg volt; mérve, 162 kényszerrel:
+
+  | | szimbolikusan | natív csomóponttal |
+  |---|---|---|
+  | program (F + gradiens) | 11 293 utasítás | **107** |
+  | felépítés, eltolt alakzat | 2,7 s | **4 ms** |
+  | egy 30 soros fényképsáv | 13 s | **1 s** |
+
+- A csomópont magát a `Variational`-t olvassa, ezért egy kényszer mozgatása,
+  lerakása vagy törlése után elég újra megoldani az egyenletrendszert, semmit nem
+  kell újraépíteni.
 - Legfeljebb 150 felületi pontot használ (egyenletes lépésközzel). A megoldás
   `O(k³)`, a kiértékelés részecskénként `O(k)`, ezért ennél sokkal több pont már
   lassú.
@@ -187,16 +202,22 @@ A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy ön�
 
 ### Folyamatjelző a hosszú műveletekhez
 
-Az Indítás, a szerkesztőbe lépés, egy kényszer lerakása vagy törlése a szerkesztőben,
-a projekt betöltése és a fénykép **lépésekre bontva** fut (`app/Job.hpp`).
-Képkockánként kb. 30 ms-nyi lépés fut le, közben a program kirajzol egy ablakot a
-művelet nevével, a **százalékkal** és az épp futó lépéssel (`ui/ProgressPopup.hpp`).
-Ez az ablak csak akkor jelenik meg, ha a művelet 0,2 s-nál tovább tart, így a gyors
-műveleteknél nem villan fel.
+Az Indítás, a szerkesztőbe lépés, a projekt betöltése és a fénykép **lépésekre
+bontva** fut (`app/Job.hpp`). Képkockánként kb. 30 ms-nyi lépés fut le, közben a
+program kirajzol egy ablakot a művelet nevével, a **százalékkal** és az épp futó
+lépéssel (`ui/ProgressPopup.hpp`).
 
-- **A lépések:** a felépítésnél alakzatonként a deriválás és a fordítás; egy kb. 300
-  kényszeres variációs alakzatnál ez kb. 185 ms. A fényképnél 20 sáv, tehát ott a
-  százalék valódi haladást mutat.
+- **Mikor látszik:** ami belefér a saját képkockájába, az jelző nélkül lefut. Ha egy
+  munka ennél tovább tart, a program előbb kirajzolja a jelzőt, és csak utána
+  folytatja. A fénykép biztosan lassú, ott a jelző már az első lépés előtt
+  megjelenik.
+- **A lépések:** a felépítésnél alakzatonként a deriválás és a fordítás; a
+  fényképnél kb. 60 sáv, tehát ott a százalék valódi haladást mutat, és egy lépés
+  rövid marad.
+- **Egy lépés nem szakítható félbe.** Ha egy lépés sokáig tart, a program addig
+  nem rajzol. Ezért olyan sokat számít, hogy a lépések rövidek legyenek: a variációs
+  alakzat kezdetben szimbolikus fa volt, és egy-egy lépése másodpercekig tartott
+  (lásd a natív csomópontot fent).
 - **Nincs háttérszál:** a lépések a fő szálon futnak. Amíg a munka tart, a
   szimuláció, a húzás és a `t` idő szünetel, a folyamatjelző pedig modális, tehát a
   félkész állapothoz senki nem nyúl. A megállított idő miatt egy animált alakzat
@@ -210,7 +231,7 @@ műveleteknél nem villan fel.
     szerkesztő megmarad, a forrás-jelenetet pedig újra kell indítani.
 - **Szerkesztőbe lépés:** a szerkesztő átveszi a forrás-alakzat részecskéit, hiszen
   azok már a felületen vannak. Így nem kell 8 részecskéből újra szétterülnie, ami kb.
-  4–5 s lenne. A maradék idő a kb. 300 tagú függvény deriválása és fordítása.
+  4–5 s lenne. Mérve a belépés így kb. 8 ms.
 
 ### Fénykép (sugárkövetés)
 

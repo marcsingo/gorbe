@@ -447,15 +447,8 @@ private:
         return best;
     }
 
-    // Minden jelenet újraépítése, amelyik ezt a variációs függvényt használja. Kell,
-    // ha a kényszerek SZÁMA változik: a vektorok átfoglalódhatnak, a fák pedig a régi
-    // címekre mutatnak. (Húzásnál nem kell: ott csak az értékek változnak.)
-    void rebuild_using(Variational const* v) {
-        for (auto& other : scenes)
-            for (auto const& o : other.shapes)
-                if (o.vari.get() == v) { build(other, false, "Ujraepites"); break; }
-    }
-
+    // Új vagy törölt kényszer után elég a solve(): a fák a Variational objektumot
+    // olvassák (RbfNode), nem az elemek címét, tehát nem kell újraépíteni.
     void editor_mouse(Scene& sc, int mods) {
         if (mods & GLFW_MOD_SHIFT) {
             int obj = -1;
@@ -465,7 +458,6 @@ private:
             if (!s.vari) return;
             s.vari->add(p, 0.0f);
             if (!s.vari->solve()) { s.vari->remove(s.vari->centers.size() - 1); s.vari->solve(); }
-            rebuild_using(s.vari.get());
             return;
         }
         auto [obj, idx] = pick_constraint(sc);
@@ -475,7 +467,6 @@ private:
             Variational const backup = v;
             v.remove(static_cast<std::size_t>(idx));
             if (!v.solve()) { v = backup; v.solve(); }   // túl kevés maradt: nem töröljük
-            rebuild_using(&v);
         } else {
             sc.drag_obj = obj;
             sc.drag_ctrl = idx;

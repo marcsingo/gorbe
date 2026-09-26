@@ -226,7 +226,7 @@ namespace Build {
             for (auto& s : sc.shapes) {
                 try {
                     auto own = [&](std::string const& nm) { return resolve(sc, program, s, nm); };
-                    s.tree = s.vari ? s.vari->tree().get() : make_kif(s.formula, own, fr).get();
+                    s.tree = s.vari ? Variational::tree(s.vari).get() : make_kif(s.formula, own, fr).get();
 
                     // Tér-transzformáció: az alakzat saját képletén ÉS a saját
                     // tartományán is alkalmazzuk (a "véges hosszú henger" végei
