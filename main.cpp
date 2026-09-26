@@ -7,6 +7,7 @@
 #include "ui/Layout.hpp"
 #include "ui/MenuBar.hpp"
 #include "ui/ParamsPanel.hpp"
+#include "ui/ProgressPopup.hpp"
 #include "ui/PropsPanel.hpp"
 #include "ui/Requests.hpp"
 #include "ui/ShapesPanel.hpp"
@@ -31,7 +32,8 @@ int main() {
     app.set_gui([&] {
         // A `t` beépített idő frissítése. A kifejezésfa ennek a floatnak a CÍMÉT
         // tárolja, ezért elég az értéket átírni — nem kell újraparseolni.
-        SceneTime::value = static_cast<float>(glfwGetTime());
+        // Hosszú munka (pl. fénykép) alatt az idő áll: a sávok ugyanazt a pillanatot lássák.
+        if (!ctl.job()) SceneTime::value = static_cast<float>(glfwGetTime());
 
         Scene& sc = ctl.cur();
         Problems const pr = validate(ctl.program_params, sc);
@@ -48,6 +50,7 @@ int main() {
         Ui::params_panel(sc, ctl.program_params, pr, rq, ui.layout, g);
         Ui::viewport_panel(app, ctl.scenes, ui, rq, g);
         Ui::splitters(ui.layout, g);
+        Ui::progress_popup(ctl.job(), rq);
 
         ctl.apply(rq);
     });

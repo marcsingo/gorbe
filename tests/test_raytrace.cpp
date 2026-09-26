@@ -9,6 +9,7 @@
 #include "raytrace/Raytracer.hpp"
 #include "raytrace/Material.hpp"
 #include "raytrace/Image.hpp"
+#include "app/Job.hpp"
 
 using Matek::Analizis::make_kif;
 
@@ -496,6 +497,46 @@ int main() {
             worst = std::max(worst, std::abs(lum(ia[i]) - lum(ib[i])));
         ok("a szalak szama itt sem valtoztat semmin", worst < 1e-6f,
            "max elteres=" + std::to_string(worst));
+    }
+
+    std::printf("\n=== 15. Savokban (a folyamatjelzohoz) == egyben ===\n");
+    {
+        Raytrace::ObjectDesc g, m;
+        g.F = make_kif("x^2 + (y+1.5)^2 + z^2 - 1");
+        g.material = Raytrace::material_of(M_GLASS);
+        m.F = make_kif("(x-2)^2 + y^2 + z^2 - 1");
+        m.material = Raytrace::material_of(M_CHROME);
+        auto const whole = Raytrace::render({g, m}, cam_at({0, -9, 3}), st);
+
+        // Egyenetlen savok (a magassag nem oszthato), az utolso tulnyulik a kepen.
+        auto const prep = Raytrace::prepare({g, m});
+        std::vector<glm::vec3> banded(whole.size());
+        for (int y = 0; y < st.height; y += 7)
+            Raytrace::render_rows(prep, cam_at({0, -9, 3}), st, y, y + 7, banded);
+        bool same = true;
+        for (std::size_t i = 0; i < whole.size(); ++i) same = same && whole[i] == banded[i];
+        ok("bitre ugyanaz a kep", same);
+    }
+
+    std::printf("\n=== 16. Hosszu munka lepesekben (app/Job.hpp) ===\n");
+    {
+        std::vector<int> order;
+        Job j("proba");
+        for (int k = 0; k < 4; ++k) j.add("lepes " + std::to_string(k), [&order, k] { order.push_back(k); });
+        j.run_step();
+        ok("egy lepes utan 25%, a kovetkezo felirata latszik",
+           j.progress() == 0.25f && j.current() == "lepes 1");
+        // Egy lepes a munkat bovitheti (pl. egy felepites uj lepeseket tesz be).
+        j.add("bovit", [&] { j.add("utolso", [&order] { order.push_back(9); }); });
+        j.run_for(10.0);
+        ok("idokereten belul mind lefut, a bovitettel egyutt",
+           j.finished() && order == std::vector<int>({0, 1, 2, 3, 9}) && j.progress() == 1.0f);
+
+        Job c("megszakitas");
+        c.add("a", [&] { c.cancel(); });
+        c.add("b", [&order] { order.push_back(-1); });
+        c.run_for(10.0);
+        ok("megszakitas utan a tobbi lepes kimarad", c.finished() && order.back() == 9);
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);

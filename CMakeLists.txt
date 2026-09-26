@@ -88,6 +88,8 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         scene/Build.hpp
         app/Scene.hpp
         app/Photo.hpp
+        app/Job.hpp
+        ui/ProgressPopup.hpp
         app/Controller.hpp
         ui/Requests.hpp
         ui/Layout.hpp

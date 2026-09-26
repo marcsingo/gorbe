@@ -3,12 +3,14 @@
 
 #include <chrono>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "../raytrace/Image.hpp"
 #include "../raytrace/Material.hpp"
 #include "../raytrace/Raytracer.hpp"
+#include "Job.hpp"
 #include "Scene.hpp"
 
 // A bináris könyvtára (a CMake adja meg); ide mentjük a fényképeket.
@@ -33,9 +35,10 @@ namespace Photo {
         std::string status;      // az utolsó fénykép eredménye a panelre
     };
 
-    // A render szinkron (az ablak addig áll), ezért van több szálon és mérsékelt
-    // alapfelbontással. Az eredményt a `status`-ba írja.
-    inline void take(Scene const& sc, Settings& ps) {
+    // A fénykép mint LÉPÉSEKRE bontott munka (app/Job.hpp): előkészítés (a felületek
+    // fordítása), SÁVOK (a folyamatjelző ezek közt frissül), mentés. Az eredményt a
+    // `status`-ba írja. A jelenetet és a kamerát a hívás pillanatában rögzíti.
+    inline void queue(Job& job, Scene const& sc, Settings& ps) {
         ps.status.clear();
 
         std::vector<Raytrace::ObjectDesc> objs;
@@ -66,20 +69,35 @@ namespace Photo {
         rs.height  = RESOLUTIONS[ps.size_idx].h;
         rs.shadows = ps.shadows;
 
-        auto t0  = std::chrono::steady_clock::now();
-        auto img = Raytrace::render(objs, rc, rs);
-        auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       std::chrono::steady_clock::now() - t0).count();
+        struct State {
+            Raytrace::Prepared prepared;
+            std::vector<glm::vec3> img;
+            std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+        };
+        auto st = std::make_shared<State>();
+        st->img.resize(static_cast<std::size_t>(rs.width) * rs.height);
 
-        // A képek a BINÁRIS mellé, a `kepek/` almappába kerülnek — nem a
-        // munkakönyvtárba, mert az indítástól függően bárhol lehet.
-        std::string path = Raytrace::image_path(std::filesystem::path(BINARY_DIR) / "kepek");
-        if (Raytrace::write_bmp(path, rs.width, rs.height, img)) {
-            Raytrace::open_in_viewer(path);
-            ps.status = "Kesz (" + std::to_string(ms) + " ms): " + path;
-        } else {
-            ps.status = "A kep mentese nem sikerult: " + path;
-        }
+        job.add("Feluletek forditasa", [st, objs = std::move(objs)] { st->prepared = Raytrace::prepare(objs); });
+        int const BANDS = 20;
+        int const rows = (rs.height + BANDS - 1) / BANDS;
+        for (int y = 0; y < rs.height; y += rows)
+            job.add("Sugarkovetes", [st, rc, rs, y, rows] {
+                Raytrace::render_rows(st->prepared, rc, rs, y, y + rows, st->img);
+            });
+        job.on_cancel.push_back([&ps] { ps.status = "Megszakitva."; });
+        job.add("Mentes", [st, rs, &ps] {
+            auto const ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - st->t0).count();
+            // A képek a BINÁRIS mellé, a `kepek/` almappába kerülnek — nem a
+            // munkakönyvtárba, mert az indítástól függően bárhol lehet.
+            std::string path = Raytrace::image_path(std::filesystem::path(BINARY_DIR) / "kepek");
+            if (Raytrace::write_bmp(path, rs.width, rs.height, st->img)) {
+                Raytrace::open_in_viewer(path);
+                ps.status = "Kesz (" + std::to_string(ms) + " ms): " + path;
+            } else {
+                ps.status = "A kep mentese nem sikerult: " + path;
+            }
+        });
     }
 
 }

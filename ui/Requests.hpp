@@ -27,6 +27,7 @@ namespace Ui {
         bool build = false;     // Indít (vagy a transzformáció első mozdítása)
         bool drop  = false;     // Töröl: a képletek eldobása
         bool photo = false;     // sugárkövetett fénykép
+        bool cancel_job = false;   // a folyamatban lévő hosszú munka megszakítása
 
         Shape*            erase_shape = nullptr;
         std::list<Param>* erase_from  = nullptr;   // melyik listából ...

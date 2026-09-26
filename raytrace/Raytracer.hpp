@@ -396,15 +396,19 @@ namespace Raytrace {
 
     } // namespace detail
 
-    // A teljes kép elkészítése. Visszaadott tömb: sor-folytonos, [0] a BAL FELSŐ pixel.
-    inline std::vector<glm::vec3> render(std::vector<ObjectDesc> const& objects,
-                                         CameraDesc const& cam,
-                                         Settings const& st) {
+    // A felületek lefordítva, a render_rows() bemenete.
+    using Prepared = std::vector<detail::Compiled>;
+
+    inline Prepared prepare(std::vector<ObjectDesc> const& objects) { return detail::compile(objects); }
+
+    // A kép [y0, y1) sorai az `img`-be (W*H elemű, sor-folytonos). Így a render
+    // sávokra bontható, és a sávok között a hívó folyamatjelzőt rajzolhat; az
+    // eredmény bitre ugyanaz, mint egyben.
+    inline void render_rows(Prepared const& compiled, CameraDesc const& cam, Settings const& st,
+                            int y0, int y1, std::vector<glm::vec3>& img) {
         int const W = std::max(1, st.width);
         int const H = std::max(1, st.height);
-        std::vector<glm::vec3> img(static_cast<std::size_t>(W) * H);
-
-        auto compiled = detail::compile(objects);
+        y1 = std::min(y1, H);
 
         float const aspect = static_cast<float>(W) / static_cast<float>(H);
         float const tan_half = std::tan(cam.fov_deg * 0.5f * 3.14159265358979f / 180.0f);
@@ -415,7 +419,7 @@ namespace Raytrace {
 
         int nthreads = st.threads > 0 ? st.threads
                                       : static_cast<int>(std::thread::hardware_concurrency());
-        nthreads = std::clamp(nthreads, 1, 32);
+        nthreads = std::clamp(nthreads, 1, std::max(1, std::min(32, y1 - y0)));
 
         auto worker = [&](int thread_idx) {
             // MINDEN szál SAJÁT másolatot kap a lefordított programokból: a Program
@@ -423,7 +427,7 @@ namespace Raytrace {
             // párhuzamosan több szálon.
             std::vector<detail::Compiled> local = compiled;
 
-            for (int y = thread_idx; y < H; y += nthreads) {
+            for (int y = y0 + thread_idx; y < y1; y += nthreads) {
                 for (int x = 0; x < W; ++x) {
                     // Pixel közepe -> [-1,1] vászonkoordináta (y felfelé nő).
                     float const sx = (2.0f * (static_cast<float>(x) + 0.5f) / W - 1.0f)
@@ -446,6 +450,14 @@ namespace Raytrace {
             for (int i = 0; i < nthreads; ++i) pool.emplace_back(worker, i);
             for (auto& t : pool) t.join();
         }
+    }
+
+    // A teljes kép elkészítése. Visszaadott tömb: sor-folytonos, [0] a BAL FELSŐ pixel.
+    inline std::vector<glm::vec3> render(std::vector<ObjectDesc> const& objects,
+                                         CameraDesc const& cam,
+                                         Settings const& st) {
+        std::vector<glm::vec3> img(static_cast<std::size_t>(std::max(1, st.width)) * std::max(1, st.height));
+        render_rows(prepare(objects), cam, st, 0, std::max(1, st.height), img);
         return img;
     }
 

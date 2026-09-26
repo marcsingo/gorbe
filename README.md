@@ -70,7 +70,7 @@ ctest --test-dir build --output-on-failure
 | `test_csg` | halmazműveletek értéke és deriváltja, szimbolikus vs. numerikus gradiens, hibás hívások |
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
-| `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik |
+| `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik; a **sávos** render (a folyamatjelzőhöz) bitre az egyben készülttel; a lépésekre bontott munka (`app/Job.hpp`): százalék, bővítés futás közben, megszakítás |
 | `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok, alakzatonkénti `d`, **képletes paraméterek** (lánc élőben, `t`, körkörös hivatkozás Indítás előtt, önhivatkozás, `x/y/z`-tilalom, hatókör) |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a **kontrollpontok megoldója** (egy gömb két ponton át: a húzott ponton és a helyben maradón is átmegy, r és a középpont pontosan a várt értékre áll, a részecskék követik); a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
@@ -184,6 +184,33 @@ A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy ön�
 | **Parameterek** | a **jelenet** paraméterei, a **program-szintű** paraméterek, és a jelenet **munkatere**. |
 | **(középen)** | a 3D nézet, fülekre bontva — `+` gombbal új jelenet, `X`-szel bezárható. |
 | **Nézet és súgó** | jelmagyarázat (melyik szín mit jelent), rács ki/be, nézet-előbeállítások, a részecske-korongok **hézag**-csúszkája és a teljes irányítás — a program használata közben végig látható. |
+
+### Folyamatjelző a hosszú műveletekhez
+
+Az Indítás, a szerkesztőbe lépés, egy kényszer lerakása vagy törlése a szerkesztőben,
+a projekt betöltése és a fénykép **lépésekre bontva** fut (`app/Job.hpp`).
+Képkockánként kb. 30 ms-nyi lépés fut le, közben a program kirajzol egy ablakot a
+művelet nevével, a **százalékkal** és az épp futó lépéssel (`ui/ProgressPopup.hpp`).
+Ez az ablak csak akkor jelenik meg, ha a művelet 0,2 s-nál tovább tart, így a gyors
+műveleteknél nem villan fel.
+
+- **A lépések:** a felépítésnél alakzatonként a deriválás és a fordítás; egy kb. 300
+  kényszeres variációs alakzatnál ez kb. 185 ms. A fényképnél 20 sáv, tehát ott a
+  százalék valódi haladást mutat.
+- **Nincs háttérszál:** a lépések a fő szálon futnak. Amíg a munka tart, a
+  szimuláció, a húzás és a `t` idő szünetel, a folyamatjelző pedig modális, tehát a
+  félkész állapothoz senki nem nyúl. A megállított idő miatt egy animált alakzat
+  fényképe is egyetlen pillanatot mutat.
+- **Megszakítás:** a jelző **`Megszakitas`** gombja az épp futó lépés után hat. Ami
+  félbemaradt, azt a program következetes állapotba hozza:
+  - a fényképnél nem készül kép;
+  - az Indításnál és a betöltésnél a félkész jelenet leáll, és újra kell indítani;
+  - a szerkesztőbe lépésnél a szerkesztő fül bezárul, és a forrás-alakzat érintetlen
+    marad, ha a variációs függvény még nem került bele. Ha már belekerült, a
+    szerkesztő megmarad, a forrás-jelenetet pedig újra kell indítani.
+- **Szerkesztőbe lépés:** a szerkesztő átveszi a forrás-alakzat részecskéit, hiszen
+  azok már a felületen vannak. Így nem kell 8 részecskéből újra szétterülnie, ami kb.
+  4–5 s lenne. A maradék idő a kb. 300 tagú függvény deriválása és fordítása.
 
 ### Fénykép (sugárkövetés)
 

@@ -35,3 +35,6 @@ compile_commands.json
 
 # Dear ImGui elrendezés (a Gui::init kikapcsolja, de biztos ami biztos)
 imgui.ini
+
+# Generalt helyi fajlok (pl. api/vs_path.txt: a Visual Studio utvonala)
+api/
