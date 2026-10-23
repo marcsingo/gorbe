@@ -3,6 +3,7 @@
 
 #include <list>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <glm.hpp>
@@ -77,6 +78,19 @@ struct Shape {
     // alakzat saját (lokális) koordinátáiban. Közös (shared_ptr): a szerkesztő fül
     // alakzata ugyanezt látja, így egy kényszer húzása mindkét fülön élőben hat.
     std::shared_ptr<Variational> vari;
+
+    // Az alakzat C++ kódja: egy fájl neve a projektmappa `kod/` almappájában (üres =
+    // nincs). A fájlnév, nem az alakzat neve: így az átnevezés nem töri el, és
+    // ugyanaz a kód több alakzaton is futhat (mindegyiken saját példánnyal).
+    char script[64] = "";
+
+    // --- a kód futásidejű kiegészítései (script/Runtime.hpp) -------------------
+    // A start() írja őket, NEM mentődnek, és minden Indítás üresről kezdi: így egy
+    // add_warp nem halmozódik fel Indításról Indításra. A GUI-n felvettek UTÁN
+    // hatnak (paraméternél: a lokálisok elfedik őket).
+    std::list<Param>  script_params;
+    std::vector<Warp> script_warps;
+    std::string       script_formula;   // ha nem üres, a `formula` HELYETT
 
     // --- az utolsó Indításkor felépített állapot (scene/Build.hpp) ----------
     // A `dom_tree` a globális ÉS a saját (transzformált) feltétel ÉS-kapcsolata —

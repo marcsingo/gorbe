@@ -119,7 +119,7 @@ namespace Build {
         // A `t` (idő) beépített: foglalt név, tehát paraméterként nem vehető fel,
         // viszont bármelyik képletben használható.
         if (nm == "t") return Kif(SceneTime::ptr()).get();
-        if (Tree t = param_ref({&owner.locals, &sc.params, &program}, nm)) return t;
+        if (Tree t = param_ref({&owner.locals, &owner.script_params, &sc.params, &program}, nm)) return t;
         for (auto const& s : sc.shapes) {
             if (&s == &owner) break;               // csak a nála korábbiakra hivatkozhat
             if (s.name[0] && nm == s.name && s.tree) return s.tree;
@@ -136,10 +136,11 @@ namespace Build {
                                              Shape const& owner) {
         return [&sc, &program, &owner](float const* p) -> std::string {
             if (p == SceneTime::ptr()) return "t";
-            for (auto const* lvl : {&owner.locals, &sc.params, &program})
+            for (auto const* lvl : {&owner.locals, &owner.script_params, &sc.params, &program})
                 for (auto const& q : *lvl)
                     if (&q.value == p)
-                        return Scope::find({&owner.locals, &sc.params, &program}, q.name) == p
+                        return Scope::find({&owner.locals, &owner.script_params, &sc.params, &program},
+                                           q.name) == p
                                ? q.name : "";
             return "";
         };
@@ -180,13 +181,16 @@ namespace Build {
     // pozíció/forgatás/méret — ez az, amit egy modellezőtől elvárunk.
     inline Kif place(Kif f, Shape const& s, SceneDoc const& sc, std::list<Param> const& program) {
         auto r = [&](std::string const& nm) { return resolve(sc, program, s, nm); };
-        for (auto const& w : s.warps) {
-            if (!w.enabled) continue;
-            auto fr = funcs(sc, program);
-            f = apply_warp(f, make_kif(w.fx, r, fr), make_kif(w.fy, r, fr), make_kif(w.fz, r, fr));
-        }
-        // Kontrollpontoknál a pozíció akkor is beépül, ha nulla: a megoldó ezt mozgatja.
-        return apply_transform(f, s.xform, !s.controls.empty());
+        // A kód warpjai (script_warps) a GUI-n felvettek UTÁN hatnak.
+        for (auto const* ws : {&s.warps, &s.script_warps})
+            for (auto const& w : *ws) {
+                if (!w.enabled) continue;
+                auto fr = funcs(sc, program);
+                f = apply_warp(f, make_kif(w.fx, r, fr), make_kif(w.fy, r, fr), make_kif(w.fz, r, fr));
+            }
+        // Kontrollpontoknál és kódnál a transzformáció akkor is beépül, ha egység:
+        // a megoldó, illetve az update() ezt mozgatja.
+        return apply_transform(f, s.xform, !s.controls.empty() || s.script[0]);
     }
 
     // A kontrollpontok megoldójának paraméterei (q): az alakzat SZÁMMAL megadott
@@ -226,7 +230,9 @@ namespace Build {
             for (auto& s : sc.shapes) {
                 try {
                     auto own = [&](std::string const& nm) { return resolve(sc, program, s, nm); };
-                    s.tree = s.vari ? Variational::tree(s.vari).get() : make_kif(s.formula, own, fr).get();
+                    char const* const formula = s.script_formula.empty() ? s.formula
+                                                                         : s.script_formula.c_str();
+                    s.tree = s.vari ? Variational::tree(s.vari).get() : make_kif(formula, own, fr).get();
 
                     // Tér-transzformáció: az alakzat saját képletén ÉS a saját
                     // tartományán is alkalmazzuk (a "véges hosszú henger" végei
@@ -236,7 +242,7 @@ namespace Build {
                     // A transzformált alakot tesszük vissza s.tree-be, hogy a rá
                     // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
                     // (két elhelyezett gömb uniója a helyükön legyen).
-                    s.warped = !s.xform.is_identity() || !s.controls.empty();
+                    s.warped = !s.xform.is_identity() || !s.controls.empty() || s.script[0];
                     s.tree = place(Kif(s.tree), s, sc, program).get();
 
                     // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.

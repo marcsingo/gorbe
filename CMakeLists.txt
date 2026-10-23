@@ -145,7 +145,7 @@ target_compile_definitions(gorbe PRIVATE
 option(GORBE_BUILD_TESTS "Tesztek forditasa" ON)
 if(GORBE_BUILD_TESTS)
     enable_testing()
-    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles test_project test_variational)
+    foreach(t test_shapes test_csg test_domain test_program test_transform test_camera test_raytrace test_ui test_build test_parser test_particles test_project test_variational test_script)
         add_executable(${t} tests/${t}.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})
