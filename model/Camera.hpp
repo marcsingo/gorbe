@@ -10,6 +10,7 @@
 #include <ostream>
 
 #include "Window.hpp"
+#include "../scene/CameraDoc.hpp"
 
 class Camera {
 protected:
@@ -32,6 +33,8 @@ public:
 
     // Sugár–sík metszéspontja (3D drag). Alap implementáció: 2D fallback.
     virtual glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const;
+    // A szemből az egér alatti pont felé mutató egységirány (perspektív kamerához).
+    glm::vec3 mouse_ray_dir() const;
     virtual glm::vec3 get_front() const { return glm::vec3(0.0f, 0.0f, -1.0f); }
     // A kamera jobbra- és felfelé-vektora világkoordinátában (billboardozáshoz).
     virtual glm::vec3 get_right() const { return glm::vec3(1.0f, 0.0f, 0.0f); }
@@ -144,6 +147,24 @@ public:
     void update(float dt);
     void process_mouse_movement(float xpos, float ypos);
     void process_mouse_scroll(float yoffset);
+};
+
+// A jelenet SAJÁT kamerája (scene/CameraDoc.hpp) a rajzoláshoz: nem figyel bemenetre,
+// minden képkockán a dokumentumból olvassa a helyét, irányát, dőlését és látószögét —
+// így a Tulajdonságok panel és a kód (gorbe::CameraRef) írása azonnal látszik.
+class DocCamera : public Camera {
+    CameraDoc const& doc;
+protected:
+    glm::mat4 get_projection() const override;
+    glm::mat4 get_view() const override;
+public:
+    explicit DocCamera(CameraDoc const& d) : Camera(glm::vec4(0.0f)), doc(d) {}
+    glm::vec3 get_front() const override { return doc.basis().front; }
+    glm::vec3 get_right() const override { return doc.basis().right; }
+    glm::vec3 get_up()    const override { return doc.basis().up; }
+    glm::vec3 get_eye()   const override { return doc.position(); }
+    float     get_fov_deg() const override { return doc.fov_deg(); }
+    glm::vec3 get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const override;
 };
 
 

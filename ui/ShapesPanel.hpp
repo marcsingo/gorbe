@@ -23,7 +23,7 @@ namespace Ui {
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Separator();
 
-        if (ImGui::Button("Uj alakzat")) sc.selected = &new_shape(sc.shapes, "f");
+        if (ImGui::Button("Uj alakzat")) { sc.selected = &new_shape(sc.shapes, "f"); sc.camera_selected = false; }
         ImGui::SameLine();
         ImGui::TextDisabled("(%d alakzat)", static_cast<int>(sc.shapes.size()));
 
@@ -45,12 +45,28 @@ namespace Ui {
             ImGui::EndCombo();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Hozzaad")) sc.selected = &add_preset(sc.shapes, PRESETS[ui.preset_idx]);
+        if (ImGui::Button("Hozzaad")) {
+            sc.selected = &add_preset(sc.shapes, PRESETS[ui.preset_idx]);
+            sc.camera_selected = false;
+        }
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("F = %s", PRESETS[ui.preset_idx].formula);
         ImGui::PopTextWrapPos();
 
         ImGui::Separator();
+
+        // A jelenet kamerája: mindig az első sor, nem törölhető (futás közben ebből látunk).
+        if (!sc.editor) {
+            ImGui::TextDisabled("[cam]");
+            ImGui::SameLine();
+            if (ImGui::Selectable("Kamera", sc.camera_selected, 0, ImVec2(180.0f, 0.0f))) {
+                sc.camera_selected = true;
+                sc.selected = nullptr;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("A jelenet kameraja: futas kozben (Indit utan) ebbol latunk.\n"
+                                  "A szerkeszto nezetben narancs gula mutatja.");
+        }
 
         for (auto& s : sc.shapes) {
             ImGui::PushID(&s);
@@ -60,8 +76,10 @@ namespace Ui {
             bool warn = pr.is_bad(&s);
             if (warn) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.45f, 1.0f));
             if (ImGui::Selectable(s.name[0] ? s.name : "(nevtelen)", sc.selected == &s,
-                                  0, ImVec2(180.0f, 0.0f)))
+                                  0, ImVec2(180.0f, 0.0f))) {
                 sc.selected = &s;
+                sc.camera_selected = false;
+            }
             if (warn) ImGui::PopStyleColor();
 
             ImGui::SameLine();
@@ -75,6 +93,13 @@ namespace Ui {
         ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button("Torol")) rq.drop = true;
+        if (sc.playing) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.45f, 1.0f), "FUT");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("A jelenet fut: a jelenet kamerajabol latunk, a billentyuzet\n"
+                                  "es az eger a kode. A Torol leallitja.");
+        }
 
         // --- Sugárkövetett fénykép (a leválasztható raytrace/ komponens) ---
         ImGui::BeginDisabled(sc.shapes.empty());

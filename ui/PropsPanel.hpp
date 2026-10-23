@@ -171,11 +171,58 @@ namespace Ui {
         ImGui::PopTextWrapPos();
     }
 
+    // --- A jelenet kamerája (az Alakzatok lista "Kamera" sora) ------------------
+    // Az értékeket a nézet élőben írja (mint egy alakzat transzformációját): futás közben
+    // azonnal látszik, és amit közben a kód átír, az a Töröl után ide áll vissza.
+    inline void camera_props(Scene& sc) {
+        CameraDoc& c = sc.scene_camera;
+        ImGui::Text("Kamera");
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("A jelenet kameraja: futas kozben (Indit utan) ebbol latunk. "
+                            "A szerkeszto nezetben a narancs gula mutatja, hol all.");
+        ImGui::PopTextWrapPos();
+        ImGui::Separator();
+
+        ImGui::DragFloat3("pozicio", c.pos, 0.05f);
+        ImGui::SliderAngle("irany (yaw)", &c.rot[0], -180.0f, 180.0f);
+        ImGui::SliderAngle("emelkedes (pitch)", &c.rot[1], -89.0f, 89.0f);
+        ImGui::SliderAngle("doles (roll)", &c.rot[2], -180.0f, 180.0f);
+        ImGui::SliderFloat("latoszog", &c.fov, CameraDoc::FOV_MIN, CameraDoc::FOV_MAX, "%.0f fok");
+
+        static float target[3] = {0.0f, 0.0f, 0.0f};    // csak a nézeté (nem mentődik)
+        ImGui::DragFloat3("##cel", target, 0.05f);
+        ImGui::SameLine();
+        if (ImGui::Button("Ranez")) c.look_towards(glm::vec3(target[0], target[1], target[2]) - c.position());
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("A kamera a megadott pont fele fordul (a helye marad).");
+
+        if (ImGui::Button("Szerkeszto nezetbol")) {
+            c.look_at(sc.camera.get_position(), sc.camera.get_position() + sc.camera.get_front());
+            c.rot[2] = 0.0f;
+            c.fov = sc.camera.get_fov_deg();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("A kamera oda all es arra nez, ahonnan most a szerkeszto kamera.");
+        ImGui::SameLine();
+        if (ImGui::Button("Alaphelyzet")) c = CameraDoc{};
+
+        ImGui::Separator();
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Kodbol: camera().position(), rotation(), fov(), look_at(p), "
+                            "forward() / right() / up(). A kod altal irt ertekek a Torol utan "
+                            "visszaallnak ide.");
+        ImGui::PopTextWrapPos();
+    }
+
     inline void props_panel(Scene& sc, std::list<Param> const& program_params,
                             std::string const& project_path,
                             Problems const& pr, UiState& ui, Requests& rq,
                             Geometry const& g) {
         fixed_panel("Tulajdonsagok", {g.rx, g.O.y + PAD}, {ui.layout.right_w, g.col_h});
+        if (sc.selected == nullptr && sc.camera_selected && !sc.editor) {
+            camera_props(sc);
+            ImGui::End();
+            return;
+        }
         if (sc.selected == nullptr) {
             ImGui::TextDisabled("Valassz egy alakzatot az \"Alakzatok\" listabol.");
             ImGui::End();

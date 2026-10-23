@@ -57,9 +57,10 @@ namespace Photo {
             return;
         }
 
-        auto const& cam = sc.camera;
+        // Az épp aktív kamerából: futás közben a jelenet kamerájából, egyébként a szerkesztőéből.
+        Camera const& cam = sc.view_camera();
         Raytrace::CameraDesc rc;
-        rc.eye     = cam.get_position();
+        rc.eye     = cam.get_eye();
         rc.front   = cam.get_front();
         rc.right   = cam.get_right();
         rc.up      = cam.get_up();

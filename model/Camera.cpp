@@ -203,21 +203,40 @@ void Camera3D::process_mouse_scroll(float yoffset) {
     if (fov > 45.0f) fov = 45.0f;
 }
 
-glm::vec3 Camera3D::get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const {
+glm::vec3 Camera::mouse_ray_dir() const {
     auto minfo = Window::get_mouse_info();
     glm::vec2 ndc = Vp::to_ndc(Vp::current(), minfo.x, minfo.y);
-    float x_ndc = ndc.x;
-    float y_ndc = ndc.y;
 
     // NDC → eye space irány, majd → world space irány
-    glm::vec4 ray_eye = glm::inverse(get_projection()) * glm::vec4(x_ndc, y_ndc, -1.0f, 1.0f);
+    glm::vec4 ray_eye = glm::inverse(get_projection()) * glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
     ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
-    glm::vec3 ray_dir = glm::normalize(glm::vec3(glm::inverse(get_view()) * ray_eye));
+    return glm::normalize(glm::vec3(glm::inverse(get_view()) * ray_eye));
+}
 
-    // Sugár–sík metszés: position + t*ray_dir a síkon
-    float denom = glm::dot(ray_dir, plane_normal);
+// Sugár–sík metszés: eye + t*dir a síkon (ha a sík a kamera mögött van, a síkpont).
+static glm::vec3 ray_on_plane(glm::vec3 eye, glm::vec3 dir, glm::vec3 plane_point, glm::vec3 plane_normal) {
+    float denom = glm::dot(dir, plane_normal);
     if (std::abs(denom) < 1e-6f) return plane_point;
-    float t = glm::dot(plane_point - position, plane_normal) / denom;
+    float t = glm::dot(plane_point - eye, plane_normal) / denom;
     if (t < 0.0f) return plane_point;
-    return position + t * ray_dir;
+    return eye + t * dir;
+}
+
+glm::vec3 Camera3D::get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const {
+    return ray_on_plane(position, mouse_ray_dir(), plane_point, plane_normal);
+}
+
+// --- DocCamera: a jelenet saját kamerája ---------------------------------------
+
+glm::mat4 DocCamera::get_view() const {
+    CameraDoc::Basis const b = doc.basis();
+    return glm::lookAt(doc.position(), doc.position() + b.front, b.up);
+}
+
+glm::mat4 DocCamera::get_projection() const {
+    return glm::perspective(glm::radians(doc.fov_deg()), Vp::aspect(Vp::current()), 0.1f, 100.0f);
+}
+
+glm::vec3 DocCamera::get_mouse_pos_on_plane(glm::vec3 plane_point, glm::vec3 plane_normal) const {
+    return ray_on_plane(doc.position(), mouse_ray_dir(), plane_point, plane_normal);
 }

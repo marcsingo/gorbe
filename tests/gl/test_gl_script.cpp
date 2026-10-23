@@ -177,6 +177,65 @@ GORBE_SHAPE(Mozgo)
            std::to_string(s.xform.pos[0]));
         ok("futas kozben nincs hiba", sc.runtime.errors.empty(),
            sc.runtime.errors.empty() ? "" : sc.runtime.errors[0]);
+
+        std::printf("=== 7. Futas: a jelenet kameraja, WASD a kode ===\n");
+        // A billentyűt a GLFW-be nem lehet beinjektálni: a lenyomás oda megy, ahová az
+        // ablak eseménye is menne (Runtime::key_event) — a többi a valódi úton.
+        write(src, R"(#include "../gorbe_api.hpp"
+struct Mozgo : gorbe::ShapeScript {
+    void update(float, float dt) override {
+        gorbe::vec3 v;
+        if (key_down('W')) v += camera().forward();
+        if (key_down('S')) v -= camera().forward();
+        if (key_down('D')) v += camera().right();
+        if (key_down('A')) v -= camera().right();
+        v.z = 0;
+        position() += gorbe::normalize(v) * (4.0f * dt);
+        camera().position() = position() + gorbe::vec3{-6, 0, 4};   // mögötte, fölötte
+        camera().look_at(position());
+    }
+};
+GORBE_SHAPE(Mozgo)
+)");
+        CameraDoc const initial_cam = sc.scene_camera;
+        start(ctl);
+        ok("Build sikeres", sc.build_ok, sc.build_errors.empty() ? "" : sc.build_errors[0]);
+        ok("az Inditas utan fut, a jelenet kamerajabol latunk",
+           sc.playing && sc.game_view() && &sc.view_camera() == &sc.scene_view);
+        ctl.apply(Ui::Requests{});
+        ok("a szerkeszto kamera nem kap bemenetet", !sc.camera.input_enabled);
+        frames(5);
+        float const x0 = s.xform.pos[0];
+        ok("a kamera kovet (mogotte all)", std::abs(sc.scene_camera.pos[0] - (x0 - 6.0f)) < 1e-4f,
+           std::to_string(sc.scene_camera.pos[0]));
+
+        sc.runtime.key_event('W', true);
+        double const tw = glfwGetTime();
+        while (glfwGetTime() - tw < 0.5) frames(1);
+        sc.runtime.key_event('W', false);
+        frames(3);
+        float const moved = s.xform.pos[0] - x0;
+        // A kamera +x felé néz (mögötte áll): W = +x, ~4 egység/s, 0.5 s alatt ~2.
+        ok("W-re a kamera nezoiranyaba megy (+x, kb. 2 egyseg)", moved > 1.0f && moved < 3.5f,
+           std::to_string(moved));
+        ok("... vizszintesen (z marad)", std::abs(s.xform.pos[2]) < 1e-4f);
+
+        sc.show_scene_camera = false;                 // a nézet tetején a váltó
+        ctl.apply(Ui::Requests{});
+        sc.runtime.key_event('W', true);
+        frames(3);                                     // a prepare_input kinullázza
+        float const x1 = s.xform.pos[0];
+        frames(10);
+        ok("szerkeszto kamerabol nezve a kod nem kap bemenetet",
+           s.xform.pos[0] == x1 && !sc.runtime.input.active);
+        ok("... es a szerkeszto kamera igen", sc.camera.input_enabled && &sc.view_camera() == &sc.camera);
+        sc.show_scene_camera = true;
+
+        Ui::Requests stop;
+        stop.drop = true;
+        ctl.apply(stop);
+        ok("Torol: leall, a szerkeszto kamera jon vissza", !sc.playing && !sc.game_view());
+        ok("... a jelenet kameraja a kezdoertekere all", sc.scene_camera == initial_cam);
         ctl.shutdown();
     }
     fs::remove_all(dir, ec);

@@ -1,4 +1,5 @@
 #include "App.hpp"
+#include "model/CameraGizmo.hpp"
 
 #include "app/Controller.hpp"
 #include "scene/Time.hpp"
@@ -24,10 +25,17 @@ int main() {
     Controller ctl;
     Ui::UiState ui;
 
-    // A rajzolás mindig az AKTUÁLIS fül tartalmát mutatja, a saját kamerájával.
+    // A rajzolás mindig az AKTUÁLIS fül tartalmát mutatja, a saját kamerájával: futás
+    // közben a jelenet kamerájából (a "végleges" kép: tengelyek és rács nélkül), egyébként
+    // a szerkesztő kamerából, a tengelyekkel és a jelenet kamerájának gúlájával.
+    CameraGizmo gizmo;
     app.set_draw([&] {
-        app.get_axes().draw(ctl.cur().camera);
-        ctl.cur().draw();
+        Scene& sc = ctl.cur();
+        if (!sc.game_view()) {
+            app.get_axes().draw(sc.camera);
+            if (!sc.editor) gizmo.draw_doc(sc.scene_camera, sc.camera);
+        }
+        sc.draw();
     });
 
     app.set_gui([&] {

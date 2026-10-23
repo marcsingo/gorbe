@@ -54,6 +54,23 @@ namespace Ui {
                                  ImVec2(static_cast<float>(iw), static_cast<float>(ih)),
                                  ImVec2(0, 1), ImVec2(1, 0));
                     image_hovered = ImGui::IsItemHovered();
+
+                    // Futás közben: a kép bal felső sarkában a kamera-váltó. A gomb fölött
+                    // az egér a gombé, nem a jeleneté (különben a kattintás a kódhoz is
+                    // eljutna).
+                    if (one.playing && !one.editor) {
+                        ImGui::SetCursorScreenPos({pos.x + 8.0f, pos.y + 8.0f});
+                        if (ImGui::SmallButton(one.show_scene_camera ? "Jelenet kamera" : "Szerkeszto kamera"))
+                            one.show_scene_camera = !one.show_scene_camera;
+                        if (ImGui::IsItemHovered()) {
+                            image_hovered = false;
+                            ImGui::SetTooltip(one.show_scene_camera
+                                ? "Futas: a jelenet kamerajabol latunk, a billentyuzet es az eger\n"
+                                  "a kode. Kattints: valtas a szerkeszto kamerara."
+                                : "Futas, de a szerkeszto kamerabol nezunk: a billentyuk a kamerat\n"
+                                  "mozgatjak. Kattints: vissza a jelenet kamerajara.");
+                        }
+                    }
                     ImGui::EndTabItem();
                 }
                 ImGui::PopID();

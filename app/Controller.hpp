@@ -54,13 +54,51 @@ public:
         sim_sub = Window::Subscription(Window::add_time_passed_event([this](auto ev) {
             if (job_) return;      // hosszú munka közben a szimuláció szünetel
             float const dt = static_cast<float>(ev.dt);
-            if (cur_) cur_->runtime.update_all(SceneTime::value, dt);   // az alakzatok kódja,
+            if (cur_) {
+                prepare_input(*cur_);
+                cur_->runtime.update_all(SceneTime::value, dt);   // az alakzatok kódja,
+                cur_->runtime.end_input_frame();
+            }
             drag_controls(dt);     // utána a kontrollpontok mozgatják a felületet,
             step_objects(dt);      // utána lépnek a részecskék
         }));
         btn_sub = Window::Subscription(Window::add_mouse_button_event([this](auto e) {
+            if (cur_ && cur_->game_view()) {
+                if (e.action != GLFW_REPEAT) cur_->runtime.button_event(e.button, e.action == GLFW_PRESS);
+                return;            // futás közben az egér a kódé, nem a kontrollpontoké
+            }
             on_mouse_button(e.button, e.action, e.mods);
         }));
+
+        // A kód bemenete (gorbe::ShapeScript::key_down, ...): az ablak eseményei a
+        // Runtime pillanatképébe, csak futás közben, a jelenet kamerájának nézetében.
+        // (Az ablak már szűr: billentyűt csak akkor küld, ha nem egy mezőbe gépelünk,
+        // egeret csak a 3D nézet fölött — a felengedést viszont mindig.)
+        key_sub = Window::Subscription(Window::add_key_event([this](auto e) {
+            if (cur_ && cur_->game_view() && e.action != GLFW_REPEAT)
+                cur_->runtime.key_event(e.key, e.action == GLFW_PRESS);
+        }));
+        scroll_sub = Window::Subscription(Window::add_mouse_scroll_event([this](auto e) {
+            if (cur_ && cur_->game_view()) cur_->runtime.input.scroll += static_cast<float>(e.offsetY);
+        }));
+    }
+
+    // A ciklus bemenet-pillanatképének kiegészítése az update()-ek előtt: az egér helye
+    // a 3D nézetben, az elmozdulás, és a sugár a jelenet kamerájából az egér alá. Ha a
+    // jelenet épp nem kapja a bemenetet (nem fut, vagy a szerkesztő kamerából nézünk),
+    // minden nulla — így egy nyomva felejtett billentyű sem "ragad be".
+    void prepare_input(Scene& sc) {
+        gorbe::InputState& in = sc.runtime.input;
+        if (!sc.game_view()) { in = {}; return; }
+        Vp::Rect const r = Vp::current();
+        auto const m = Window::get_mouse_info();
+        float const x = static_cast<float>(m.x) - r.x, y = static_cast<float>(m.y) - r.y;
+        if (in.active) { in.mouse_dx = x - in.mouse_x; in.mouse_dy = y - in.mouse_y; }
+        in.active = true;
+        in.mouse_x = x; in.mouse_y = y;
+        in.view_w = r.w; in.view_h = r.h;
+        glm::vec3 const o = sc.scene_camera.position(), d = sc.scene_view.mouse_ray_dir();
+        for (int i = 0; i < 3; ++i) { in.ray_origin[i] = o[i]; in.ray_dir[i] = d[i]; }
     }
 
     // --- kontrollpontok (a jelenet szintjén: egy kattintás EGY objektumot érint) ----
@@ -140,13 +178,17 @@ public:
     // különben egy egy-két nagy lépésből álló munkánál csak a végén villanna fel.
     void apply(Ui::Requests const& rq) {
         if (job_) {
-            if (rq.cancel_job) { cancel_job(); return; }
-            if (!job_->shown) { job_->shown = true; return; }
-            run_job();
-            return;
+            if (rq.cancel_job) cancel_job();
+            else if (!job_->shown) job_->shown = true;
+            else run_job();
+        } else {
+            apply_requests(rq);
+            if (job_ && !job_->slow) run_job();
         }
-        apply_requests(rq);
-        if (job_ && !job_->slow) run_job();
+        // A szerkesztő kamera csak akkor mozdul a bevitelre, ha épp abból nézünk, és
+        // nem tart hosszú munka. Futás közben, a jelenet kamerájából nézve a billentyűk
+        // és az egér a kódé.
+        if (cur_) cur_->camera.input_enabled = !job_ && !cur_->game_view();
     }
 
 private:
@@ -250,7 +292,7 @@ public:
 
 private:
     Scene* cur_ = nullptr;
-    Window::Subscription sim_sub, btn_sub;
+    Window::Subscription sim_sub, btn_sub, key_sub, scroll_sub;
 
     static Shape& shape_at(Scene& sc, int i) {
         auto it = sc.shapes.begin();
@@ -572,7 +614,11 @@ private:
             });
             ++i;
         }
-        j.add("Kesz", [st] { st->done = true; });
+        j.add("Kesz", [st, &sc, restart, ok] {
+            st->done = true;
+            // Az Indítással a jelenet FUT (a Töröl-ig): a nézet a jelenet kamerájából lát.
+            if (restart && *ok && !sc.editor) sc.playing = true;
+        });
         j.on_cancel.push_back([&sc, st] {
             if (st->done || !st->active) return;
             sc.drop();
@@ -666,7 +712,7 @@ private:
     void cancel_job() {
         auto handlers = std::move(job_->on_cancel);
         job_.reset();
-        cur_->camera.input_enabled = true;
+        cur_->camera.input_enabled = !cur_->game_view();
         for (auto& h : handlers) h();
     }
 
@@ -687,7 +733,7 @@ private:
         if (!job_->finished()) { cur_->camera.input_enabled = false; return; }
         auto done = std::move(job_->on_done);
         job_.reset();
-        cur_->camera.input_enabled = true;
+        cur_->camera.input_enabled = !cur_->game_view();
         if (done) done();
     }
 

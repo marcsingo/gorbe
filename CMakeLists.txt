@@ -120,7 +120,15 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         matek/Kif.hpp
         matek/Parser.hpp
         model/Include.hpp
-        particle_sampling/Particle.hpp)
+        particle_sampling/Particle.hpp
+        model/CameraGizmo.hpp
+        scene/CameraDoc.hpp
+        script/gorbe_api.hpp
+        script/Runtime.hpp
+        script/Compiler.hpp
+        script/Platform.hpp
+        ui/ConsolePanel.hpp
+        utils/Log.hpp)
 
 # 4. Az executable létrehozása
 add_executable(gorbe ${SOURCE_FILES})

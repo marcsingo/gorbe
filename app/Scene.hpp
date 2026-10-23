@@ -31,8 +31,28 @@ struct Scene : SceneDoc {
     // A húzott kontrollpont: melyik objektum (a pool indexe) hányadik pontja; -1 = nincs.
     int drag_obj = -1, drag_ctrl = -1;
 
-    // Fülönként saját kamera: a nézet megmarad fülváltáskor.
+    // Fülönként saját SZERKESZTŐ kamera: a nézet megmarad fülváltáskor.
     Camera3D camera{glm::vec4(0.0f, 0.0f, 1200.0f, 800.0f), App::DEFAULT_EYE, -90.0f, 45.0f};
+
+    // --- futás és a jelenet kamerája --------------------------------------------
+    // FUT: az Indítás (sikeres felépítés) után, a Töröl-ig (drop). Futás közben a nézet
+    // a jelenet SAJÁT kamerájából lát (scene_camera, a dokumentumban), a billentyűzet
+    // és az egér a kódé (gorbe::ShapeScript::key_down, ...), a szerkesztő kamera áll.
+    // A nézet tetején át lehet váltani a szerkesztő kamerára (show_scene_camera):
+    // akkor a billentyűk megint a szerkesztő kamerát mozgatják.
+    bool playing = false;
+    bool show_scene_camera = true;
+    DocCamera scene_view{scene_camera};
+
+    // A kódé-e a bevitel, és a jelenet kamerájából látunk-e (a szerkesztő fülön soha).
+    bool game_view() const { return playing && show_scene_camera && !editor; }
+    Camera& view_camera() { return game_view() ? static_cast<Camera&>(scene_view) : camera; }
+    Camera const& view_camera() const {
+        return game_view() ? static_cast<Camera const&>(scene_view) : camera;
+    }
+
+    // A Tulajdonságok panel a jelenet kameráját mutatja (az Alakzatok lista "Kamera" sora).
+    bool camera_selected = false;
 
     // Alakzatonként egy térbeli objektum (object/SpaceObject.hpp). A lista i-edik
     // alakzata a pool i-edik objektuma; a méret együtt mozog (a vezérlő a
@@ -83,7 +103,7 @@ struct Scene : SceneDoc {
         auto it = shapes.begin();
         for (std::size_t i = 0; i < pool.size(); ++i, ++it) {
             int const dragged = static_cast<int>(i) == drag_obj ? drag_ctrl : -1;
-            if (!editor || !it->vari) { pool[i]->draw(camera, dragged); continue; }
+            if (!editor || !it->vari) { pool[i]->draw(view_camera(), dragged); continue; }
             // A szerkesztőben a határkényszerek a kontrollpontok (a normálkényszerek
             // a felület mellett ülnek, azokat nem rajzoljuk). A kiemelés indexe a
             // rajzolt listában értendő.
@@ -95,7 +115,7 @@ struct Scene : SceneDoc {
                     if (static_cast<int>(k) == dragged) shown = static_cast<int>(pts.size());
                     pts.push_back(v.centers[k]);
                 }
-            pool[i]->draw(camera, shown, &pts);
+            pool[i]->draw(view_camera(), shown, &pts);
         }
     }
 
@@ -131,6 +151,7 @@ struct Scene : SceneDoc {
         }
         Build::drop_trees(*this);
         runtime.clear();
+        playing = false;           // a futás véget ért: újra a szerkesztő kamera
         error.clear();
         drag_obj = drag_ctrl = -1;
     }

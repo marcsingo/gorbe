@@ -236,6 +236,73 @@ a másik felületére vetíti, ebből adódik a `depth` és a `normal`.
 - Önmagával sosem ütközik, ezért az összes alakzaton végig lehet menni (lásd a 12.
   példát).
 
+### Futás, a jelenet kamerája és a bemenet
+
+Az **Indít** után a jelenet **fut**, egészen a **Töröl**-ig. Az Alakzatok panelen ilyenkor
+zöld „FUT” felirat látszik.
+
+- **Futás közben** a 3D nézet a **jelenet kamerájából** lát. A billentyűzet és az egér a
+  **kódé**, a szerkesztő kamera áll, és a kontrollpontok húzása szünetel. A tengelyek és a
+  rács nem rajzolódnak ki, mert ez a „végleges” kép.
+- A nézet **bal felső sarkában** egy gomb vált a jelenet kamerája és a szerkesztő kamera
+  között. A szerkesztő kamerából nézve a billentyűk újra a szerkesztő kamerát mozgatják,
+  és a kód nem kap bemenetet.
+- **Nem futó jelenetben** a megszokott szerkesztő kamera dolgozik. A jelenet kameráját egy
+  **narancs gúla** mutatja: a csúcsa a kamera helye, a háromszög a kép „fel” iránya.
+
+A jelenet kamerája az Alakzatok lista **első sora („Kamera”)**. Erre kattintva a
+Tulajdonságok panelen állítható a pozíció, az irány (yaw), az emelkedés (pitch), a dőlés
+(roll) és a látószög. A **Ránéz** gombbal egy pont felé fordul, a **Szerkesztő nézetből**
+gombbal oda áll, ahonnan most a szerkesztő kamera néz. A beállítás a projektfájlba is
+mentődik.
+
+#### A kamera a kódból
+
+```cpp
+gorbe::CameraRef& camera();
+
+camera().position()    // vec3&: a helye
+camera().rotation()    // vec3&: x = yaw (0 = +x felé), y = pitch (negatív = lefelé, ±89°),
+                       //        z = roll (dőlés) — RADIÁNBAN
+camera().fov()         // float&: függőleges látószög, FOKBAN (5..120)
+camera().look_at(p)    // a p pont felé fordul (a helye és a dőlése marad)
+camera().forward()     // a nézőirány a világban
+camera().right()       // a kép jobbra iránya (a dőléssel együtt)
+camera().up()          // a kép felfelé iránya
+```
+
+Ugyanúgy viselkedik, mint egy alakzat pozíciója: amit a kód futás közben ír, az a
+**Töröl után visszaáll** a panelen beállított értékre.
+
+#### Bemenet
+
+```cpp
+bool key_down(int k);        // le van nyomva (folyamatos mozgáshoz)
+bool key_pressed(int k);     // ebben a ciklusban nyomták le (egyszeri akcióhoz: ugrás, lövés)
+bool key_released(int k);    // ebben a ciklusban engedték fel
+bool mouse_down(int b);      // MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE
+bool mouse_pressed(int b);
+bool mouse_released(int b);
+gorbe::vec2 mouse_position();   // képpont a 3D nézetben (bal felső sarok = 0, 0)
+gorbe::vec2 mouse_delta();      // elmozdulás az előző ciklus óta
+float       scroll();           // görgetés ebben a ciklusban
+gorbe::vec2 view_size();        // a 3D nézet mérete képpontban
+gorbe::Ray  mouse_ray();        // sugár a kamerából az egér alá: origin, dir (egységnyi)
+bool        input_active();     // kap-e most bemenetet a kód
+```
+
+- **Billentyűkódok:** a betű és a szám a saját karaktere: `'W'`, `'a'` (a kisbetűt is
+  elfogadja), `'1'`. A többi névvel érhető el: `gorbe::KEY_SPACE`, `KEY_ENTER`,
+  `KEY_ESCAPE`, `KEY_TAB`, `KEY_BACKSPACE`, `KEY_UP` / `DOWN` / `LEFT` / `RIGHT`,
+  `KEY_LEFT_SHIFT`, `KEY_LEFT_CONTROL`, `KEY_LEFT_ALT`, `KEY_RIGHT_SHIFT`,
+  `KEY_RIGHT_CONTROL`.
+- **A kód csak futás közben**, a jelenet kamerájának nézetében kap bemenetet. A billentyűt
+  csak akkor kapja, ha épp nem egy mezőbe gépelsz, az egeret csak a 3D nézet fölött. Máskor
+  minden hamis, illetve nulla, így egy billentyű sem „ragad be”.
+- A `key_pressed` egy lenyomásra **pontosan egyszer** igaz. Az operációs rendszer
+  billentyű-ismétlése nem számít új lenyomásnak.
+- Az **Esc** továbbra is kilép a programból.
+
 ### Szerkezet (csak a `start()`-ban)
 
 ```cpp
@@ -596,6 +663,87 @@ struct Erzekelo : gorbe::ShapeScript {
 GORBE_SHAPE(Erzekelo)
 ```
 
+### 14. WASD-irányítás, ugrás és követő kamera
+
+Indíts el egy jelenetet, amelyben a gömb (vagy bármilyen alakzat) ezt a kódot futtatja.
+Utána a 3D nézet fölött a **W A S D** mozgatja, a **Space** ugrat.
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// WASD-vel irányítható alakzat, a kamerához képest (W = amerre a kamera néz), a
+// talajon maradva; Space-re ugrik. A kamera mögötte, fölötte követi.
+struct Jatekos : gorbe::ShapeScript {
+    static constexpr float SEBESSEG = 4.0f;              // egység / s
+    float z0 = 0.0f, vz = 0.0f;                          // a talaj magassága, függőleges sebesség
+
+    void start() override { z0 = position().z; }
+
+    void update(float, float dt) override {
+        gorbe::vec3 v;
+        if (key_down('W')) v += camera().forward();
+        if (key_down('S')) v -= camera().forward();
+        if (key_down('D')) v += camera().right();
+        if (key_down('A')) v -= camera().right();
+        v.z = 0;                                         // csak vízszintesen
+        position() += gorbe::normalize(v) * (SEBESSEG * dt);
+
+        // ugrás: egyszeri lenyomásra (key_pressed), utána gravitáció
+        if (key_pressed(gorbe::KEY_SPACE) && position().z <= z0) vz = 6.0f;
+        vz -= 15.0f * dt;
+        position().z += vz * dt;
+        if (position().z < z0) { position().z = z0; vz = 0; }
+
+        // követő kamera: mögötte (a nézőirány vízszintes vetületével szemben) és fölötte
+        gorbe::vec3 hatra = camera().forward();
+        hatra.z = 0;
+        camera().position() = position() - gorbe::normalize(hatra) * 8.0f + gorbe::vec3{0, 0, 5};
+        camera().look_at(position());
+    }
+};
+GORBE_SHAPE(Jatekos)
+```
+
+### 15. Kattintás a talajra (egér-sugár)
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// Bal kattintásra az alakzat oda ugrik, ahová a talajon (z = 0 sík) kattintottunk:
+// a kamerából az egér alá mutató sugár metszése a síkkal.
+struct Kattintas : gorbe::ShapeScript {
+    void update(float, float) override {
+        if (!mouse_pressed(gorbe::MOUSE_LEFT)) return;
+        gorbe::Ray const r = mouse_ray();
+        if (r.dir.z >= 0) return;                        // nem a talaj felé néz
+        float const t = -r.origin.z / r.dir.z;           // origin.z + t * dir.z = 0
+        gorbe::vec3 const p = r.origin + r.dir * t;
+        position() = {p.x, p.y, position().z};
+        print("ide: (%.1f, %.1f)", p.x, p.y);
+    }
+};
+GORBE_SHAPE(Kattintas)
+```
+
+### 16. Keringő kamera, görgővel közelítve
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// A kamera körpályán kering az origó körül, és mindig oda néz; a görgővel közelít.
+struct Keringo : gorbe::ShapeScript {
+    float tav = 15.0f;
+
+    void update(float t, float) override {
+        tav -= scroll();                                 // görgő: közelebb / távolabb
+        if (tav < 3.0f) tav = 3.0f;
+        camera().position() = {tav * std::cos(0.3f * t), tav * std::sin(0.3f * t), 0.6f * tav};
+        camera().look_at({0, 0, 0});
+    }
+};
+GORBE_SHAPE(Keringo)
+```
+
 ## Hibák és megoldásuk
 
 A fordítás hibái az **Alakzatok** panelen jelennek meg, **pirosan** (legfeljebb 10
@@ -614,6 +762,7 @@ a **Konzolra** is bekerül, a fordítóhibák mind, nem csak az első 10.
 | `kivetel: ... (a kod leallt)` | a kód kivételt dobott | javítsd, aztán Indít |
 | `nincs 'Fal' nevu alakzat a jelenetben` | a `shape("Fal")` nem talált ilyen nevű alakzatot (a kis- és nagybetű számít) | nevezd át az alakzatot, vagy javítsd a nevet a kódban |
 | `value/gradient/contains/distance csak az update()-ben hivhato` (vagy `collide ...`) | a `start()`-ban még nincsenek felépítve a képletek | tedd át az `update()`-be |
+| a `key_down` mindig hamis | a jelenet nem fut, a szerkesztő kamerából nézünk (a nézet bal felső gombja), vagy az egér nincs a 3D nézet fölött, vagy egy mezőbe gépelsz | Indít, „Jelenet kamera” nézet, az egér a nézet fölött |
 | (konzol, sárga) `a(z) 'Fal' pozicioja/forgatasa/merete csak akkor mozgatja, ...` | a másik alakzatot az `update()`-ben kérted le először, így a mozgatása nem látszik | kérd le a `start()`-ban |
 | `nem talalhato a Visual Studio C++ fordito` | nincs telepítve a fordító | Visual Studio Installer → „Desktop development with C++” |
 
