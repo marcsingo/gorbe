@@ -72,6 +72,12 @@ public:
     // `d` csúszkája állítja.
     float d;
 
+    // Hol szülessenek a kezdő részecskék (restart): egy kis kocka közepe. Az alakzat
+    // helye kell legyen (a vezérlő az Indításkor a pozíciójára állítja) — az origó
+    // körül született részecskéknek egy messze álló alakzathoz csillapított, korlátos
+    // lépésekben kellene átrepülniük (7 egységre ~10-20 s), és addig nincs fisszió.
+    glm::vec3 spawn_center{0.0f};
+
     // Felső korlát a részecskeszámra. Ez a garancia, hogy SEMMILYEN beírt képlet ne
     // tudja lefagyasztani a programot: önmagában végtelen felületnél (sík, henger) a
     // konstans mintavételi sűrűség végtelen sok részecskét jelentene, mert a
@@ -384,7 +390,7 @@ private:
     float const fraction;
 
     void spawn_random_particles(int n, float cube_size) {
-        // A kocka közepe az origó, így a határok -méret/2 és +méret/2 között lesznek
+        // A kocka közepe a spawn_center (az alakzat helye), a határok ±méret/2.
         float half_size = cube_size / 2.0f;
         std::uniform_real_distribution<float> dist_cube(-half_size, half_size);
 
@@ -397,7 +403,7 @@ private:
             // tehát egy távoli tartománynál sokáig tartana, amíg megjelenik bármi.
             int tries = 0;
             do {
-                p.p = glm::vec3{dist_cube(rng), dist_cube(rng), dist_cube(rng)};
+                p.p = spawn_center + glm::vec3{dist_cube(rng), dist_cube(rng), dist_cube(rng)};
                 ++tries;
             } while (surf.has_domain && tries < 64 && surf.Dom.at(p.p) <= 0.0f);
 

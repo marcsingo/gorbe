@@ -248,6 +248,26 @@ int main() {
         ok("es ugyanott (elteres < 1e-4)", same_n && worst < 1e-4f, "max elteres " + std::to_string(worst));
     }
 
+    std::printf("\n=== 7. Messze allo alakzat: a reszecskek ott szuletnek ===\n");
+    {
+        // Egy 1 sugarú gömb az origótól ~7 egységre. Ha a kezdő részecskék az origó körül
+        // születnének, csillapított lépésekben 10-20 s alatt érnének oda (addig nincs
+        // fisszió); az alakzat helye körül született részecskékkel rögtön beindul.
+        auto grown = [](glm::vec3 center) {
+            ParticleSystem ps({}, 7);
+            ps.d = 0.6f;
+            ps.surface().set_tree(Matek::Analizis::make_kif("(x+5)^2 + (y+5)^2 + z^2 - 1").get());
+            ps.spawn_center = center;
+            ps.restart();
+            run(ps, 3.0f);
+            return ps.particles().size();
+        };
+        std::size_t const near_ = grown({-5.0f, -5.0f, 0.0f}), far_ = grown({0.0f, 0.0f, 0.0f});
+        ok("az alakzat helye korul szuletve 3 s alatt beteritik", near_ > 30, std::to_string(near_) + " db");
+        ok("(az origo korul szuletve meg nem: ezert kell)", far_ < near_ / 2,
+           std::to_string(far_) + " db");
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);
     return failures ? 1 : 0;
 }

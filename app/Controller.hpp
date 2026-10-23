@@ -610,7 +610,9 @@ private:
                 if (s.dom_tree) surf.set_domain(s.dom_tree);
                 else            surf.clear_domain();
                 p.model().bind_controls(&s.controls, Build::control_params(s));
-                if (restart) p.start();     // saját kezdő részecskék + futó állapot
+                // Saját kezdő részecskék (az alakzat helye körül) + futó állapot.
+                p.model().spawn_center = {s.xform.pos[0], s.xform.pos[1], s.xform.pos[2]};
+                if (restart) p.start();
             });
             ++i;
         }
