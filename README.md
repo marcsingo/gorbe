@@ -807,7 +807,8 @@ felépített képletek — betöltéskor a program minden jelenetet magától fe
 ## Alakzatok kódja (C++)
 
 Egy alakzathoz C++ osztály írható, két függvénnyel: a `start()` egyszer fut az
-Indításkor, az `update(t, dt)` minden ciklusban. Az osztály a `gorbe::ShapeScript`-ből
+Indításkor, az `update(t, dt)` minden ciklusban. A részletes leírás, példákkal:
+[`script/API.md`](script/API.md). Az osztály a `gorbe::ShapeScript`-ből
 származik, és ezen át éri el az alakzatot: paraméterek, pozíció, forgatás, méret,
 warpok, képlet.
 
