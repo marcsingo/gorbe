@@ -24,7 +24,8 @@ namespace Ui {
     // felülírja a kiválasztást, a fénykép pedig ne egy félig felépített frame
     // közben blokkolja a programot.
     struct Requests {
-        bool build = false;     // Indít (vagy a transzformáció első mozdítása)
+        bool build   = false;   // Indít: futtatás (a kód + a jelenet kamerája)
+        bool rebuild = false;   // a szerkezet változott (warp, képletes paraméter, ...)
         bool drop  = false;     // Töröl: a képletek eldobása
         bool photo = false;     // sugárkövetett fénykép
         bool cancel_job = false;   // a folyamatban lévő hosszú munka megszakítása

@@ -71,7 +71,7 @@ ctest --test-dir build --output-on-failure
 | `test_domain` | a feltétel-operátorok és a tartomány-kényszer (becsúszás, perem-fal) időléptetéssel |
 | `test_program` | a lefordított program **bitre azonos** a fabejárással; a rács szomszédai azonosak a nyers párbejáráséval |
 | `test_raytrace` | a sugárkövetés: találat/háttér, irányfény (nincs távolság-csökkenés), tartomány-vágás, takarás, BMP-fejléc, többszálú == egyszálú; és az **anyagok**: matt vs. fényes, a csúcsfény fehér (műanyag) vagy színezett (fém), üvegen **átlátszik** a mögötte lévő alakzat (kontrollal: átlátszatlannal nem), a króm visszatükrözi a környezetét, a fa/márvány mintázata megjelenik; a **sávos** render (a folyamatjelzőhöz) bitre az egyben készülttel; a lépésekre bontott munka (`app/Job.hpp`): százalék, bővítés futás közben, megszakítás |
-| `test_build` | a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok, alakzatonkénti `d`, **képletes paraméterek** (lánc élőben, `t`, körkörös hivatkozás Indítás előtt, önhivatkozás, `x/y/z`-tilalom, hatókör) |
+| `test_build` | a **szerkezeti ujjlenyomat** (az előnézethez: a képlet, warp, képletes paraméter számít, a paraméter értéke és a pozíció nem, és csak a változott alakzaté változik); a jelenet-modell: a névfeloldás sorrendje (lokális → jelenet → program → korábbi alakzat), hivatkozás elhelyezett alakzatra, tartományok ÉS-kapcsolata, hibánál nem marad félkész fa, névellenőrzés, sablonok, alakzatonkénti `d`, **képletes paraméterek** (lánc élőben, `t`, körkörös hivatkozás Indítás előtt, önhivatkozás, `x/y/z`-tilalom, hatókör) |
 | `test_parser` | a nyelv: szöveg → fa → szöveg → fa oda-vissza ugyanazt adja; a **függvénytábla minden sorára** a szimbolikus derivált egyezik a numerikussal; a rövidítések (`2x`, `x**2`, `π`, `x²`, álnevek) ugyanazt jelentik; a hibaüzenet jelöl és javasol; az egyszerűsítő |
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a **kontrollpontok megoldója** (egy gömb két ponton át: a húzott ponton és a helyben maradón is átmegy, r és a középpont pontosan a várt értékre áll, a részecskék követik); a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
@@ -96,7 +96,10 @@ GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapb�
   egy átfedő gömbből, túllövés nélkül (a valódi szimulációval, ezért ~10 s); **futás**:
   az Indítás után a jelenet kamerájából látunk, a szerkesztő kamera nem kap bemenetet,
   W-re az alakzat a kamera nézőirányába megy és a kamera követi, a kamera-váltó után a
-  kód nem kap bemenetet, a Töröl leállít és a kamerát visszaállítja.
+  kód nem kap bemenetet, a Töröl leállít és a kamerát visszaállítja; **automatikus
+  előnézet**: a leállítás után magától mintavételez (kód nélkül), egy képlet módosítása a
+  gépelés utáni szünetben beépül úgy, hogy a változatlan alakzat nem indul újra, hibás
+  képletnél a régi alak marad a hibával, javítás után eltűnik.
 
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
@@ -212,7 +215,7 @@ A 3D nézet a **középső ablakban**, **fülekre** bontva: minden fül egy ön�
 
 | ablak | mi van benne |
 |---|---|
-| **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` / `Töröl`, a **`Fenykep keszitese`** gomb, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
+| **Alakzatok** | felül `Új alakzat` (üres) és a **sablon-lenyíló** + `Hozzáad`, alatta a jelenet alakzatainak listája: láthatóság-pipa, név (kattintásra kijelöl), `X` a törléshez. Legalul `Indít` (futtatás) / `Leállít` (futás közben) vagy `Új mintavétel` (szerkesztésben), a **`Fenykep keszitese`** gomb, valamint a közös `d` (méretskála) és görbület-taszítás csúszka. |
 | **Tulajdonságok** | a kijelölt alakzat neve, a **`szin`** és **`anyag`** lenyíló (a fényképhez), és összecsukható szekciókban: `F(x,y,z) =` képlet, **tartomány-feltétel**, **transzformáció**, **warp-lánc**, **lokális paraméterek**. |
 | **Parameterek** | a **jelenet** paraméterei, a **program-szintű** paraméterek, és a jelenet **munkatere**. |
 | **(középen)** | a 3D nézet, fülekre bontva — `+` gombbal új jelenet, `X`-szel bezárható. |
@@ -449,8 +452,15 @@ A jelenetben a **z a függőleges** (a sík-sablon `z = 0`, a henger a z tengely
 - A **Nézet** szakasz gombjai: felülnézet, 3/4 nézet, oldalról, elölről, alapnézet,
   plusz egy távolság-csúszka. A nézetváltás megtartja az origótól mért távolságot.
 
-A képlet beírása után az **Indít** parseolja az összes alakzatot és újraindítja a
-mintavételezést. Változók: `x`, `y`, `z`; a `^` precedenciája a szokásos (nem kell
+**Szerkesztés közben a jelenet magától mintavételez (automatikus előnézet).** Ha egy
+képlet, tartomány, warp vagy képletes paraméter megváltozik, vagy új alakzat kerül a
+jelenetbe, a program a gépelés utáni rövid szünetben (0,35 s) újraépíti. Csak az az alakzat
+indul újra, amelyiknek a szerkezete változott, a többi nem villan. Hibás képletnél a régi
+alak marad látható, mellette a hibaüzenet. A paraméterek értéke és a pozíció, forgatás,
+méret ehhez képest is élőben hat. Az **Indít** a **futtatás**: az alakzatok kódja
+lefordul és elindul, a nézet a jelenet kamerájából lát (lásd lent). A **Leállít** visszavisz
+a szerkesztésbe; nem futó jelenetben ugyanez a gomb **Új mintavétel**: eldobja a
+részecskéket, és az előnézet újrakezdi. Változók: `x`, `y`, `z`; a `^` precedenciája a szokásos (nem kell
 zárójelezni). Függvények (a teljes, mindig naprakész lista a `matek/Fuggvenyek.hpp`
 táblája; a Tulajdonságok panelen a függvénylista fölé víve az egeret is megjelenik):
 
@@ -744,7 +754,7 @@ jelennek meg, és amíg van ütközés, az `Indít` gomb tiltva marad.
 
 > Megjegyzés: a paraméterek értékét a kifejezésfa **cím szerint** tárolja, ezért egy
 > paraméter vagy alakzat törlésekor a program eldobja a beparseolt képleteket és
-> leállítja a szimulációt — ilyenkor újra `Indít` kell.
+> leállítja a szimulációt — szerkesztés közben az előnézet utána magától újraépül.
 
 ## Felhasználói felület (Dear ImGui)
 

@@ -54,6 +54,12 @@ struct Scene : SceneDoc {
     // A Tulajdonságok panel a jelenet kameráját mutatja (az Alakzatok lista "Kamera" sora).
     bool camera_selected = false;
 
+    // --- automatikus előnézet (szerkesztés közben, lásd Controller::auto_preview) ---
+    // Melyik szerkezetet (Build::scene_sig) mutatja az előnézet, és mióta más a jelenet
+    // (a gépelés végét kivárjuk, nem építünk minden leütésre). 0 = újra kell építeni.
+    std::size_t preview_sig = 0;
+    double      dirty_since = -1.0;
+
     // Alakzatonként egy térbeli objektum (object/SpaceObject.hpp). A lista i-edik
     // alakzata a pool i-edik objektuma; a méret együtt mozog (a vezérlő a
     // destruktorában leiratkozik az ablak eseményeiről, ezért szabadon megszüntethető).
@@ -152,6 +158,7 @@ struct Scene : SceneDoc {
         Build::drop_trees(*this);
         runtime.clear();
         playing = false;           // a futás véget ért: újra a szerkesztő kamera
+        preview_sig = 0;           // ... és szerkesztésben az előnézet magától visszajön
         error.clear();
         drag_obj = drag_ctrl = -1;
     }

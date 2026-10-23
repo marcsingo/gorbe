@@ -2,6 +2,7 @@
 #define GORBE_APP_CONTROLLER_HPP
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +17,7 @@
 
 #include "../scene/Build.hpp"
 #include "../scene/Names.hpp"
+#include "../scene/Validate.hpp"
 #include "../scene/ProjectFile.hpp"
 #include "../script/Compiler.hpp"
 #include "../ui/Requests.hpp"
@@ -184,6 +186,7 @@ public:
         } else {
             apply_requests(rq);
             if (job_ && !job_->slow) run_job();
+            if (!job_ && cur_) auto_preview(*cur_);
         }
         // A szerkesztő kamera csak akkor mozdul a bevitelre, ha épp abból nézünk, és
         // nem tart hosszú munka. Futás közben, a jelenet kamerájából nézve a billentyűk
@@ -216,7 +219,11 @@ private:
         if (rq.drop) sc.drop();
 
         sc.sync_pool();
-        if (rq.build) build(sc, true, "Inditas");
+        if (rq.build) build(sc, BuildMode::Play, "Inditas");
+        // A panelek szerkezeti változása (warp, képletes paraméter, a transzformáció első
+        // mozdítása): futás közben a futó jelenet frissül (a kód marad); szerkesztés
+        // közben az előnézet magától észreveszi (auto_preview).
+        else if (rq.rebuild && sc.playing) build(sc, BuildMode::Update, "Ujraepites");
         if (rq.photo) { Job& j = job("Fenykep"); j.slow = true; Photo::queue(j, sc, photo); }
         Scene* const opened = rq.edit_shape ? open_editor(sc, *rq.edit_shape) : nullptr;
 
@@ -341,7 +348,7 @@ private:
         s.controls.push_back(best_p);
         // Az első pontnál újra kell építeni: a pozíció csak így kerül paraméterként a
         // képletbe (Build::place). A részecskék nem indulnak újra.
-        if (first) { build(sc, false, "Ujraepites"); run_job(); }   // gyors: jelző nélkül lefut
+        if (first) { build(sc, BuildMode::Update, "Ujraepites"); run_job(); }   // gyors: jelző nélkül lefut
     }
 
     // Az egér alatti legközelebbi (látható) részecske: melyik objektumé, és hol van.
@@ -402,8 +409,8 @@ private:
             float const eps = 0.03f * effective_d(s, sc);
             v = std::make_shared<Variational>(Variational::from_particles(ps, center, eps));
             if (v->centers.size() < 20 || !v->solve()) {
-                sc.error = std::string(s.name) + ": a szerkeszteshez elobb inditsd el, "
-                           "es varj, amig a reszecskek bevonjak a feluletet";
+                sc.error = std::string(s.name) + ": a szerkeszteshez varj, amig a reszecskek "
+                           "bevonjak a feluletet";
                 return nullptr;
             }
         }
@@ -437,7 +444,7 @@ private:
 
         Job& j = job("Szerkeszto megnyitasa");
         j.slow = true;          // a jelző már az első lépés előtt látsszon
-        auto const ns_built = build(ns, true, "Szerkeszto megnyitasa");
+        auto const ns_built = build(ns, BuildMode::Preview, "Szerkeszto megnyitasa");
         j.add("Reszecskek atvetele", [&ns, moved = std::move(moved)] {
             if (moved.size() >= 8) ns.pool.front()->model().particles() = moved;
         });
@@ -460,7 +467,7 @@ private:
                 *committed = true;
                 src->active = true;
             });
-            build(sc, false, "Szerkeszto megnyitasa", src);
+            build(sc, BuildMode::Update, "Szerkeszto megnyitasa", src);
         }
 
         // Megszakításkor: ha a szerkesztő nem épült fel, vagy a forrás még nem kapta meg
@@ -564,7 +571,8 @@ private:
             ns.camera.look_at(ns.view.eye, ns.view.target);
             ns.camera.set_fov_deg(ns.view.fov);
             ns.sync_pool();
-            build(ns, true, "Projekt betoltese");
+            build(ns, BuildMode::Preview, "Projekt betoltese");   // előnézet, nem futtatás
+            ns.preview_sig = Build::scene_sig(ns, program_params);
             ns.set_active(false);
         }
         cur_ = &scenes.front();
@@ -575,33 +583,47 @@ private:
     // mintavételezőknek — a hosszú munka (Job) lépéseiként: előbb a parseolás (gyors),
     // utána alakzatonként a deriválás és a fordítás (ez a drága: egy ~300 kényszeres
     // variációs alakzat ~185 ms).
-    // `restart`: a részecskék újraindulnak-e (az Indításnál igen; egy kontrollpont
-    // lerakásakor nem — a felület ugyanaz, csak a képlet kap új paramétert).
+    //
+    //   Play     Indít: a kód fordul és elindul, minden részecske újraindul, és a
+    //            jelenet FUT (a jelenet kamerájából látunk, a bemenet a kódé).
+    //   Preview  szerkesztés közbeni automatikus előnézet (auto_preview): kód nélkül,
+    //            és csak az az alakzat indul újra, amelyiknek a szerkezete változott
+    //            (Shape::sampled_sig) — a többi nem villan. Hibás képletnél a régi alak
+    //            marad látható (a mintavételezők a régi fát tartják), mellette a hiba.
+    //   Update   a futó jelenet frissítése (pl. egy kontrollpont lerakása): se kód, se
+    //            újraindítás — a felület ugyanaz, csak a képlet kap új paramétert.
     //
     // Megszakításkor a félbe maradt jelenet leáll (drop), hogy ne maradjon benne régi
     // és új felület keverve — vagy a variációs kényszerek átfoglalása után a régi
     // címekre mutató program. Ha `st->active` hamis, a megszakítás nem nyúl hozzá
     // (a hívó dönti el, mikortól "számít" ez a felépítés; lásd open_editor).
+    //
+    // ponytail: az előnézet minden alakzat fáját újra beállítja (set_tree: deriválás és
+    // fordítás), nem csak a változottét; sok nagy variációs alakzatnál ez érezhető.
+    enum class BuildMode { Play, Preview, Update };
     struct BuildState { bool done = false; bool active = true; };
 
-    std::shared_ptr<BuildState> build(Scene& sc, bool restart, char const* title,
+    std::shared_ptr<BuildState> build(Scene& sc, BuildMode mode, char const* title,
                                       std::shared_ptr<BuildState> st = nullptr) {
         if (!st) st = std::make_shared<BuildState>();
         Job& j = job(title);
         auto ok = std::make_shared<bool>(true);
-        // Az alakzatok kódja csak teljes újraindításkor fordul újra (egy kontrollpont
-        // lerakásakor a futó kód marad), a szerkesztő fülön pedig nem fut.
-        if (restart && !sc.editor) add_script_steps(j, sc, ok);
-        j.add("Kepletek feldolgozasa", [this, &sc, ok] {
+        bool const play = mode == BuildMode::Play && !sc.editor;
+        // Az alakzatok kódja csak az Indításkor fordul újra és indul el (a szerkesztő
+        // fülön soha).
+        if (play) add_script_steps(j, sc, ok);
+        j.add("Kepletek feldolgozasa", [this, &sc, ok, mode] {
             std::string err = Build::build(sc, program_params);
             if (err.empty()) { sc.error.clear(); return; }
-            sc.drop();
+            // Az előnézetben a régi alak marad (a mintavételezők a régi fát tartják),
+            // csak a hiba jelenik meg; futtatáskor félkész jelenet nem maradhat.
+            if (mode != BuildMode::Preview) sc.drop();
             sc.error = err;
             *ok = false;                 // a jelenet többi lépése kimarad
         });
         std::size_t i = 0;
         for (auto const& s : sc.shapes) {
-            j.add(std::string(s.name) + ": derivalas es forditas", [&sc, i, restart, ok] {
+            j.add(std::string(s.name) + ": derivalas es forditas", [&sc, i, mode, ok] {
                 if (!*ok) return;
                 Shape& s = shape_at(sc, static_cast<int>(i));
                 auto& p = *sc.pool[i];
@@ -612,21 +634,47 @@ private:
                 p.model().bind_controls(&s.controls, Build::control_params(s));
                 // Saját kezdő részecskék (az alakzat helye körül) + futó állapot.
                 p.model().spawn_center = {s.xform.pos[0], s.xform.pos[1], s.xform.pos[2]};
-                if (restart) p.start();
+                std::size_t const sig = Build::shape_sig(s);
+                bool const restart = mode == BuildMode::Play ||
+                    (mode == BuildMode::Preview && (sig != s.sampled_sig || p.model().particles().empty()));
+                if (restart) {
+                    p.start();
+                    s.sampled_sig = sig;
+                }
             });
             ++i;
         }
-        j.add("Kesz", [st, &sc, restart, ok] {
+        j.add("Kesz", [st, &sc, play, ok] {
             st->done = true;
             // Az Indítással a jelenet FUT (a Töröl-ig): a nézet a jelenet kamerájából lát.
-            if (restart && *ok && !sc.editor) sc.playing = true;
+            if (play && *ok) sc.playing = true;
         });
         j.on_cancel.push_back([&sc, st] {
             if (st->done || !st->active) return;
             sc.drop();
-            sc.error = "Megszakitva: nyomj Inditot";
+            sc.error = "Megszakitva";
         });
         return st;
+    }
+
+    // Szerkesztés közben (nem fut, nem szerkesztő fül, nem tart hosszú munka) a jelenet
+    // magától mintavételez: ha a szerkezete (Build::scene_sig) megváltozott, és a
+    // változás után PREVIEW_DELAY ideig nem jött újabb (gépelés közben nem építünk
+    // minden leütésre), és nincs névhiba, előnézetet építünk.
+    static constexpr double PREVIEW_DELAY = 0.35;   // s
+
+    void auto_preview(Scene& sc) {
+        if (sc.playing || sc.editor || job_) return;
+        std::size_t const sig = Build::scene_sig(sc, program_params);
+        if (sig == sc.preview_sig) { sc.dirty_since = -1.0; return; }
+        double const now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (sc.dirty_since < 0.0) { sc.dirty_since = now; return; }
+        if (now - sc.dirty_since < PREVIEW_DELAY) return;
+        if (!validate(program_params, sc).empty()) return;     // névhiba: a panel jelzi, várunk
+        sc.preview_sig = sig;
+        sc.dirty_since = -1.0;
+        build(sc, BuildMode::Preview, "Elonezet");
+        if (!job_->slow) run_job();
     }
 
     // Az alakzatok C++ kódjának leállítása, fordítása és indítása (script/Compiler.hpp),

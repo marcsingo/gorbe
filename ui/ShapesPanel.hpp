@@ -91,8 +91,14 @@ namespace Ui {
         ImGui::BeginDisabled(!pr.empty());
         if (ImGui::Button("Indit")) rq.build = true;
         ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Futtatas: az alakzatok kodja lefordul es elindul, a jelenet\n"
+                              "kamerajabol latunk, a billentyuzet es az eger a kode.\n"
+                              "(Szerkesztes kozben az alakzatok maguktol mintavetelezodnek.)");
         ImGui::SameLine();
-        if (ImGui::Button("Torol")) rq.drop = true;
+        // Futás közben: leállítás (vissza a szerkesztésbe). Szerkesztésben: a részecskék
+        // eldobása — az előnézet utána magától újra mintavételez.
+        if (ImGui::Button(sc.playing ? "Leallit" : "Uj mintavetel")) rq.drop = true;
         if (sc.playing) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.45f, 1.0f), "FUT");

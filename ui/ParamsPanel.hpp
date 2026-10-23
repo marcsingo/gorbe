@@ -47,7 +47,7 @@ namespace Ui {
                 // változása újraépítést kér (a fákba a beolvasott képlet épül be).
                 ImGui::SetNextItemWidth(140.0f);
                 ImGui::InputText("##keplet", p.expr, sizeof(p.expr));
-                if (ImGui::IsItemDeactivatedAfterEdit()) rq.build = true;
+                if (ImGui::IsItemDeactivatedAfterEdit()) rq.rebuild = true;
             } else {
                 ImGui::SetNextItemWidth(90.0f);
                 if (ImGui::InputFloat("##ertek", &p.value, 0.0f, 0.0f, "%.4g"))
@@ -66,7 +66,7 @@ namespace Ui {
                 } else {
                     std::snprintf(p.expr, sizeof(p.expr), "%g", p.value);
                 }
-                rq.build = true;
+                rq.rebuild = true;
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip(p.derived() ? "Vissza szamra"

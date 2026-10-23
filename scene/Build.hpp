@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
+#include <functional>
 #include <list>
 #include <memory>
 #include <stdexcept>
@@ -203,6 +204,51 @@ namespace Build {
             if (!p.derived()) q.push_back(&p.value);
         for (float& v : s.xform.pos) q.push_back(&v);
         return q;
+    }
+
+    // --- Szerkezeti ujjlenyomat (az automatikus előnézethez, app/Controller.hpp) ------
+    // Minden, ami a FELÉPÍTETT fát megváltoztatja: a szövegek (képlet, tartomány, warpok,
+    // képletes paraméterek, függvények), a nevek (a névfeloldás miatt), a variációs
+    // függvény változata, és hogy a transzformáció beépül-e. A paraméterek ÉRTÉKE és a
+    // pozíció/forgatás/méret NEM: azok cím szerint épülnek be, élőben hatnak.
+    namespace detail {
+        inline void mix(std::size_t& h, std::size_t v) { h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); }
+        inline void mix(std::size_t& h, char const* s) { mix(h, std::hash<std::string>{}(s)); }
+        inline void mix_params(std::size_t& h, std::list<Param> const& ps) {
+            mix(h, ps.size());
+            for (auto const& p : ps) { mix(h, p.name); mix(h, p.expr); }
+        }
+    }
+
+    inline std::size_t shape_sig(Shape const& s) {
+        std::size_t h = 0;
+        detail::mix(h, s.name);
+        detail::mix(h, s.formula);
+        detail::mix(h, s.domain);
+        detail::mix(h, s.warps.size());
+        for (auto const& w : s.warps) {
+            detail::mix(h, w.fx); detail::mix(h, w.fy); detail::mix(h, w.fz);
+            detail::mix(h, static_cast<std::size_t>(w.enabled));
+        }
+        detail::mix_params(h, s.locals);
+        // A variációs függvénynek csak a címe: a fa a kényszerek változását újraépítés
+        // nélkül, élőben követi (Variational::tree), tehát egy húzás nem ok az újraépítésre.
+        detail::mix(h, reinterpret_cast<std::size_t>(s.vari.get()));
+        detail::mix(h, static_cast<std::size_t>(s.xform.is_identity()));
+        detail::mix(h, s.controls.size());
+        return h;
+    }
+
+    inline std::size_t scene_sig(SceneDoc const& sc, std::list<Param> const& program) {
+        std::size_t h = 1;
+        detail::mix(h, sc.domain);
+        detail::mix_params(h, sc.params);
+        detail::mix_params(h, program);
+        detail::mix(h, sc.funcs.size());
+        for (auto const& f : sc.funcs) { detail::mix(h, f.name); detail::mix(h, f.params); detail::mix(h, f.body); }
+        detail::mix(h, sc.shapes.size());
+        for (auto const& s : sc.shapes) detail::mix(h, shape_sig(s));
+        return h;
     }
 
     inline void drop_trees(SceneDoc& sc) {

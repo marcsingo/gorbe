@@ -53,7 +53,7 @@ namespace Photo {
             objs.push_back(std::move(o));
         }
         if (objs.empty()) {
-            ps.status = "Nincs mit fenykepezni (nyomj Indit-ot).";
+            ps.status = "Nincs mit fenykepezni (meg nincs felepitett alakzat).";
             return;
         }
 

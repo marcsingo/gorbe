@@ -105,6 +105,9 @@ struct Shape {
     // (hogy az egyszerű alakzatok olcsók maradjanak), ezért az első hozzányúláskor
     // újra kell építeni — különben a csúszka némán nem csinálna semmit.
     bool warped = false;
+    // A részecskéi melyik szerkezetet (Build::shape_sig) mintavételezik: az előnézet
+    // csak azt az alakzatot indítja újra, amelyiknek ez megváltozott.
+    std::size_t sampled_sig = 0;
 };
 
 // A jelenet SAJÁT függvénye: név(paraméterek) = törzs, pl. g(u, k = 1) = u^2 + k.

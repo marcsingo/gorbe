@@ -236,6 +236,41 @@ GORBE_SHAPE(Mozgo)
         ctl.apply(stop);
         ok("Torol: leall, a szerkeszto kamera jon vissza", !sc.playing && !sc.game_view());
         ok("... a jelenet kameraja a kezdoertekere all", sc.scene_camera == initial_cam);
+
+        std::printf("=== 8. Szerkesztes: automatikus elonezet ===\n");
+        // A GUI frame-jei: apply (benne az előnézet) + a szimuláció órája.
+        auto idle = [&](double sec) {
+            double const t0 = glfwGetTime();
+            while (glfwGetTime() - t0 < sec) { ctl.apply(Ui::Requests{}); frames(1); }
+        };
+        idle(3.0);
+        ok("Leallit utan magatol mintavetelez", !sc.playing && sc.pool[0]->model().particles().size() > 20 &&
+           sc.pool[1]->model().particles().size() > 8,
+           std::to_string(sc.pool[0]->model().particles().size()) + " / " +
+           std::to_string(sc.pool[1]->model().particles().size()));
+        ok("... a kod nelkul (nem fut, a kamera all)", sc.runtime.empty() && sc.scene_camera == initial_cam);
+
+        // A fal képletét módosítjuk (r: 1 -> 1.5): csak a fal indul újra.
+        std::size_t const n_gomb = sc.pool[0]->model().particles().size();
+        std::snprintf(fal.formula, sizeof(fal.formula), "x^2 + y^2 + z^2 - 2.25");
+        idle(0.7);
+        float const on_new = sc.pool[1]->model().surface().F.at({4.0f, 0.0f, 0.0f});   // 2.5 + 1.5
+        ok("a modositas magatol beepult (gepeles utani szunetben)", std::abs(on_new) < 1e-4f,
+           std::to_string(on_new));
+        ok("... a valtozatlan alakzat nem indult ujra", sc.pool[0]->model().particles().size() >= n_gomb / 2 &&
+           sc.pool[0]->model().particles().size() > 20, std::to_string(sc.pool[0]->model().particles().size()));
+        ok("... es nem indult el a futas", !sc.playing);
+
+        // Hibás képlet: a régi alak marad, mellette a hiba; javítás után eltűnik.
+        std::snprintf(fal.formula, sizeof(fal.formula), "x^2 + (");
+        idle(0.7);
+        ok("hibas keplet: hiba latszik, a regi alak marad", !sc.error.empty() &&
+           std::abs(sc.pool[1]->model().surface().F.at({4.0f, 0.0f, 0.0f})) < 1e-4f &&
+           !sc.pool[1]->model().particles().empty(), sc.error);
+        std::snprintf(fal.formula, sizeof(fal.formula), "x^2 + y^2 + z^2 - 1");
+        idle(0.7);
+        ok("javitva: a hiba eltunik, az uj alak epul", sc.error.empty() &&
+           std::abs(sc.pool[1]->model().surface().F.at({3.5f, 0.0f, 0.0f})) < 1e-4f, sc.error);
         ctl.shutdown();
     }
     fs::remove_all(dir, ec);

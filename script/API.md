@@ -238,8 +238,10 @@ a másik felületére vetíti, ebből adódik a `depth` és a `normal`.
 
 ### Futás, a jelenet kamerája és a bemenet
 
-Az **Indít** után a jelenet **fut**, egészen a **Töröl**-ig. Az Alakzatok panelen ilyenkor
-zöld „FUT” felirat látszik.
+Az **Indít** után a jelenet **fut**, egészen a **Leállít**-ig. Az Alakzatok panelen ilyenkor
+zöld „FUT” felirat látszik. Szerkesztés közben (nem fut) a kód nem fut: az alakzatok
+ilyenkor maguktól, a felületen beállított alakjukban mintavételeződnek (automatikus
+előnézet). Amit a `start()` ad hozzá (warp, képlet, paraméter), az csak futás közben látszik.
 
 - **Futás közben** a 3D nézet a **jelenet kamerájából** lát. A billentyűzet és az egér a
   **kódé**, a szerkesztő kamera áll, és a kontrollpontok húzása szünetel. A tengelyek és a

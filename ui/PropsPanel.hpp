@@ -71,7 +71,7 @@ namespace Ui {
         ImGui::SameLine();
         if (ImGui::Button("Warp hozzaad")) {
             add_warp(s, ALL[ui.warp_preset_idx]);
-            rq.build = true;
+            rq.rebuild = true;
         }
         if (s.warps.empty())
             ImGui::TextDisabled("Nincs warp. A lancban az ELSO hat eloszor.");
@@ -80,7 +80,7 @@ namespace Ui {
         for (int i = 0; i < static_cast<int>(s.warps.size()); ++i) {
             Warp& w = s.warps[i];
             ImGui::PushID(i);
-            if (ImGui::Checkbox("##on", &w.enabled)) rq.build = true;
+            if (ImGui::Checkbox("##on", &w.enabled)) rq.rebuild = true;
             ImGui::SameLine();
             bool open = ImGui::TreeNodeEx("##w", ImGuiTreeNodeFlags_DefaultOpen,
                                           "%d. %s", i + 1, w.name);
@@ -97,14 +97,14 @@ namespace Ui {
                 for (int c = 0; c < 3; ++c) {
                     ImGui::SetNextItemWidth(-40.0f);
                     ImGui::InputText(labels[c], fields[c], sizeof(w.fx));
-                    if (ImGui::IsItemDeactivatedAfterEdit()) rq.build = true;
+                    if (ImGui::IsItemDeactivatedAfterEdit()) rq.rebuild = true;
                 }
                 ImGui::TreePop();
             }
             ImGui::PopID();
         }
-        if (move_from >= 0) { std::swap(s.warps[move_from], s.warps[move_to]); rq.build = true; }
-        if (erase >= 0)     { s.warps.erase(s.warps.begin() + erase);          rq.build = true; }
+        if (move_from >= 0) { std::swap(s.warps[move_from], s.warps[move_to]); rq.rebuild = true; }
+        if (erase >= 0)     { s.warps.erase(s.warps.begin() + erase);          rq.rebuild = true; }
 
         ImGui::TextDisabled("A harom kifejezes a ter -> alakzat lekepezes:");
         ImGui::TextDisabled("'hol keressuk ki az alakzatot ehhez a ponthoz'.");
@@ -244,7 +244,7 @@ namespace Ui {
                 ImGui::SetTooltip(s.vari ? "Kulon fulon, az alakzat kozepe az origoban."
                                          : "A reszecskekbol variacios feluletet kesz (a kepletet,\n"
                                            "a warpokat es a tartomanyt felvaltja), es kulon\n"
-                                           "fulon megnyitja. Elotte inditsd el az alakzatot.");
+                                           "fulon megnyitja. Elotte varj, amig a reszecskek bevonjak.");
         }
         if (s.vari) {
             int bound = 0;
@@ -341,7 +341,7 @@ namespace Ui {
             // olcsók maradnak: a gömb programja 15 utasítás a warpos 153 helyett).
             // Ezért amikor ELŐSZÖR nyúlsz a vezérlőkhöz, újra kell építeni — utána
             // a paraméterek címe már benne van, és a csúszkák élőben hatnak.
-            if (xf_edited && !s.warped && !s.xform.is_identity()) rq.build = true;
+            if (xf_edited && !s.warped && !s.xform.is_identity()) rq.rebuild = true;
         }
 
         warp_editor(s, ui, rq);

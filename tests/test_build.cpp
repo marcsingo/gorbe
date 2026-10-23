@@ -343,6 +343,44 @@ int main() {
         ok("rossz parameternev hiba", pr2.is_bad(&f3));
     }
 
+    std::printf("\n=== Szerkezeti ujjlenyomat (az automatikus elonezethez) ===\n");
+    {
+        std::list<Param> program;
+        SceneDoc sc;
+        Shape& a = shape(sc, "a", "x^2 + y^2 + z^2 - r^2");
+        Param& r = param(a.locals, "r", 1.0f);
+        Shape& b = shape(sc, "b", "z");
+        std::size_t const s0 = Build::scene_sig(sc, program), a0 = Build::shape_sig(a), b0 = Build::shape_sig(b);
+
+        r.value = 3.0f;
+        a.xform.pos[0] = 2.0f;                         // egységből először kimozdítva
+        ok("a transzformacio beepulese (egysegrol) valtozas", Build::shape_sig(a) != a0);
+        std::size_t const a1 = Build::shape_sig(a);
+        a.xform.pos[0] = 5.0f;
+        a.xform.rot[2] = 0.3f;
+        ok("parameter-ertek es pozicio NEM (cim szerint, eloben hat)", Build::shape_sig(a) == a1);
+
+        std::snprintf(b.formula, sizeof(b.formula), "z - 1");
+        ok("keplet: valtozas, de csak annal az alakzatnal",
+           Build::shape_sig(b) != b0 && Build::shape_sig(a) == a1 && Build::scene_sig(sc, program) != s0);
+        std::size_t const b1 = Build::shape_sig(b);
+        Warp w;
+        b.warps.push_back(w);
+        ok("uj warp: valtozas", Build::shape_sig(b) != b1);
+        std::size_t const b2 = Build::shape_sig(b);
+        b.warps.back().enabled = false;
+        ok("warp ki/be: valtozas", Build::shape_sig(b) != b2);
+
+        std::size_t const s1 = Build::scene_sig(sc, program);
+        Param& g = param(program, "g", 1.0f);
+        ok("uj program-parameter: a jelenet valtozik", Build::scene_sig(sc, program) != s1);
+        std::size_t const s2 = Build::scene_sig(sc, program);
+        g.value = 7.0f;
+        ok("... az erteke nem", Build::scene_sig(sc, program) == s2);
+        std::snprintf(g.expr, sizeof(g.expr), "2*r");
+        ok("... a kepletes szovege igen", Build::scene_sig(sc, program) != s2);
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);
     return failures ? 1 : 0;
 }
