@@ -88,7 +88,7 @@ GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapb�
 
 - `test_gl_disks`: az instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint
   a korábbi CPU-s, és a kontrollpont-kockák kirajzolódnak (a húzott kiemelve).
-- `test_gl_glsl`: a **GLSL-kiírás a valódi GPU-n**: a generált kód lefordul, és pontonként ugyanazt adja, mint a CPU (transzformáció, warp, CSG, saját függvény, `t`, tartomány, negatív alapú hatvány, a függvénytábla minden függvénye, variációs felület); a paraméterek, a pozíció és a `t` uniformként, újrafordítás nélkül hatnak. A **sugárkövető nézet** (`model/RayView.hpp`) is: egy gömb a jelenet kamerájából a kép közepén, a mélység az elülső pontjáé, a sugár változása újrafordítás nélkül nagyobb kört ad, a tartomány levág, a láthatatlan nem rajzolódik, két alakzatnál a közelebbi takar.
+- `test_gl_glsl`: a **GLSL-kiírás a valódi GPU-n**: a generált kód lefordul, és pontonként ugyanazt adja, mint a CPU (transzformáció, warp, CSG, saját függvény, `t`, tartomány, negatív alapú hatvány, a függvénytábla minden függvénye, variációs felület); a paraméterek, a pozíció és a `t` uniformként, újrafordítás nélkül hatnak. A **sugárkövető nézet** (`model/RayView.hpp`) is: egy gömb a jelenet kamerájából a kép közepén, a mélység az elülső pontjáé, a sugár változása újrafordítás nélkül nagyobb kört ad, a tartomány levág, a láthatatlan nem rajzolódik, két alakzatnál a közelebbi takar; a **variációs felület 3D textúrából** is a kép közepén, a mélység a gömb elülső pontjáé.
 - `test_gl_script`: az alakzatkód a valódi vezérlőn át, ahogy a gombok használják.
   Mentés, kódfájl, Indítás → „Build sikeres”, az `update()` a szimuláció órájával fut,
   futás közbeni mentésnél a kezdőérték kerül a fájlba, a Töröl visszaállít, a hibás
@@ -957,9 +957,11 @@ időmérőjével, medián):
   számával egyenesen.
 - A menetelés beállítása a CPU-s sugárkövetőénél nagyobb lépés (8) és rövidebb sugár (100, a
   kamera látótávolsága): ez 2,5–4,5× gyorsabb, és a pixelek legfeljebb 0,1%-a tér el.
-- A **variációs alakzatot** egyelőre nem sugárköveti (a részecskék látszanak, a konzol szól):
-  gyorsítás nélkül 320×180-on is ~180 ms, 960×540-en pedig a Windows 2 s-os GPU-időkorlátja
-  fölött volna.
+- A **variációs alakzat** függvénye a kényszerek összege (több száz tag): ezt lépésenként
+  kiértékelve 960×540-en a Windows 2 s-os GPU-időkorlátja fölött volna. Ezért a GPU egyszer
+  **kisüti egy 128³-as 3D textúrába** (a kényszerek dobozában, ráhagyással), és a menetelés
+  abból olvas: egy kiértékelés egyetlen, hardveresen interpolált olvasás. A dobozon kívül a
+  doboztól mért távolsággal folytatódik. Újra csak akkor sül, ha a felület változik.
 
 ## Hogyan gyors ez (teljesítmény)
 

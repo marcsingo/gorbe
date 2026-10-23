@@ -1,6 +1,7 @@
 #ifndef GORBE_MODEL_RAYVIEW_HPP
 #define GORBE_MODEL_RAYVIEW_HPP
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,11 @@
 //
 // A shader csak a SZERKEZET változásakor fordul újra (amikor a felépített fák
 // lecserélődnek); a paraméterek, a pozíció és a `t` képkockánként uniformként mennek fel.
+//
+// A variációs felület (a kényszerek összege, több száz tag) lépésenként túl drága volna
+// (mérve: 960x540-en a Windows 2 s-os GPU-időkorlátja fölött), ezért a GPU egyszer
+// kisüti egy 3D textúrába (bake, Glsl::Volume), és a menetelés abból olvas. Újra csak
+// akkor sül, ha a felület változik (a változata a kulcs része).
 // A mélységet is kiírja, így a sugárkövetett kép a többi rajzolttal helyesen takar.
 // ---------------------------------------------------------------------------
 class RayView {
@@ -80,6 +86,13 @@ public:
         glUniform2f(loc("u_t"), settings.t_min, settings.t_max);
         glUniform3f(loc("u_step"), settings.min_step, settings.max_step, settings.step_safety);
         glUniform1i(loc("u_max_steps"), settings.max_steps);
+        // A variációs felületek kisütött textúrái (a 0. egység szabadon marad).
+        for (std::size_t k = 0; k < vol_tex_.size(); ++k) {
+            glActiveTexture(GL_TEXTURE1 + static_cast<GLenum>(k));
+            glBindTexture(GL_TEXTURE_3D, vol_tex_[k]);
+            glUniform1i(loc(code_.volumes[k].sampler.c_str()), 1 + static_cast<GLint>(k));
+        }
+        glActiveTexture(GL_TEXTURE0);
 
         glBindVertexArray(vao_);
         glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -89,39 +102,99 @@ public:
 private:
     GLuint prog_ = 0, vao_ = 0;
     Glsl::Code code_;
-    std::vector<void const*> built_;   // melyik fákból készült a shader
+    std::vector<std::uintptr_t> built_;   // melyik fákból (és variációs változatokból) készült
+    std::vector<GLuint> vol_tex_;         // a variációs felületek 3D textúrái (code_.volumes szerint)
 
     GLint loc(char const* name) const { return glGetUniformLocation(prog_, name); }
 
     void release() {
         if (prog_) glDeleteProgram(prog_);
         if (vao_) glDeleteVertexArrays(1, &vao_);
+        release_volumes();
         prog_ = vao_ = 0;
     }
 
+    void release_volumes() {
+        if (!vol_tex_.empty()) glDeleteTextures(static_cast<GLsizei>(vol_tex_.size()), vol_tex_.data());
+        vol_tex_.clear();
+    }
+
     // A felépített fák azonossága: ha bármelyik lecserélődött (új felépítés), a
-    // shadert újra kell generálni — a paraméterek CÍME is változhatott.
+    // shadert újra kell generálni — a paraméterek CÍME is változhatott. A variációs
+    // felület a fa cseréje nélkül is változhat (a szerkesztőben húzott kényszer): a
+    // változata is a kulcs része, mert akkor a textúrát újra ki kell sütni.
     void sync(SceneDoc const& sc) {
-        std::vector<void const*> trees;
-        for (auto const& s : sc.shapes) { trees.push_back(s.tree.get()); trees.push_back(s.dom_tree.get()); }
-        if (trees == built_ && (prog_ || !error.empty())) return;
-        built_ = trees;
-        code_ = Glsl::generate(sc);
+        std::vector<std::uintptr_t> key;
+        for (auto const& s : sc.shapes) {
+            key.push_back(reinterpret_cast<std::uintptr_t>(s.tree.get()));
+            key.push_back(reinterpret_cast<std::uintptr_t>(s.dom_tree.get()));
+            key.push_back(s.vari ? s.vari->version : 0u);
+        }
+        if (key == built_ && (prog_ || !error.empty())) return;
+        built_ = key;
+        code_ = Glsl::generate(sc, /*variational_texture=*/true);
         if (prog_) glDeleteProgram(prog_);
         prog_ = 0;
+        release_volumes();
         error.clear();
         if (code_.shapes == 0) return;
-        // ponytail: a variációs felület (több száz RBF-tag lépésenként) gyorsítás nélkül
-        // túl drága: mérve 320x180-on ~180-300 ms, 960x540-en a Windows 2 s-os GPU-
-        // időkorlátja fölött van (a rendszer újraindítja a GPU-t). Addig a részecskék
-        // látszanak; a GPU-s változathoz gyorsító struktúra vagy kisebb felbontás kell.
-        if (code_.source.find("gp_rbf_") != std::string::npos) {
-            error = "variacios alakzat: sugarkovetessel meg tul draga (a reszecskek latszanak)";
-            return;
-        }
         if (!vao_) glGenVertexArrays(1, &vao_);
+        for (auto const& vol : code_.volumes) vol_tex_.push_back(bake(vol));
         prog_ = build(vertex_source(), fragment_source(code_));
         ++compiles;
+    }
+
+    // Egy variációs felület kisütése egy VOLUME_N^3-as R32F 3D textúrába, a GPU-n: a
+    // teljes összeg (Volume::sum) rétegenként egy rajzolással — egy réteg kicsi, így a
+    // GPU-időkorlát nem fenyeget. A rácspontok a texelközéppontok (lásd
+    // Glsl::detail::texture_function). A GL-állapotot (keret, nézet) visszaállítja.
+    GLuint bake(Glsl::Volume const& vol) {
+        int const N = Glsl::VOLUME_N;
+        GLuint tex = 0;
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_3D, tex);
+        glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, N, N, N, 0, GL_RED, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        for (GLenum w : {GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_TEXTURE_WRAP_R})
+            glTexParameteri(GL_TEXTURE_3D, w, GL_CLAMP_TO_EDGE);
+
+        std::string const fs = std::string("#version 330 core\n") + Glsl::PRELUDE + vol.sum +
+            "uniform vec3 u_lo, u_hi;\n"
+            "uniform float u_z;\n"
+            "out float val;\n"
+            "void main() {\n"
+            "    vec2 f = (gl_FragCoord.xy - 0.5) / float(" + std::to_string(N - 1) + ");\n"
+            "    val = " + vol.name + "(u_lo + vec3(f, u_z) * (u_hi - u_lo));\n"
+            "}\n";
+        GLuint const p = build(vertex_source(), fs);
+        if (!p) return tex;                                  // a hiba az `error`-ban
+
+        GLint old_fbo = 0, old_vp[4];
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_fbo);
+        glGetIntegerv(GL_VIEWPORT, old_vp);
+        GLboolean const depth_test = glIsEnabled(GL_DEPTH_TEST);
+        glDisable(GL_DEPTH_TEST);
+        GLuint fbo = 0;
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glViewport(0, 0, N, N);
+        glUseProgram(p);
+        glUniform3f(glGetUniformLocation(p, "u_lo"), vol.lo.x, vol.lo.y, vol.lo.z);
+        glUniform3f(glGetUniformLocation(p, "u_hi"), vol.hi.x, vol.hi.y, vol.hi.z);
+        glBindVertexArray(vao_);
+        for (int z = 0; z < N; ++z) {
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex, 0, z);
+            glUniform1f(glGetUniformLocation(p, "u_z"), static_cast<float>(z) / static_cast<float>(N - 1));
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        glBindVertexArray(0);
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(old_fbo));
+        glDeleteFramebuffers(1, &fbo);
+        glViewport(old_vp[0], old_vp[1], old_vp[2], old_vp[3]);
+        if (depth_test) glEnable(GL_DEPTH_TEST);
+        glDeleteProgram(p);
+        return tex;
     }
 
     static std::string vertex_source() {

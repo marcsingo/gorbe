@@ -46,6 +46,15 @@ struct Variational {
 
     void add(glm::vec3 c, float h) { centers.push_back(c); values.push_back(h); }
 
+    // A GLSL-függvény neve (a kiírás és a scene/Glsl.hpp ugyanezt használja): felületenként
+    // egyedi, a cím szerint.
+    std::string glsl_name() const {
+        char name[48];
+        std::snprintf(name, sizeof(name), "gp_rbf_%llx",
+                      static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(this)));
+        return name;
+    }
+
     // Határkényszer a felületi pontra, és normálkényszer `eps`-nyire kifelé, `eps`
     // értékkel — így a felület közelében |∇F| ≈ 1, mint egy távolságfüggvénynél, és a
     // szimuláció küszöbei (PHI, surface_distance) a szokásos tartományban maradnak.
@@ -285,9 +294,7 @@ struct RbfNode : Matek::Analizis::Kifejezes {
     // kényszerenként. A súlyok és a középpontok konstansként épülnek be.
     void print_glsl(std::ostream& os, Matek::Analizis::ParamNamer const& namer) const {
         using Matek::Analizis::Konstans;
-        char name[48];
-        std::snprintf(name, sizeof(name), "gp_rbf_%llx",
-                      static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(v.get())));
+        std::string const name = v->glsl_name();
         if (auto* fns = Matek::Analizis::glsl_functions) {
             std::string const head = std::string("float ") + name + "(";
             bool const have = std::any_of(fns->begin(), fns->end(),

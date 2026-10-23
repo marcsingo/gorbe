@@ -186,13 +186,20 @@ int main() {
     Evaluator ev(code, pts);
     ok("a generalt GLSL lefordul es linkel", ev.compiled);
     {
-        // A variációs felületet a sugárkövető (egyelőre) nem rajzolja: gyorsítás nélkül
-        // a GPU-időkorlát fölött volna. Hibát ad, és nem rajzol (a részecskék látszanak).
-        RayView guard;
+        // A textúrás változat (a sugárkövetőé): a variációs felület egy 3D textúrát olvas,
+        // a doboza a felület kényszereit bőven körülveszi; a teljes jelenet így is lefordul.
+        Glsl::Code const tex = Glsl::generate(sc, true);
+        bool box = tex.volumes.size() == 1;
+        if (box)
+            for (glm::vec3 p : tex.volumes[0].v->centers)
+                box &= glm::all(glm::greaterThan(p, tex.volumes[0].lo)) && glm::all(glm::lessThan(p, tex.volumes[0].hi));
+        ok("textura-mod: egy terfogat, a doboz a kenyszerek korul", box);
+        ok("... a kodban textura-olvasas, nincs osszeg", tex.source.find("sampler3D") != std::string::npos &&
+           tex.source.find("gp_cube(length(") == std::string::npos);
+        RayView all;
         DocCamera cam(sc.scene_camera);
-        guard.draw(sc, cam);
-        ok("variacios alakzattal a sugarkoveto biztonsagosan elutasit",
-           guard.error.find("variacios") != std::string::npos, guard.error);
+        all.draw(sc, cam);
+        ok("... a sugarkoveto a variacios alakzattal egyutt lefordul", all.error.empty(), all.error);
     }
 
     // Összevetés a CPU-val (relatív tűrés; ahol a CPU sem véges, az kimarad).
@@ -308,6 +315,40 @@ int main() {
         glm::vec3 const blue = Raytrace::palette_color(5);
         ok("ket alakzat: kozepen a kozelebbi (az o szinevel)", c.b > c.r && blue.b > blue.r,
            std::to_string(c.r) + "," + std::to_string(c.g) + "," + std::to_string(c.b));
+
+        // Variációs felület (egy 1 sugarú gömb részecskéiből), 3D textúrából: ugyanúgy a
+        // kép közepén, a mélység a gömb elülső pontjáé (a rács felbontásáig).
+        SceneDoc s3;
+        {
+            ParticleSystem src({}, 4);
+            src.d = 0.8f;
+            src.surface().set_tree(Matek::Analizis::make_kif("x^2 + y^2 + z^2 - 1").get());
+            src.restart();
+            for (int i = 0; i < 300; ++i) src.step(0.03f);
+            Shape& v = shape(s3, "v", "x");
+            v.vari = std::make_shared<Variational>(Variational::from_particles(src.particles(), {0, 0, 0}, 0.03f));
+            v.vari->solve();
+        }
+        Build::build(s3, program);
+        s3.scene_camera = s2.scene_camera;
+        DocCamera cam3(s3.scene_camera);
+        RayView vr;
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glViewport(0, 0, W, W);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        vr.draw(s3, cam3);
+        std::vector<Px> vimg(static_cast<std::size_t>(W) * W);
+        glReadPixels(0, 0, W, W, GL_RGBA, GL_UNSIGNED_BYTE, vimg.data());
+        ok("variacios (3D texturabol): lefordul, kozepen latszik, a sarokban nem",
+           vr.error.empty() && drawn(vimg, 32, 32) && !drawn(vimg, 2, 2) && !drawn(vimg, 52, 32), vr.error);
+        glReadPixels(32, 32, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &dz);
+        // Az elülső pont mélysége ~ y = -1 (a variációs felület a gömböt közelíti, a
+        // textúra a rács felbontásáig): kb. 0.05 egységen belül.
+        glm::vec4 const near_ = cam3.get_matrix() * glm::vec4(0.0f, -1.05f, 0.0f, 1.0f);
+        glm::vec4 const far_  = cam3.get_matrix() * glm::vec4(0.0f, -0.95f, 0.0f, 1.0f);
+        float const dn = near_.z / near_.w * 0.5f + 0.5f, df = far_.z / far_.w * 0.5f + 0.5f;
+        ok("... a melyseg a gomb eleje (y = -1 +- 0.05)", dz >= dn && dz <= df,
+           std::to_string(dz) + " in [" + std::to_string(dn) + ", " + std::to_string(df) + "]");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 

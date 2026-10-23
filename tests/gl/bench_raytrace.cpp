@@ -82,8 +82,7 @@ int main() {
     // Két beállítás: a CPU-s sugárkövetőé (max. lépés 2, t_max 200), és a RayView
     // alapértelmezése, a "gyors" (max. lépés 8, t_max 100 — a kamera úgyis csak 100-ig
     // lát). Az utóbbinál azt is mérjük, hány pixelen más a kép (találat / nem találat).
-    // (A variációs felület itt nincs: gyorsítás nélkül 960x540-en már a Windows 2 s-os
-    // GPU-időkorlátja fölött van; a RayView egyelőre nem is sugárkövet ilyet.)
+    // (A variációs felületet a RayView 3D textúrából rajzolja — lásd RayView::bake.)
     RayView::Settings base{};
     base.max_step = 2.0f;
     base.t_max = 200.0f;
