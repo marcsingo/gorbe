@@ -136,7 +136,8 @@ target_link_libraries(gorbe glfw OpenGL::GL imgui)
 #    Mindkettő ugyanaz az útvonal, de külön néven, hogy a jelentésük egyértelmű legyen.
 target_compile_definitions(gorbe PRIVATE
         "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\""
-        "BINARY_DIR=\"$<TARGET_FILE_DIR:gorbe>\"")
+        "BINARY_DIR=\"$<TARGET_FILE_DIR:gorbe>\""
+        "GORBE_SCRIPT_CRT=\"$<IF:$<CONFIG:Debug>,/MDd,/MD>\"")
 
 # 7. Tesztek (ctest). A matek/ és a részecske-kényszerek rétege GL nélkül,
 #    fejlécből tesztelhető — ez a projekt legkockázatosabb, legnehezebben
@@ -150,6 +151,9 @@ if(GORBE_BUILD_TESTS)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME ${t} COMMAND ${t})
     endforeach()
+    target_compile_definitions(test_script PRIVATE
+            "GORBE_API_HEADER=\"${CMAKE_CURRENT_SOURCE_DIR}/script/gorbe_api.hpp\""
+            "GORBE_SCRIPT_CRT=\"$<IF:$<CONFIG:Debug>,/MDd,/MD>\"")
 endif()
 
 # 8. Shaderek másolása a bináris mellé.
@@ -164,8 +168,9 @@ add_custom_target(shaders ALL
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/vertex.vert"
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/disk.vert"
             "${CMAKE_CURRENT_SOURCE_DIR}/particle_sampling/fragment.glsl"
+            "${CMAKE_CURRENT_SOURCE_DIR}/script/gorbe_api.hpp"
             "$<TARGET_FILE_DIR:gorbe>"
-        COMMENT "Shaderek masolasa a binaris melle")
+        COMMENT "Shaderek es a gorbe_api.hpp masolasa a binaris melle")
 add_dependencies(gorbe shaders)
 # 9. GL-kontextust igenylo tesztek — KULON kapcsolora, alapbol KI.
 #

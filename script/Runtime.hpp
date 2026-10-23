@@ -60,7 +60,7 @@ namespace Script {
         bool attach(Shape& s, SceneDoc& sc, std::list<Param>& program, Factory f) {
             std::string const who = label(s);
             if (!f.version || !f.create || !f.destroy) {
-                report(who + ": nincs GORBE_SHAPE(" + s.script + ") a kodban");
+                report(who + ": a kodban nincs GORBE_SHAPE a fajl nevevel egyezo osztalyra");
                 return false;
             }
             if (int const v = f.version(); v != gorbe::API_VERSION) {

@@ -1,6 +1,7 @@
 #ifndef GORBE_UI_SHAPESPANEL_HPP
 #define GORBE_UI_SHAPESPANEL_HPP
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -97,6 +98,27 @@ namespace Ui {
             bool const err = file_status.rfind("HIBA", 0) == 0;
             if (err) ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.40f, 1.0f), "%s", file_status.c_str());
             else     ImGui::TextDisabled("%s", file_status.c_str());
+            ImGui::PopTextWrapPos();
+        }
+
+        // Az alakzatok kódjának fordítása (az utolsó Indításból) és a futás hibái.
+        if (!sc.build_status.empty()) {
+            ImVec4 const col = sc.build_ok ? ImVec4(0.45f, 0.85f, 0.45f, 1.0f) : ImVec4(1.0f, 0.40f, 0.40f, 1.0f);
+            ImGui::TextColored(col, "%s", sc.build_status.c_str());
+            ImGui::PushTextWrapPos(0.0f);
+            std::size_t const shown = std::min<std::size_t>(sc.build_errors.size(), 10);
+            for (std::size_t i = 0; i < shown; ++i)
+                ImGui::TextColored(ImVec4(1.0f, 0.40f, 0.40f, 1.0f), "%s", sc.build_errors[i].c_str());
+            if (sc.build_errors.size() > shown)
+                ImGui::TextDisabled("... es meg %d hiba", static_cast<int>(sc.build_errors.size() - shown));
+            if (!sc.build_log.empty())
+                ImGui::TextDisabled("Teljes naplo: %s", sc.build_log.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        if (!sc.runtime.errors.empty()) {
+            ImGui::PushTextWrapPos(0.0f);
+            for (auto const& e : sc.runtime.errors)
+                ImGui::TextColored(ImVec4(1.0f, 0.60f, 0.35f, 1.0f), "%s", e.c_str());
             ImGui::PopTextWrapPos();
         }
 

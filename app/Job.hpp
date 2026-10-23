@@ -56,9 +56,18 @@ struct Job {
     // is bővítheti (egy átfoglalás nem a futó függvényt szabadítja fel).
     void run_step() {
         auto fn = std::move(steps[next].second);
-        ++next;
+        std::size_t const at = next++;
         fn();
+        if (again_) {                     // a lépés még nem végzett: újra sorra kerül
+            again_ = false;
+            steps[at].second = std::move(fn);
+            next = at;
+        }
     }
+
+    // A futó lépésből hívva: a lépés még egyszer lefut (pl. egy külső folyamatra vár,
+    // és minden hívásnál csak röviden várakozik, hogy a folyamatjelző éljen).
+    void again() { again_ = true; }
 
     // Lépések, amíg az időkeret tart (legalább egy): a gyors munka így egyetlen
     // képkockán belül lefut, és folyamatjelző sem villan fel.
@@ -67,6 +76,9 @@ struct Job {
         do run_step();
         while (!finished() && std::chrono::duration<double>(Clock::now() - t0).count() < seconds);
     }
+
+private:
+    bool again_ = false;
 };
 
 #endif //GORBE_APP_JOB_HPP

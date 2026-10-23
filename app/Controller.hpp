@@ -17,6 +17,7 @@
 #include "../scene/Build.hpp"
 #include "../scene/Names.hpp"
 #include "../scene/ProjectFile.hpp"
+#include "../script/Compiler.hpp"
 #include "../ui/Requests.hpp"
 #include "../utils/Parallel.hpp"
 #include "Job.hpp"
@@ -53,7 +54,8 @@ public:
         sim_sub = Window::Subscription(Window::add_time_passed_event([this](auto ev) {
             if (job_) return;      // hosszú munka közben a szimuláció szünetel
             float const dt = static_cast<float>(ev.dt);
-            drag_controls(dt);     // előbb a kontrollpontok mozgatják a felületet,
+            if (cur_) cur_->runtime.update_all(SceneTime::value, dt);   // az alakzatok kódja,
+            drag_controls(dt);     // utána a kontrollpontok mozgatják a felületet,
             step_objects(dt);      // utána lépnek a részecskék
         }));
         btn_sub = Window::Subscription(Window::add_mouse_button_event([this](auto e) {
@@ -204,8 +206,12 @@ public:
         std::vector<std::reference_wrapper<Scene const>> saved;
         for (auto const& s : scenes)
             if (!s.editor) saved.emplace_back(s);
+        // A kód által írt értékek helyett a GUI-n beállított kezdőértékek mentődnek.
+        for (auto& s : scenes) s.runtime.swap_initial();
+        std::string const text = ProjectFile::to_text(program_params, saved);
+        for (auto& s : scenes) s.runtime.swap_initial();
         std::ofstream f(path, std::ios::binary);
-        if (f) f << ProjectFile::to_text(program_params, saved);
+        if (f) f << text;
         if (!f) {
             file_status = "HIBA: nem sikerult menteni: " + path;
             return false;
@@ -538,6 +544,9 @@ private:
         if (!st) st = std::make_shared<BuildState>();
         Job& j = job(title);
         auto ok = std::make_shared<bool>(true);
+        // Az alakzatok kódja csak teljes újraindításkor fordul újra (egy kontrollpont
+        // lerakásakor a futó kód marad), a szerkesztő fülön pedig nem fut.
+        if (restart && !sc.editor) add_script_steps(j, sc, ok);
         j.add("Kepletek feldolgozasa", [this, &sc, ok] {
             std::string err = Build::build(sc, program_params);
             if (err.empty()) { sc.error.clear(); return; }
@@ -567,6 +576,52 @@ private:
             sc.error = "Megszakitva: nyomj Inditot";
         });
         return st;
+    }
+
+    // Az alakzatok C++ kódjának leállítása, fordítása és indítása (script/Compiler.hpp),
+    // a felépítés ELŐTT: a start() warpja, képlete, paramétere így már beépül.
+    //
+    // A fordító külön folyamat; a várakozó lépés minden futáskor csak röviden vár
+    // (Job::again), így a folyamatjelző él, és a megszakítás leállítja a fordítót (a
+    // Compilation a lépésekkel együtt szűnik meg, a folyamatával együtt).
+    void add_script_steps(Job& j, Scene& sc, std::shared_ptr<bool> ok) {
+        auto c = std::make_shared<Script::Compilation>();
+        std::filesystem::path const api_header = std::filesystem::path(BINARY_DIR) / "gorbe_api.hpp";
+        j.add("Kod leallitasa", [this, &sc, ok, c, api_header] {
+            // Az előző futás vége: a fák a kód paramétereire mutathatnak (drop), és a
+            // Windows a betöltött DLL-t nem engedi felülírni (unload).
+            sc.drop();
+            sc.module.unload();
+            sc.runtime.errors.clear();
+            sc.build_status.clear();
+            sc.build_errors.clear();
+            sc.build_log.clear();
+            if (!Script::has_scripts(sc)) return;
+            std::filesystem::path const dir = project_path.empty()
+                ? std::filesystem::path() : std::filesystem::path(project_path).parent_path();
+            if (!Script::begin(*c, sc, dir, api_header)) script_failed(sc, *c, ok);
+        });
+        j.add("Kod forditasa", [this, &sc, ok, c, jp = &j] {
+            if (!*ok || !c->proc) return;            // nincs kód, vagy már az előkészítés elbukott
+            if (!Script::poll(*c, 20)) { jp->again(); return; }
+            Script::finish(*c);
+            if (!c->ok) { script_failed(sc, *c, ok); return; }
+            sc.build_ok = true;
+            sc.build_status = "Build sikeres";
+            if (c->warnings) sc.build_status += " (" + std::to_string(c->warnings) + " figyelmeztetes)";
+            sc.build_log = c->log.string();
+            Script::load(*c, sc.module, sc.runtime, sc, program_params);
+            sc.runtime.start_all();
+        });
+    }
+
+    // A fordítás elbukott: a jelenet nem indul (a többi lépés kimarad), a hibák a panelre.
+    static void script_failed(Scene& sc, Script::Compilation const& c, std::shared_ptr<bool> const& ok) {
+        sc.build_ok = false;
+        sc.build_status = "Build sikertelen";
+        sc.build_errors = c.errors;
+        sc.build_log = c.log.empty() ? "" : c.log.string();
+        *ok = false;
     }
 
     // A felhasználó megszakította a munkát: a hátralévő lépések kimaradnak, a

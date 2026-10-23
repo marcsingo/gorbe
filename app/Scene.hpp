@@ -9,6 +9,8 @@
 #include "../object/SpaceObject.hpp"
 #include "../scene/Build.hpp"
 #include "../scene/Document.hpp"
+#include "../script/Platform.hpp"
+#include "../script/Runtime.hpp"
 
 // ---------------------------------------------------------------------------
 // Egy JELENET = egy fül. Önálló: saját alakzatok, saját paraméterek, saját munkatér,
@@ -36,6 +38,18 @@ struct Scene : SceneDoc {
     // alakzata a pool i-edik objektuma; a méret együtt mozog (a vezérlő a
     // destruktorában leiratkozik az ablak eseményeiről, ezért szabadon megszüntethető).
     std::vector<std::unique_ptr<SpaceObject>> pool;
+
+    // Az alakzatok C++ kódja (script/): a jelenet DLL-je és a belőle jött példányok.
+    // A SORREND számít: a runtime szűnik meg előbb (a példányokat a DLL kódja törli),
+    // csak utána a module.
+    Script::Platform::Module module;
+    Script::Runtime runtime;
+
+    // Az utolsó Indítás kódfordításának eredménye a panelre (üres: nem volt kód).
+    std::string build_status;
+    bool build_ok = false;
+    std::vector<std::string> build_errors;   // a fordító hibasorai
+    std::string build_log;                   // a teljes napló helye
 
     Scene() { camera.look_at(App::DEFAULT_EYE, glm::vec3(0.0f)); }
 
@@ -93,6 +107,10 @@ struct Scene : SceneDoc {
     // Minden képlet eldobása + a szimuláció leállítása. KÖTELEZŐ, mielőtt egy
     // paraméter vagy alakzat törlődik: a már beparseolt fák a törölt float
     // CÍMÉT tárolják, onnantól felszabadított memóriára mutatnának.
+    //
+    // A kód is leáll (a példányok a törlendő alakzatra mutathatnak), és amihez
+    // hozzányúlt, a GUI-n beállított kezdőértékére áll vissza — a fák eldobása UTÁN,
+    // mert a kód saját paramétereire (script_params) is mutathatnak.
     void drop() {
         for (auto& p : pool) {
             p->stop();
@@ -100,6 +118,7 @@ struct Scene : SceneDoc {
             p->model().surface().clear_domain();
         }
         Build::drop_trees(*this);
+        runtime.clear();
         error.clear();
         drag_obj = drag_ctrl = -1;
     }

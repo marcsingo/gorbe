@@ -4,10 +4,13 @@
 // újraépítés nélkül hatnak, a GUI-n beállított érték a kezdőérték.
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 
 #include "scene/Build.hpp"
+#include "script/Compiler.hpp"
 #include "script/Runtime.hpp"
 
 using Matek::Analizis::Kif;
@@ -171,6 +174,85 @@ int main() {
            !rt.attach(c, sc, program, {&old_version, &gorbe_create_Lukteto, &gorbe_destroy_Lukteto}));
         ok("... erheto hibaval", has(rt, "verziojaval fordult"));
         ok("hianyzo gyartofuggveny: elutasitja", !rt.attach(c, sc, program, {}));
+    }
+
+    std::printf("=== 4. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
+    {
+        std::string err;
+        if (Script::Platform::find_compiler(err).empty()) {
+            std::printf("  (kimarad: %s)\n", err.c_str());
+        } else {
+            namespace fs = std::filesystem;
+            // Ékezetes mappanév: a valódi projektek útvonalában is lehet ("5. félév").
+            fs::path const dir = fs::temp_directory_path() / fs::path(u8"gorbe_teszt_félév");
+            std::error_code ec;
+            fs::remove_all(dir, ec);
+            fs::create_directories(dir / "kod");
+            auto write = [&](char const* name, char const* text) {
+                std::ofstream(dir / "kod" / name) << text;
+            };
+            write("Proba.cpp", R"(#include "../gorbe_api.hpp"
+struct Proba : gorbe::ShapeScript {
+    float* r = nullptr;
+    void start() override { r = &add_param("r", 2.0f); }
+    void update(float t, float) override { *r = 2.0f + t; position().x = 1.0f; }
+};
+GORBE_SHAPE(Proba)
+)");
+            write("Hibas.cpp", R"(#include "../gorbe_api.hpp"
+struct Hibas : gorbe::ShapeScript {
+    void update(float t, float) override { nincs_ilyen_valtozo = t; }
+};
+GORBE_SHAPE(Hibas)
+)");
+            auto compile = [&](SceneDoc const& sc, fs::path const& pd) {
+                Script::Compilation c;
+                if (Script::begin(c, sc, pd, GORBE_API_HEADER)) {
+                    while (!Script::poll(c, 20)) {}
+                    Script::finish(c);
+                }
+                return c;
+            };
+
+            SceneDoc sc;
+            std::snprintf(sc.name, sizeof(sc.name), "Jelenet 1");
+            Shape& s = shape(sc, "g", "x^2 + y^2 + z^2 - r^2", "Proba.cpp");
+            Script::Compilation c = compile(sc, dir);
+            ok("a jo kod lefordul", c.ok, c.errors.empty() ? "" : c.errors[0]);
+            ok("a DLL a build/<jelenet>/ mappaban", fs::is_regular_file(dir / "build" / "Jelenet_1" / "Jelenet_1.dll"));
+            ok("a gorbe_api.hpp a projekt mappajaba kerult", fs::is_regular_file(dir / "gorbe_api.hpp"));
+            {
+                Script::Platform::Module m;      // a Runtime ELŐTT: utoljára szabaduljon fel
+                Script::Runtime rt;
+                ok("betoltes", Script::load(c, m, rt, sc, program));
+                ok("peldany letrejott", !rt.empty(), rt.errors.empty() ? "" : rt.errors[0]);
+                rt.start_all();
+                std::string e = Build::build(sc, program);
+                ok("felepul", e.empty(), e);
+                rt.update_all(1.0f, 0.016f);     // r = 3, x-eltolás 1
+                near("a DLL kodja mozgatja: F(4,0,0) = 0", at(s, 4, 0, 0), 0.0f);
+                Build::drop_trees(sc);
+            }
+
+            SceneDoc bad;
+            shape(bad, "h", "x", "Hibas.cpp");
+            c = compile(bad, dir);
+            ok("a hibas kod nem fordul", !c.ok);
+            bool located = false;
+            for (auto const& l : c.errors)
+                if (l.find("kod\\Hibas.cpp(3)") == 0 && l.find("error C") != std::string::npos) located = true;
+            ok("a hiba fajllal es sorral, rovid uttal", located, c.errors.empty() ? "" : c.errors[0]);
+
+            SceneDoc missing;
+            shape(missing, "m", "x", "Nincs.cpp");
+            c = compile(missing, dir);
+            ok("hianyzo kodfajl: hiba", !c.ok && !c.errors.empty() &&
+               c.errors[0].find("nincs meg a kodfajl") != std::string::npos);
+            c = compile(sc, fs::path());
+            ok("mentetlen projekt: hiba", !c.ok && !c.errors.empty() &&
+               c.errors[0].find("mentsd") != std::string::npos);
+            fs::remove_all(dir, ec);
+        }
     }
 
     std::printf(failures ? "\n%d HIBA\n" : "\nminden rendben\n", failures);

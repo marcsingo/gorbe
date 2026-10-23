@@ -537,6 +537,18 @@ int main() {
         c.add("b", [&order] { order.push_back(-1); });
         c.run_for(10.0);
         ok("megszakitas utan a tobbi lepes kimarad", c.finished() && order.back() == 9);
+
+        // Egy varakozo lepes (pl. a fordito) again()-nel ujra sorra kerul, a sorrend marad.
+        Job w("varakozas");
+        int polls = 0;
+        std::vector<int> seq;
+        w.add("var", [&] { if (++polls < 3) w.again(); else seq.push_back(1); });
+        w.add("utana", [&seq] { seq.push_back(2); });
+        w.run_step();
+        ok("again: a lepes nem lep tovabb", polls == 1 && w.current() == "var" && w.progress() == 0.0f);
+        w.run_for(10.0);
+        ok("again: harmadikra vegez, utana jon a kovetkezo",
+           w.finished() && polls == 3 && seq == std::vector<int>({1, 2}));
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);
