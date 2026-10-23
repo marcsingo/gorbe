@@ -42,6 +42,9 @@ struct Scene : SceneDoc {
     // akkor a billentyűk megint a szerkesztő kamerát mozgatják.
     bool playing = false;
     bool show_scene_camera = true;
+    // Futás közben a jelenet kamerájából sugárkövetéssel (GPU, model/RayView.hpp)
+    // rajzolunk-e, vagy a részecskéket mutatjuk (a nézet bal felső sarkában váltható).
+    bool raytrace_view = true;
     DocCamera scene_view{scene_camera};
 
     // A kódé-e a bevitel, és a jelenet kamerájából látunk-e (a szerkesztő fülön soha).

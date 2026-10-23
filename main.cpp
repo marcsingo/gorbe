@@ -1,5 +1,6 @@
 #include "App.hpp"
 #include "model/CameraGizmo.hpp"
+#include "model/RayView.hpp"
 
 #include "app/Controller.hpp"
 #include "scene/Time.hpp"
@@ -28,12 +29,30 @@ int main() {
     // A rajzolás mindig az AKTUÁLIS fül tartalmát mutatja, a saját kamerájával: futás
     // közben a jelenet kamerájából (a "végleges" kép: tengelyek és rács nélkül), egyébként
     // a szerkesztő kamerából, a tengelyekkel és a jelenet kamerájának gúlájával.
+    //
+    // Futás közben alapból SUGÁRKÖVETÉSSEL (GPU, model/RayView.hpp): az alakzatok tisztán
+    // az egyenletükből. Ha a generált shader nem fordul le, a részecskék látszanak, és a
+    // hiba a konzolra kerül.
     CameraGizmo gizmo;
+    RayView rays;
+    std::string last_ray_error;
     app.set_draw([&] {
         Scene& sc = ctl.cur();
         if (!sc.game_view()) {
             app.get_axes().draw(sc.camera);
             if (!sc.editor) gizmo.draw_doc(sc.scene_camera, sc.camera);
+            sc.draw();
+            return;
+        }
+        if (sc.raytrace_view) {
+            rays.draw(sc, sc.view_camera());
+            if (rays.error != last_ray_error) {
+                last_ray_error = rays.error;
+                if (!rays.error.empty())
+                    Log::add(Log::Level::Error, sc.name, "sugarkovetes: a shader nem fordul: " + rays.error,
+                             SceneTime::value);
+            }
+            if (rays.error.empty()) return;
         }
         sc.draw();
     });

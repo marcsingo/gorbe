@@ -70,6 +70,18 @@ namespace Ui {
                                 : "Futas, de a szerkeszto kamerabol nezunk: a billentyuk a kamerat\n"
                                   "mozgatjak. Kattints: vissza a jelenet kamerajara.");
                         }
+                        if (one.show_scene_camera) {
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(one.raytrace_view ? "Sugarkovetes" : "Reszecskek"))
+                                one.raytrace_view = !one.raytrace_view;
+                            if (ImGui::IsItemHovered()) {
+                                image_hovered = false;
+                                ImGui::SetTooltip(one.raytrace_view
+                                    ? "Az alakzatok sugarkovetessel (GPU), tisztan az egyenletukbol.\n"
+                                      "Kattints: a reszecskek mutatasa."
+                                    : "A mintavetelezo reszecskek. Kattints: sugarkovetes.");
+                            }
+                        }
                     }
                     ImGui::EndTabItem();
                 }

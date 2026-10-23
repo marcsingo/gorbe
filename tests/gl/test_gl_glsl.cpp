@@ -16,6 +16,9 @@
 #include "particle_sampling/ParticleSystem.hpp"
 #include "scene/Build.hpp"
 #include "scene/Glsl.hpp"
+#include "model/Camera.hpp"
+#include "model/RayView.hpp"
+#include "model/Viewport.hpp"
 
 static int failures = 0;
 static void ok(std::string const& what, bool c, std::string const& info = "") {
@@ -216,6 +219,88 @@ int main() {
     gomb.xform.pos[1] = -1.0f;
     SceneTime::value = 1.7f;
     compare("parameter/pozicio/t valtozas utan");
+
+    std::printf("=== Sugarkovetes (model/RayView.hpp): egy 64x64-es kep a GPU-n ===\n");
+    {
+        int const W = 64;
+        GLuint fbo, color, depth;
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glGenTextures(1, &color);
+        glBindTexture(GL_TEXTURE_2D, color);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, W, W, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+        glGenRenderbuffers(1, &depth);
+        glBindRenderbuffer(GL_RENDERBUFFER, depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, W, W);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+        Vp::set_current({0.0f, 0.0f, static_cast<float>(W), static_cast<float>(W)});
+
+        SceneDoc s2;
+        Shape& g = shape(s2, "g", "x^2 + y^2 + z^2 - r^2");
+        Param& rr = param(g.locals, "r", 1.0f);
+        Build::build(s2, program);
+        s2.scene_camera.look_at({0.0f, -5.0f, 0.0f}, {0.0f, 0.0f, 0.0f});   // +y felé néz, jobbra = +x
+        s2.scene_camera.fov = 45.0f;
+        DocCamera cam(s2.scene_camera);
+        RayView rays;
+
+        struct Px { unsigned char r, g, b, a; };
+        auto render = [&] {
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glViewport(0, 0, W, W);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClearDepth(1.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST);
+            rays.draw(s2, cam);
+            std::vector<Px> img(static_cast<std::size_t>(W) * W);
+            glReadPixels(0, 0, W, W, GL_RGBA, GL_UNSIGNED_BYTE, img.data());
+            return img;
+        };
+        auto drawn = [&](std::vector<Px> const& img, int x, int y) { return img[static_cast<std::size_t>(y * W + x)].a > 0; };
+
+        auto img = render();
+        ok("lefordul", rays.error.empty(), rays.error);
+        ok("kozepen a gomb, a sarokban a hatter", drawn(img, 32, 32) && !drawn(img, 2, 2));
+        // r = 1, 5 egységről, 45°-os látószöggel a sziluett sugara ~15 px.
+        ok("r = 1: 20 px-re a kozeptol mar hatter", !drawn(img, 52, 32));
+        float dz = 0.0f;
+        glReadPixels(32, 32, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &dz);
+        glm::vec4 const clip = cam.get_matrix() * glm::vec4(0.0f, -1.0f, 0.0f, 1.0f);   // a gömb elülső pontja
+        float const expect = clip.z / clip.w * 0.5f + 0.5f;
+        ok("a melyseg a gomb eleje (a kamera elott 4 egyseg)", std::abs(dz - expect) < 2e-4f,
+           std::to_string(dz) + " / " + std::to_string(expect));
+
+        rr.value = 1.5f;                                   // élő paraméter: újrafordítás nélkül
+        img = render();
+        ok("r = 1.5: nagyobb, ujraforditas nelkul", drawn(img, 52, 32) && rays.compiles == 1,
+           std::to_string(rays.compiles) + " forditas");
+
+        std::snprintf(g.domain, sizeof(g.domain), "x > 0");    // szerkezet: új fa -> új shader
+        Build::build(s2, program);
+        img = render();
+        ok("tartomany x > 0: a bal fele nem latszik, a jobb igen", !drawn(img, 25, 32) && drawn(img, 40, 32) &&
+           rays.compiles == 2, std::to_string(rays.compiles) + " forditas");
+
+        g.visible = false;
+        img = render();
+        ok("lathatatlan: nem rajzolodik", !drawn(img, 40, 32));
+        g.visible = true;
+
+        // Két alakzat: a közelebbi (y = -2.5) takarja a távolabbit; más a színük.
+        g.domain[0] = 0;
+        g.color_idx = 0;
+        Shape& elol = shape(s2, "elol", "(x)^2 + (y + 2.5)^2 + z^2 - 0.3^2");
+        elol.color_idx = 5;
+        Build::build(s2, program);
+        img = render();
+        Px const c = img[32 * W + 32];
+        glm::vec3 const blue = Raytrace::palette_color(5);
+        ok("ket alakzat: kozepen a kozelebbi (az o szinevel)", c.b > c.r && blue.b > blue.r,
+           std::to_string(c.r) + "," + std::to_string(c.g) + "," + std::to_string(c.b));
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
     Window::destroy_window();
     std::printf(failures ? "\n%d HIBA\n" : "\nminden rendben\n", failures);

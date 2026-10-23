@@ -88,7 +88,7 @@ GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapb�
 
 - `test_gl_disks`: az instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint
   a korábbi CPU-s, és a kontrollpont-kockák kirajzolódnak (a húzott kiemelve).
-- `test_gl_glsl`: a **GLSL-kiírás a valódi GPU-n**: a generált kód lefordul, és pontonként ugyanazt adja, mint a CPU (transzformáció, warp, CSG, saját függvény, `t`, tartomány, negatív alapú hatvány, a függvénytábla minden függvénye, variációs felület); a paraméterek, a pozíció és a `t` uniformként, újrafordítás nélkül hatnak.
+- `test_gl_glsl`: a **GLSL-kiírás a valódi GPU-n**: a generált kód lefordul, és pontonként ugyanazt adja, mint a CPU (transzformáció, warp, CSG, saját függvény, `t`, tartomány, negatív alapú hatvány, a függvénytábla minden függvénye, variációs felület); a paraméterek, a pozíció és a `t` uniformként, újrafordítás nélkül hatnak. A **sugárkövető nézet** (`model/RayView.hpp`) is: egy gömb a jelenet kamerájából a kép közepén, a mélység az elülső pontjáé, a sugár változása újrafordítás nélkül nagyobb kört ad, a tartomány levág, a láthatatlan nem rajzolódik, két alakzatnál a közelebbi takar.
 - `test_gl_script`: az alakzatkód a valódi vezérlőn át, ahogy a gombok használják.
   Mentés, kódfájl, Indítás → „Build sikeres”, az `update()` a szimuláció órájával fut,
   futás közbeni mentésnél a kezdőérték kerül a fájlba, a Töröl visszaállít, a hibás
@@ -121,7 +121,9 @@ A képernyőn kétféle elem látszik: a felületet mintavételező **részecsk�
 | `Esc` | kilépés |
 
 Ez a **szerkesztő kamera**. **Futás közben** (Indít után, a Töröl-ig) a nézet a **jelenet
-kamerájából** lát. A jelenet kamerája az Alakzatok lista első sora („Kamera”); a
+kamerájából** lát. Futás közben a kép alapból **sugárkövetett** (GPU, `model/RayView.hpp`): az alakzatok
+tisztán az implicit egyenletükből, befoglaló térfogat nélkül; a nézet bal felső gombjai
+között ez visszaváltható a részecskékre. A jelenet kamerája az Alakzatok lista első sora („Kamera”); a
 Tulajdonságok panelen és a kódból is állítható, a szerkesztő nézetben narancs gúla mutatja.
 Ilyenkor a billentyűzet és az egér az alakzatok kódjáé (pl. WASD-irányítás, lásd a
 [`script/API.md`](script/API.md) „Futás, a jelenet kamerája és a bemenet” részét). A nézet

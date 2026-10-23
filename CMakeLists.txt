@@ -129,7 +129,8 @@ set(SOURCE_FILES main.cpp libraries/glad/src/glad.c
         script/Platform.hpp
         ui/ConsolePanel.hpp
         utils/Log.hpp
-        scene/Glsl.hpp)
+        scene/Glsl.hpp
+        model/RayView.hpp)
 
 # 4. Az executable létrehozása
 add_executable(gorbe ${SOURCE_FILES})
