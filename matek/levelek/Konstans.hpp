@@ -2,6 +2,8 @@
 #define MATEK_LEVELEK_KONSTANS_HPP
 
 #include <charconv>
+#include <cmath>
+#include <string>
 #include <string_view>
 #include "../Kifejezes.hpp"
 
@@ -31,9 +33,17 @@ namespace Matek {
             // A negatív szám zárójelbe kerül: "(-3) ^ 2" nem azonos a "-3 ^ 2"-vel.
             // ponytail: inf/nan kiírva nem olvasható vissza — véges képletben nem fordul elő.
             void print(std::ostream& os, ParamNamer const&) const override {
+                if (print_style == PrintStyle::Glsl && !std::isfinite(value)) {
+                    // A GLSL-ben nincs inf/nan literál.
+                    os << (std::isnan(value) ? "(0.0/0.0)" : value > 0.0f ? "(1.0/0.0)" : "(-1.0/0.0)");
+                    return;
+                }
                 char buf[32];
                 auto res = std::to_chars(buf, buf + sizeof(buf), value);
-                std::string_view txt(buf, static_cast<std::size_t>(res.ptr - buf));
+                std::string txt(buf, static_cast<std::size_t>(res.ptr - buf));
+                // GLSL-ben a "2" EGÉSZ literál (az 1/3 egész osztás volna): mindig lebegőpontos.
+                if (print_style == PrintStyle::Glsl && txt.find_first_of(".e") == std::string::npos)
+                    txt += ".0";
                 if (value < 0.0f) os << '(' << txt << ')';
                 else              os << txt;
             }

@@ -202,6 +202,22 @@ int main() {
         ok("Valtozo('q').at() kivetelt dob", threw);
     }
 
+    std::printf("\n=== GLSL-kiiras (glsl_text): a GPU nyelven ===\n");
+    {
+        float r = 2.0f;
+        auto namer = [&](float const* p) -> std::string { return p == &r ? "u_p[0]" : ""; };
+        auto resolve = [&](std::string const& n) -> Tree { return n == "r" ? Kif(&r).get() : nullptr; };
+        std::string const g = glsl_text(make_kif("x^2 + y^3 - z^r + 2*ln(x) + ctg(y) + 1/3", resolve), namer);
+        ok("a konstans lebegopontos (2.0; nincs egesz osztas)", g.find("2.0") != std::string::npos &&
+           g.find("1.0 / 3.0") != std::string::npos, g);
+        ok("x^2 -> gp_sq, y^3 -> gp_cube, z^r -> gp_pow", g.find("gp_sq(x)") != std::string::npos &&
+           g.find("gp_cube(y)") != std::string::npos && g.find("gp_pow(z, u_p[0])") != std::string::npos, g);
+        ok("ln -> log, ctg -> gp_ctg", g.find("log(x)") != std::string::npos && g.find("gp_ctg(y)") != std::string::npos, g);
+        ok("nincs ^ (a GLSL-ben nem hatvany)", g.find('^') == std::string::npos, g);
+        ok("utana a parser-nyelv valtozatlan (visszaall)",
+           kif_text(make_kif("x^2 + 2", resolve)).find("x ^ 2") != std::string::npos);
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);
     return failures ? 1 : 0;
 }

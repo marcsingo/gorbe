@@ -448,6 +448,21 @@ namespace Matek {
             return os.str();
         }
 
+        // Ugyanez GLSL-ben (Kifejezes.hpp: PrintStyle): egy GLSL-kifejezés az x, y, z
+        // nevű float változókra; a paraméterek a namer által adott nevekkel (pl.
+        // "u_p[3]"). A kellő segédfüggvényeket (pl. egy variációs felület kódját) a
+        // `functions`-be gyűjti; a közös előtagot (gp_pow, gp_sq, ...) lásd scene/Glsl.hpp.
+        inline std::string glsl_text(Kif const& f, ParamNamer const& namer,
+                                     std::vector<std::string>* functions = nullptr) {
+            struct Restore {
+                PrintStyle s; std::vector<std::string>* fns;
+                ~Restore() { print_style = s; glsl_functions = fns; }
+            } const restore{print_style, glsl_functions};
+            print_style = PrintStyle::Glsl;
+            glsl_functions = functions;
+            return kif_text(f, namer);
+        }
+
         inline Kif::Kif(std::string const& s) : ptr(make_kif(s).get()) {}
         inline Kif::Kif(char const* s)        : ptr(make_kif(std::string(s)).get()) {}
 

@@ -84,10 +84,11 @@ ctest --test-dir build --output-on-failure
 Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
 
 GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapból ki):
-`cmake -B build -DGORBE_BUILD_GL_TESTS=ON`. Kettő van:
+`cmake -B build -DGORBE_BUILD_GL_TESTS=ON`. Három van:
 
 - `test_gl_disks`: az instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint
   a korábbi CPU-s, és a kontrollpont-kockák kirajzolódnak (a húzott kiemelve).
+- `test_gl_glsl`: a **GLSL-kiírás a valódi GPU-n**: a generált kód lefordul, és pontonként ugyanazt adja, mint a CPU (transzformáció, warp, CSG, saját függvény, `t`, tartomány, negatív alapú hatvány, a függvénytábla minden függvénye, variációs felület); a paraméterek, a pozíció és a `t` uniformként, újrafordítás nélkül hatnak.
 - `test_gl_script`: az alakzatkód a valódi vezérlőn át, ahogy a gombok használják.
   Mentés, kódfájl, Indítás → „Build sikeres”, az `update()` a szimuláció órájával fut,
   futás közbeni mentésnél a kezdőérték kerül a fájlba, a Töröl visszaállít, a hibás

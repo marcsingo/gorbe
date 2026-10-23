@@ -4,8 +4,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <glm.hpp>
@@ -259,6 +263,7 @@ struct RbfNode : Matek::Analizis::Kifejezes {
         }
         std::size_t const k = v->centers.size();
         auto num = [&](float f) { Konstans(f).print(os, namer); };
+        if (Matek::Analizis::print_style == Matek::Analizis::PrintStyle::Glsl) return print_glsl(os, namer);
         num(v->w[k]);
         for (int m = 0; m < 3; ++m) { os << " + "; num(v->w[k + 1 + m]); os << '*'; a[m]->print(os, namer); }
         for (std::size_t j = 0; j < k; ++j) {
@@ -269,6 +274,44 @@ struct RbfNode : Matek::Analizis::Kifejezes {
             }
             os << ")^3";
         }
+    }
+
+    // GLSL-ben a kényszerek összege egy SAJÁT függvény (a glsl_functions-be kerül,
+    // felületenként egyszer), a kifejezésbe csak a hívása: így a bemenő koordináták
+    // (egy elhelyezett alakzatnál a transzformáció kifejezései) nem ismétlődnek meg
+    // kényszerenként. A súlyok és a középpontok konstansként épülnek be.
+    void print_glsl(std::ostream& os, Matek::Analizis::ParamNamer const& namer) const {
+        using Matek::Analizis::Konstans;
+        char name[48];
+        std::snprintf(name, sizeof(name), "gp_rbf_%llx",
+                      static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(v.get())));
+        if (auto* fns = Matek::Analizis::glsl_functions) {
+            std::string const head = std::string("float ") + name + "(";
+            bool const have = std::any_of(fns->begin(), fns->end(),
+                                          [&](std::string const& f) { return f.rfind(head, 0) == 0; });
+            if (!have) {
+                std::ostringstream f;
+                auto num = [&](float x) { Konstans(x).print(f, namer); };
+                std::size_t const k = v->centers.size();
+                f << head << "vec3 q) {\n    float r = ";
+                num(v->w[k]);
+                char const* axis[3] = {"q.x", "q.y", "q.z"};
+                for (int m = 0; m < 3; ++m) { f << " + "; num(v->w[k + 1 + m]); f << " * " << axis[m]; }
+                f << ";\n";
+                for (std::size_t j = 0; j < k; ++j) {
+                    f << "    r += ";
+                    num(v->w[j]);
+                    f << " * gp_cube(length(q - vec3(";
+                    for (int m = 0; m < 3; ++m) { if (m) f << ", "; num(v->centers[j][m]); }
+                    f << ")));\n";
+                }
+                f << "    return r;\n}\n";
+                fns->push_back(f.str());
+            }
+        }
+        os << name << "(vec3(";
+        for (int m = 0; m < 3; ++m) { if (m) os << ", "; a[m]->print(os, namer); }
+        os << "))";
     }
 
     Tree substitute(Matek::Analizis::SubstMap const& m) const override {

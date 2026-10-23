@@ -48,6 +48,20 @@ namespace Matek {
                 return std::make_shared<Hatvany>(std::move(a), std::move(b));
             }
 
+            // GLSL-ben a `^` nem hatvány, és a pow(a, b) NEGATÍV alapra definiálatlan —
+            // pedig a képletek tele vannak x^2-vel. Ezért segédfüggvény (Glsl::PRELUDE):
+            // a négyzet és a köb szorzatként, a többi gp_pow, ami egész kitevőnél
+            // negatív alapra is a std::pow szerint számol.
+            void print(std::ostream& os, ParamNamer const& namer) const override {
+                if (print_style != PrintStyle::Glsl) return KetOperandus::print(os, namer);
+                auto const n = const_of(get_jobb());
+                bool const sq = n && n->get_value() == 2.0f, cube = n && n->get_value() == 3.0f;
+                os << (sq ? "gp_sq(" : cube ? "gp_cube(" : "gp_pow(");
+                get_bal()->print(os, namer);
+                if (!sq && !cube) { os << ", "; get_jobb()->print(os, namer); }
+                os << ')';
+            }
+
             int compile(Program& prog) const override {
                 int a = get_bal()->compile(prog);
                 int b = get_jobb()->compile(prog);

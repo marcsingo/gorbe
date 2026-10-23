@@ -60,8 +60,21 @@ namespace Matek {
                        (b ? (h->b && b->same(*h->b)) : !h->b);
             }
 
+            // GLSL-ben a nevek többsége ugyanaz (sin, sqrt, min, ...); ahol nem, ott a
+            // GLSL megfelelő vagy egy segédfüggvény (Glsl::PRELUDE).
+            static char const* glsl_name(std::string_view n) {
+                if (n == "ctg")   return "gp_ctg";
+                if (n == "ln")    return "log";
+                if (n == "log")   return "gp_log10";
+                if (n == "atan2") return "atan";      // atan(y, x): ugyanaz a sorrend
+                if (n == "cbrt")  return "gp_cbrt";
+                return nullptr;
+            }
+
             void print(std::ostream& os, ParamNamer const& namer) const override {
-                os << def->name << '(';
+                char const* g = print_style == PrintStyle::Glsl ? glsl_name(def->name) : nullptr;
+                if (g) os << g; else os << def->name;
+                os << '(';
                 a->print(os, namer);
                 if (b) { os << ", "; b->print(os, namer); }
                 os << ')';

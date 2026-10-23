@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include <variant>
+#include <vector>
 #include "vec3.hpp"
 #include "Program.hpp"
 
@@ -22,6 +23,16 @@ namespace Matek {
         // Paraméter -> név (a névfeloldó inverze), a kiíráshoz. Üres szöveg = nincs
         // neve; ilyenkor a paraméter pillanatnyi értéke íródik ki.
         using ParamNamer = std::function<std::string(float const*)>;
+
+        // A kiírás nyelvjárása. Alapból a parser nyelve (visszaolvasható); GLSL-ben az
+        // eltérő csomópontok (konstans, hatvány, függvényhívás, variációs felület) a GPU
+        // nyelvén írnak — a többi (összeg, különbség, szorzat, hányados, változó,
+        // paraméter a namerrel) mindkettőben ugyanaz. A glsl_text (Parser.hpp) állítja
+        // be; a GLSL-hez kellő segédfüggvényeket (pl. egy variációs felület kódját) a
+        // `glsl_functions` gyűjti, ha nem üres.
+        enum class PrintStyle { Parser, Glsl };
+        inline thread_local PrintStyle print_style = PrintStyle::Parser;
+        inline thread_local std::vector<std::string>* glsl_functions = nullptr;
 
         // Ami szerint deriválni lehet: egy térbeli változó ('x', 'y', 'z'), egy
         // paraméter (a float CÍME), vagy egy tetszőleges részfa (azonosság szerint).
