@@ -264,8 +264,56 @@ int main() {
         };
         std::size_t const near_ = grown({-5.0f, -5.0f, 0.0f}), far_ = grown({0.0f, 0.0f, 0.0f});
         ok("az alakzat helye korul szuletve 3 s alatt beteritik", near_ > 30, std::to_string(near_) + " db");
-        ok("(az origo korul szuletve meg nem: ezert kell)", far_ < near_ / 2,
-           std::to_string(far_) + " db");
+        ok("az origorol indulva is (Newton-lepesekkel gyorsan odaernek)", far_ > 30, std::to_string(far_) + " db");
+    }
+
+    std::printf("\n=== 8. Rahuzas: gyors leszallas, a beragadt repulok kiesnek ===\n");
+    {
+        // Sebesség: ~7 egység távolságból hány lépés (0.03 s) az első leszállásig.
+        ParticleSystem ps({}, 11);
+        ps.d = 0.6f;
+        ps.surface().set_tree(Matek::Analizis::make_kif("(x+5)^2 + (y+5)^2 + z^2 - 1").get());
+        ps.restart();                                  // az origó körül (messze)
+        int steps = 0;
+        auto landed = [&] {
+            for (auto const& p : ps.particles()) if (p.state == rajtamozog) return true;
+            return false;
+        };
+        while (!landed() && steps < 1000) { ps.step(0.03f); ++steps; }
+        ok("7 egysegrol par lepes alatt leszall", steps <= 15, std::to_string(steps) + " lepes");
+
+        // Beragadt repülő: pontosan a gömb közepén (ott ∇F = 0, nincs merre menni).
+        ParticleSystem pc({}, 12);
+        pc.d = 0.6f;
+        pc.surface().set_tree(Matek::Analizis::make_kif("x^2 + y^2 + z^2 - 4").get());
+        pc.restart();
+        pc.particles()[0].p = glm::vec3(0.0f);
+        run(pc, 0.3f);
+        bool stuck = false;
+        for (auto const& p : pc.particles()) stuck |= glm::length(p.p) < 1e-3f;
+        ok("a turelmi ido alatt meg ott van", stuck);
+        run(pc, 0.6f);
+        stuck = false;
+        std::size_t flying = 0;
+        for (auto const& p : pc.particles()) { stuck |= glm::length(p.p) < 1e-3f; flying += p.state == ramozog; }
+        ok("utana kiesik, nem lebeg a terben", !stuck && flying == 0, std::to_string(flying) + " repulo");
+
+        // Két különálló gömb uniója: a másik darab felé tartók is leszállnak (türelmi idő).
+        ParticleSystem pu({}, 13);
+        pu.d = 0.6f;
+        pu.surface().set_tree(Matek::Analizis::make_kif(
+            "min((x-2.5)^2 + y^2 + z^2 - 1, (x+2.5)^2 + y^2 + z^2 - 1)").get());
+        pu.restart();
+        // A kezdőpontok véletlenek (egy-egy magnál akár mind egy oldalra eshet): itt egy-egy
+        // repülő biztosan mindkét darab felé indul, a jobb oldali közelebbről, tehát
+        // előbb száll le — a bal oldalinak a türelmi időn belül kell leszállnia.
+        pu.particles()[0].p = {1.2f, 0.2f, 0.0f};
+        pu.particles()[1].p = {-0.4f, 0.2f, 0.0f};
+        run(pu, 3.0f);
+        std::size_t left = 0, right = 0;
+        for (auto const& p : pu.particles()) (p.p.x < 0 ? left : right) += 1;
+        ok("ket kulonallo darab: mindketto beterul", left > 30 && right > 30,
+           std::to_string(left) + " / " + std::to_string(right));
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? "SIKERTELEN" : "MINDEN RENDBEN", failures);

@@ -59,14 +59,19 @@ public:
     // (Surface::set_tree), mert a kezdő gradiensekhez már az új F kell.
     void restart() {
         floaters.clear();
+        since_landed = -1.0f;
         spawn_random_particles(INITIAL_PARTICLES, 3);
     }
 
     // Minden részecske törlése (üres jelenet), és a kontrollpontok elengedése.
     void clear() {
         floaters.clear();
+        since_landed = -1.0f;
         unbind_controls();
     }
+
+    // Az első leszállás után ennyi idővel esnek ki a még repülő részecskék (lásd step()).
+    static constexpr float FLYER_GRACE = 0.5f;   // s
 
     // Az alakzat jellemző mérete: ebből jön a részecskék cél-távolsága. A GUI
     // `d` csúszkája állítja.
@@ -252,9 +257,17 @@ public:
                 if (floaters[idx].state == rajtamozog) witkin_move(floaters[idx], dt);
         });
 
-        // 4. Fisszió és halál — sorosan (a véletlenszámok sorrendje miatt).
+        // A még repülő részecskék sorsa: ha már valamelyik részecske a felületen van, a
+        // fisszió onnan beteríti a felületet, a repülők nem kellenek — de nem azonnal
+        // töröljük őket, hanem FLYER_GRACE után. Egy több darabból álló alakzatnál (pl.
+        // két különálló gömb uniója) a másik darab felé tartók így még leszállhatnak
+        // (a Newton-lépésekkel addigra le is szállnak); csak a beragadtak esnek ki.
+        bool const any_on = std::any_of(floaters.begin(), floaters.end(),
+                                        [](Particle const& p) { return p.state == rajtamozog; });
+        if (any_on) since_landed = since_landed < 0.0f ? 0.0f : since_landed + dt;
+        bool const drop_flyers = since_landed > FLYER_GRACE;
 
-        // 4. Fisszió és halál.
+        // 4. Fisszió és halál — sorosan (a véletlenszámok sorrendje miatt).
         std::vector<Particle> next;
         next.reserve(floaters.size() + 8);
         for (std::size_t idx = 0; idx < floaters.size(); ++idx) {
@@ -285,8 +298,9 @@ public:
             std::size_t const projected = next.size() + (floaters.size() - idx);
             bool const at_budget = static_cast<int>(projected) >= max_particles - 1;
 
-            if (i.detah) {
-                // halál: nem véges részecske, vagy a tartományba nem behozható
+            if (i.detah || (drop_flyers && i.state == ramozog)) {
+                // halál: nem véges részecske, a tartományba nem behozható, vagy még mindig
+                // repül, pedig a felületet már mások beterítik
             } else if (uton || !felszinen) {
                 next.push_back(i);
             } else if (at_budget) {
@@ -485,6 +499,7 @@ private:
     SpatialGrid grid;
     float grid_cell = 1.0f;
     bool  moving = false;   // mozgatják-e épp a kontrollpontok a felületet (q̇ ≠ 0)
+    float since_landed = -1.0f;   // mióta van részecske a felületen (s); -1 = még egy sincs
 
     // A részecskék felülettől mért távolsága (surface_distance), részecskénként
     // EGYSZER számolva — a taszítás minden jelöltnél ezt nézi.
@@ -681,28 +696,28 @@ private:
                                     i.sigma, dt, DOMAIN_PULL, DOMAIN_MAX_SLIDE);
     }
 
-    // Egy lépésben legfeljebb ennyi szigmányit haladhat a felület felé repülő
-    // részecske; enélkül a lenti sebesség-akkumuláció elszállna.
+    // Egy Newton-lépés legfeljebb ennyi max(d, 1) hosszú lehet: egy furcsa képlet
+    // (kis |∇F| egy nagy F mellett) se lökje messzire a részecskét.
     static constexpr float APPROACH_MAX_STEP = 0.5f;
 
-    void masik(Particle& i, float dt) {
-        // Figueiredo-Gomes: a részecske nincs a felületen, rárepítjük.
-        // A sebesség CSILLAPÍTVA halmozódik: eredetileg korlátlanul nőtt, ezért egy
-        // messziről induló részecske végül átlőtte a felületet és oszcillált.
-        i.p_dot = 0.8f * i.p_dot + i.delta * (-sign(i.F) * i.F_x);
-
-        // Lépéshossz-korlát, hogy egy nagy |∇F| (pl. kvartikus tórusz) se lökje el.
-        float step_len = glm::length(i.p_dot) * dt;
-        float max_step = APPROACH_MAX_STEP * i.sigma;
-        if (step_len > max_step && step_len > 1e-9f) i.p_dot *= max_step / step_len;
-
-        auto uj_p = i.p + i.p_dot * dt;
-        if (surf.F.at(uj_p) * i.F < 0.0f) {
-            // Átlőttük a felületet: felezzük a lépésközt és álljunk meg.
-            i.delta /= 2.0f;
-            i.p_dot = glm::vec3{0};
-        }
-        i.p += i.p_dot * dt;
+    // A még repülő részecske rátétele a felületre: Newton-lépés a gradiens mentén,
+    //     p <- p - F·∇F / |∇F|²,
+    // ami a felület közelében néhány lépésben beér (a korábbi, csillapított gradiens-
+    // folyam kis lépésközzel ~0.3 egység/s volt: egy messze álló alakzatnál másodpercekig
+    // tartott). Ha a lépés átlépi a felületet (F előjelet vált), a két pont közti húr
+    // metszéspontjára tesszük. A kritikus pontban (∇F = 0, pl. a gömb közepén) nincs
+    // merre menni: az ilyen részecske a többiek leszállása után kiesik (FLYER_GRACE).
+    void masik(Particle& i, float /*dt*/) {
+        i.p_dot = glm::vec3{0};
+        float const g2 = glm::dot(i.F_x, i.F_x);
+        if (!(g2 > 1e-12f)) return;
+        glm::vec3 step = -(i.F / g2) * i.F_x;
+        float const len = glm::length(step), max_len = APPROACH_MAX_STEP * std::max(d, 1.0f);
+        if (len > max_len) step *= max_len / len;
+        glm::vec3 const uj = i.p + step;
+        float const Fu = surf.F.at(uj);
+        if (Fu * i.F < 0.0f) i.p += step * (i.F / (i.F - Fu));   // húr: F(p) = 0 lineárisan
+        else                 i.p = uj;
     }
 };
 
