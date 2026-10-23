@@ -214,18 +214,31 @@ GORBE_SHAPE(Hibas)
                 return c;
             };
 
+            // A "Kod letrehozasa" gomb: uj fajlnal a vaz, a meglevot nem irja felul.
+            std::string cerr;
+            fs::path const vaz = Script::create_source(dir, "Vaz", GORBE_API_HEADER, cerr);
+            ok("create_source: uj fajl a vazzal", fs::is_regular_file(vaz) && vaz.filename() == "Vaz.cpp", cerr);
+            auto const before = fs::file_size(dir / "kod" / "Proba.cpp");
+            Script::create_source(dir, "Proba", GORBE_API_HEADER, cerr);
+            ok("create_source: a meglevo fajl marad", fs::file_size(dir / "kod" / "Proba.cpp") == before);
+            ok("create_source: rossz osztalynev hiba",
+               Script::create_source(dir, "1rossz", GORBE_API_HEADER, cerr).empty() && !cerr.empty());
+
             SceneDoc sc;
             std::snprintf(sc.name, sizeof(sc.name), "Jelenet 1");
             Shape& s = shape(sc, "g", "x^2 + y^2 + z^2 - r^2", "Proba.cpp");
+            shape(sc, "v", "x", "Vaz.cpp");
             Script::Compilation c = compile(sc, dir);
-            ok("a jo kod lefordul", c.ok, c.errors.empty() ? "" : c.errors[0]);
+            ok("a jo kod es a vaz egyutt lefordul", c.ok && c.warnings == 0,
+               c.errors.empty() ? std::to_string(c.warnings) + " figyelmeztetes" : c.errors[0]);
             ok("a DLL a build/<jelenet>/ mappaban", fs::is_regular_file(dir / "build" / "Jelenet_1" / "Jelenet_1.dll"));
             ok("a gorbe_api.hpp a projekt mappajaba kerult", fs::is_regular_file(dir / "gorbe_api.hpp"));
             {
                 Script::Platform::Module m;      // a Runtime ELŐTT: utoljára szabaduljon fel
                 Script::Runtime rt;
                 ok("betoltes", Script::load(c, m, rt, sc, program));
-                ok("peldany letrejott", !rt.empty(), rt.errors.empty() ? "" : rt.errors[0]);
+                ok("peldanyok letrejottek, hiba nelkul", !rt.empty() && rt.errors.empty(),
+                   rt.errors.empty() ? "" : rt.errors[0]);
                 rt.start_all();
                 std::string e = Build::build(sc, program);
                 ok("felepul", e.empty(), e);

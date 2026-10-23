@@ -50,6 +50,7 @@ int main() {
     a.warps.push_back(w);
     param(a.locals, "r", 1.25f, 0.0f, 3.0f);
     a.controls = {{1, 0, 0}, {0, 1.5f, -2}};
+    set(a.script, "Gomb1.cpp");
 
     auto& b = sc.shapes.emplace_back();
     set(b.name, "unio1"); set(b.formula, "unio(gomb1, z)");
@@ -98,6 +99,7 @@ int main() {
        std::string(o.warps[0].fx) == "x*cos(tw*z)");
     ok("objektum: lokalis parameter", o.locals.front().value == 1.25f && o.locals.front().max == 3.0f);
     ok("objektum: kontrollpontok", o.controls.size() == 2 && o.controls[1] == glm::vec3(0, 1.5f, -2));
+    ok("objektum: kodfajl", std::string(o.script) == "Gomb1.cpp" && !s.shapes.back().script[0]);
 
     {
         Shape const& v = pr.scenes.back().shapes.front();

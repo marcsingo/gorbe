@@ -153,6 +153,9 @@ private:
     void apply_requests(Ui::Requests const& rq) {
         Scene& sc = *cur_;
 
+        // Az alakzat kódja: a törlések ELŐTT, mert a kérés egy alakzatra mutat.
+        script_requests(rq);
+
         // A paramétert az alakzat ELŐTT: a listája lehet épp a törlendő alakzat lokálisa.
         if (rq.erase_param) {
             // Program-szintű változás MINDEN jelenetet érint: a már beparseolt fák a
@@ -586,8 +589,7 @@ private:
     // Compilation a lépésekkel együtt szűnik meg, a folyamatával együtt).
     void add_script_steps(Job& j, Scene& sc, std::shared_ptr<bool> ok) {
         auto c = std::make_shared<Script::Compilation>();
-        std::filesystem::path const api_header = std::filesystem::path(BINARY_DIR) / "gorbe_api.hpp";
-        j.add("Kod leallitasa", [this, &sc, ok, c, api_header] {
+        j.add("Kod leallitasa", [this, &sc, ok, c] {
             // Az előző futás vége: a fák a kód paramétereire mutathatnak (drop), és a
             // Windows a betöltött DLL-t nem engedi felülírni (unload).
             sc.drop();
@@ -597,9 +599,7 @@ private:
             sc.build_errors.clear();
             sc.build_log.clear();
             if (!Script::has_scripts(sc)) return;
-            std::filesystem::path const dir = project_path.empty()
-                ? std::filesystem::path() : std::filesystem::path(project_path).parent_path();
-            if (!Script::begin(*c, sc, dir, api_header)) script_failed(sc, *c, ok);
+            if (!Script::begin(*c, sc, project_dir(), api_header())) script_failed(sc, *c, ok);
         });
         j.add("Kod forditasa", [this, &sc, ok, c, jp = &j] {
             if (!*ok || !c->proc) return;            // nincs kód, vagy már az előkészítés elbukott
@@ -613,6 +613,37 @@ private:
             Script::load(*c, sc.module, sc.runtime, sc, program_params);
             sc.runtime.start_all();
         });
+    }
+
+    std::filesystem::path project_dir() const {
+        return project_path.empty() ? std::filesystem::path()
+                                    : std::filesystem::path(project_path).parent_path();
+    }
+
+    static std::filesystem::path api_header() { return std::filesystem::path(BINARY_DIR) / "gorbe_api.hpp"; }
+
+    // A Tulajdonságok panel kód-kérései: kódfájl létrehozása (vagy a meglévő
+    // hozzárendelése) és megnyitása a külső szerkesztőben. Az eredmény a fájl-sorba
+    // (file_status) kerül, mint a mentésé.
+    void script_requests(Ui::Requests const& rq) {
+        std::string err;
+        auto open = [&](std::filesystem::path const& p) {
+            if (!Script::Platform::open_path(p, err)) file_status = "HIBA: " + err;
+        };
+        if (rq.script_create) {
+            std::filesystem::path const src = Script::create_source(project_dir(), rq.script_class,
+                                                                    api_header(), err);
+            if (src.empty()) {
+                file_status = "HIBA: " + err;
+            } else {
+                std::snprintf(rq.script_create->script, sizeof(rq.script_create->script), "%s",
+                              (rq.script_class + ".cpp").c_str());
+                file_status = "Kod: " + src.string() + " (az Indit gomb forditja le)";
+                open(src);
+            }
+        }
+        if (rq.script_open) open(project_dir() / "kod" / rq.script_open->script);
+        if (rq.open_project_dir) open(project_dir());
     }
 
     // A fordítás elbukott: a jelenet nem indul (a többi lépés kimarad), a hibák a panelre.

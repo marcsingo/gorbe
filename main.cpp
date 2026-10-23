@@ -45,7 +45,7 @@ int main() {
         Ui::Geometry const g = Ui::compute_geometry(ui.layout);
 
         Ui::shapes_panel(sc, pr, ctl.photo, ctl.file_status, ui, rq, g);
-        Ui::props_panel(sc, ctl.program_params, pr, ui, rq, g);
+        Ui::props_panel(sc, ctl.program_params, ctl.project_path, pr, ui, rq, g);
         Ui::help_panel(sc.camera, app.get_axes(), ui.layout, g);
         Ui::params_panel(sc, ctl.program_params, pr, rq, ui.layout, g);
         Ui::viewport_panel(app, ctl.scenes, ui, rq, g);

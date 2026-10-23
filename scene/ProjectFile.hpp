@@ -35,7 +35,10 @@ namespace ProjectFile {
     using json = nlohmann::json;
 
     inline constexpr char const* FORMAT  = "gorbe-projekt";
-    inline constexpr int         VERSION = 1;
+    // 2: az objektum "script" mezője (a C++ kódfájl neve). Az 1-es fájl változatlanul
+    // betölthető (a hiányzó mező üres); a régi program viszont a 2-est elutasítja,
+    // hogy a kód hozzárendelése ne vesszen el némán.
+    inline constexpr int         VERSION = 2;
     inline constexpr char const* EXTENSION = ".gorbe.json";
 
     struct Project {
@@ -82,6 +85,7 @@ namespace ProjectFile {
                 {"params", params(s.locals)},
                 {"controls", controls},
             };
+            if (s.script[0]) o["script"] = s.script;   // a C++ kód (a projekt kod/ mappájában)
             // Variációs alakzatnál a kényszerek (a súlyok betöltéskor újraszámolódnak).
             if (s.vari) {
                 json cs = json::array();
@@ -203,6 +207,7 @@ namespace ProjectFile {
                         s.warps.push_back(wp);
                     }
                 params(j, "params", s.locals, w);
+                str(j, "script", s.script, w);
                 if (auto cs = j.find("controls"); cs != j.end() && cs->is_array())
                     for (auto const& cj : *cs) {
                         float c[3] = {0.0f, 0.0f, 0.0f};

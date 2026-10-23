@@ -84,9 +84,14 @@ ctest --test-dir build --output-on-failure
 Kikapcsolható: `-DGORBE_BUILD_TESTS=OFF`.
 
 GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapból ki):
-`cmake -B build -DGORBE_BUILD_GL_TESTS=ON`. Most egy van: `test_gl_disks` — az
-instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint a korábbi CPU-s, és a
-kontrollpont-kockák kirajzolódnak (a húzott kiemelve).
+`cmake -B build -DGORBE_BUILD_GL_TESTS=ON`. Kettő van:
+
+- `test_gl_disks`: az instancinges korong-rajzolás pixelre ugyanazt a képet adja, mint
+  a korábbi CPU-s, és a kontrollpont-kockák kirajzolódnak (a húzott kiemelve).
+- `test_gl_script`: az alakzatkód a valódi vezérlőn át, ahogy a gombok használják.
+  Mentés, kódfájl, Indítás → „Build sikeres”, az `update()` a szimuláció órájával fut,
+  futás közbeni mentésnél a kezdőérték kerül a fájlba, a Töröl visszaállít, a hibás
+  kód „Build sikertelen”-t ad a hibasorral, javítás után a DLL felülírható.
 
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
@@ -765,13 +770,13 @@ aktuális fájl neve.
 Ami bekerül: a program-szintű paraméterek, és jelenetenként a név, a munkatér, a `d`
 és a görbület, a kamera állása, a paraméterek (tartománnyal), a saját függvények, és
 az objektumok minden beállítása (képlet, tartomány, láthatóság, szín, anyag, saját
-`d`, transzformáció, warpok, lokális paraméterek, kontrollpontok). Ami nem: a részecskék és a
+`d`, transzformáció, warpok, lokális paraméterek, kontrollpontok, a C++ kódfájl neve). Ami nem: a részecskék és a
 felépített képletek — betöltéskor a program minden jelenetet magától felépít.
 
 ```json
 {
   "format": "gorbe-projekt",
-  "version": 1,
+  "version": 2,
   "program_params": [ { "name": "g1", "value": 1.0, "min": -10, "max": 10 } ],
   "scenes": [ {
       "name": "Jelenet 1", "domain": "", "d": 2.0, "curvature": 1.0,
@@ -782,7 +787,8 @@ felépített képletek — betöltéskor a program minden jelenetet magától fe
           "visible": true, "color": "Kek", "material": "Uveg", "own_d": false, "d": 2.0,
           "transform": { "pos": [0, 0, 0], "rot_deg": [0, 0, 0], "scale": [1, 1, 1] },
           "warps": [], "params": [ { "name": "r", "value": 1.0, "min": -10, "max": 10 } ],
-          "controls": [ [1.0, 0.0, 0.0] ]
+          "controls": [ [1.0, 0.0, 0.0] ],
+          "script": "Gomb1.cpp"
       } ]
   } ]
 }
@@ -794,8 +800,73 @@ felépített képletek — betöltéskor a program minden jelenetet magától fe
   az elsőt, a túl hosszú szöveg levágódik — ezekről figyelmeztetés jelenik meg az
   Alakzatok panelen, de a projekt betöltődik. Nem-JSON, más formátumú vagy újabb
   verziójú fájlnál hibaüzenet jön, és a régi projekt érintetlen marad.
+  Az 1-es verziójú (kód előtti) fájlok változatlanul betölthetők.
 - Az **Esc** kilép a programból, de csak ha épp nem egy ablakot (pl. a mentés
   ablakát) vagy egy szövegmezőt zár be.
+
+## Alakzatok kódja (C++)
+
+Egy alakzathoz C++ osztály írható, két függvénnyel: a `start()` egyszer fut az
+Indításkor, az `update(t, dt)` minden ciklusban. Az osztály a `gorbe::ShapeScript`-ből
+származik, és ezen át éri el az alakzatot: paraméterek, pozíció, forgatás, méret,
+warpok, képlet.
+
+```cpp
+#include "../gorbe_api.hpp"
+
+struct Gomb1 : gorbe::ShapeScript {
+    float* r = nullptr;
+
+    void start() override {                      // Indításkor, egyszer
+        r = &param("r");                         // a felületen beállított a kezdőérték
+        add_warp("x + 0.3*sin(3*y)", "y", "z");  // hullámos gömb
+    }
+
+    void update(float t, float dt) override {    // minden ciklusban
+        *r = 2.0f + 0.5f * std::sin(t);          // lüktet
+        rotation().z += 0.5f * dt;               // forog a z tengely körül
+    }
+};
+GORBE_SHAPE(Gomb1)
+```
+
+**Használat:** mentsd a projektet, mert a kód a projekt mappájába kerül. Válaszd ki az
+alakzatot, és a Tulajdonságok panel **Kód (C++)** részén nyomd meg a *Kód létrehozása*
+gombot. A program megírja a `kod/<Osztály>.cpp` vázat, és megnyitja a `.cpp`-hez
+rendelt szerkesztővel (VS Code, Visual Studio; ha nincs ilyen, a Jegyzettömbbel).
+Szerkesztés után az **Indít** gomb lefordítja és elindítja a kódot. Az Alakzatok
+panelen megjelenik, hogy a build sikeres volt-e, sikertelennél pedig a fordító
+hibasorai is (`kod\Gomb1.cpp(12): error C2065: ...`).
+
+```
+<projektmappa>/
+  projekt.gorbe.json
+  gorbe_api.hpp            ← a program írja (minden fordításkor), ne szerkeszd
+  kod/Gomb1.cpp            ← a te kódod; fájlnév = osztálynév
+  build/<jelenet>/         ← a fordítás kimenete: .obj, .dll, forditas.log
+```
+
+A szabályok:
+
+- **A felületen beállított érték a kezdőérték.** Amihez a kód hozzányúl, az a futás
+  végén (Töröl, újabb Indítás) visszaáll, és mentéskor is a kezdőérték kerül a fájlba.
+- **Szerkezetet csak a `start()` állíthat** (`add_param`, `add_warp`, `formula`),
+  mert ehhez újra kell építeni a képletet. Az `update()` csak értéket írhat
+  (paraméter, `position()`, `rotation()`, `scale()`): ez újraépítés nélkül, élőben hat.
+  A `start()` kiegészítései nem mentődnek, és nem halmozódnak Indításról Indításra.
+- A `param("r")` sorrendben keres: az alakzat saját paraméterei, utána a jelenet,
+  végül a program paraméterei. Képletes paraméter nem írható.
+- **Egy fájlt több alakzat is futtathat**, mindegyik saját példánnyal: a *Kód
+  létrehozása* meglévő fájlnévnél csak hozzárendel.
+- Egy jelenet minden kódja **egy DLL-be** fordul, a Visual Studio fordítójával. A
+  program a `vswhere.exe`-vel keresi meg, ehhez a „Desktop development with C++”
+  csomag kell. Minden Indítás újrafordít; ez néhány másodperc, és közben a
+  folyamatjelző látszik, ami meg is szakítható.
+- Ha a kód kivételt dob, csak az a kód áll le, a jelenet fut tovább, és a hiba
+  narancssárgán megjelenik. Egy rossz pointer vagy egy végtelen ciklus ellen nincs
+  védelem: ilyenkor a program is összeomlik vagy lefagy.
+- Egyelőre **csak Windowson** működik. A platformfüggő rész a `script/Platform.hpp`-ben van,
+  a Linux-ág ott kap majd helyet (`g++ -shared` + `dlopen`).
 
 ## Régi, fordítási idejű felületek
 
@@ -945,6 +1016,7 @@ minden kimenetre.
 | `app/` | **CONTROLLER**: `Controller` (a fülek gazdája, a kérések végrehajtása), `Scene` (kamera + mintavételezők), `Photo` |
 | `ui/` | **VIEW**: egy fájl panelenként; `Requests.hpp` a nézet → vezérlő kérések, `Layout.hpp` az elrendezés |
 | `raytrace/` | **leválasztható** sugárkövető komponens (renderer, paletta, anyagok, BMP-mentés) |
+| `script/` | az alakzatok C++ kódja: `gorbe_api.hpp` (a felhasználó felülete), `Runtime.hpp` (a példányok és a Host tábla), `Compiler.hpp` (fordítás, napló, betöltés, kódváz), `Platform.hpp` (az egyetlen platformfüggő rész) |
 | `tests/` | ctest-tesztek (GL nélkül futnak) |
 | `libraries/` | GLFW, GLM, GLAD, Dear ImGui (`imgui`), nlohmann/json 3.11.3 (`nlohmann/json.hpp`, MIT) |
 

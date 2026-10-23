@@ -156,6 +156,52 @@ namespace Script {
         }
     }
 
+    // Egy új kódfájl váza: a két függvény üresen, egy-egy kikommentezett példával.
+    inline std::string template_source(std::string const& cls) {
+        return "#include \"../gorbe_api.hpp\"\n"
+               "\n"
+               "// Az alakzat kodja. Az Inditas gomb forditja le es inditja el.\n"
+               "// A feluleten beallitott parameterek es a pozicio a KEZDOERTEKEK.\n"
+               "struct " + cls + " : gorbe::ShapeScript {\n"
+               "    // Egyszer, az Inditaskor (a kepletek felepitese elott). Itt lehet\n"
+               "    // szerkezetet allitani: add_param, add_warp, formula.\n"
+               "    void start() override {\n"
+               "        // add_warp(\"x + 0.3*sin(3*y)\", \"y\", \"z\");\n"
+               "    }\n"
+               "\n"
+               "    // Minden ciklusban. t: az ido (mp), dt: az elozo ciklus ota eltelt ido.\n"
+               "    // Itt csak erteket allits: param(\"r\"), position(), rotation(), scale().\n"
+               "    void update(float t, float dt) override {\n"
+               "        // rotation().z += 0.5f * dt;\n"
+               "        (void)t; (void)dt;\n"
+               "    }\n"
+               "};\n"
+               "GORBE_SHAPE(" + cls + ")\n";
+    }
+
+    // A kódfájl az alakzathoz: ha még nincs ilyen fájl, a váz kerül bele (ha van, az
+    // marad — így több alakzat is használhatja ugyanazt). Mellé a gorbe_api.hpp, hogy
+    // a szerkesztő kódkiegészítése a fordítás előtt is működjön. A fájl útvonala jön
+    // vissza, vagy üres (és `err`).
+    inline fs::path create_source(fs::path const& project_dir, std::string const& cls,
+                                  fs::path const& api_header, std::string& err) {
+        if (project_dir.empty()) { err = "a kodhoz elobb mentsd a projektet"; return {}; }
+        if (!valid_class_name(cls)) {
+            err = "'" + cls + "' nem lehet osztalynev (betu, szam, _; nem kezdodhet szammal)";
+            return {};
+        }
+        std::error_code ec;
+        fs::create_directories(project_dir / "kod", ec);
+        fs::copy_file(api_header, project_dir / "gorbe_api.hpp", fs::copy_options::overwrite_existing, ec);
+        fs::path const src = project_dir / "kod" / (cls + ".cpp");
+        if (!fs::exists(src, ec)) {
+            std::ofstream f(src, std::ios::binary);
+            f << template_source(cls);
+            if (!f) { err = "nem irhato: " + src.string(); return {}; }
+        }
+        return src;
+    }
+
     // A kész DLL betöltése és alakzatonként egy példány. A hiányzó GORBE_SHAPE vagy
     // a más API-verzió a runtime.errors-ba kerül; a többi alakzat kódja ettől fut.
     inline bool load(Compilation const& c, Platform::Module& m, Runtime& rt,

@@ -7,13 +7,14 @@
 
 // ---------------------------------------------------------------------------
 // Az alakzatkód fordításának és betöltésének platformfüggő része — CSAK itt van
-// #ifdef. A program többi része (script/Compiler.hpp, a vezérlő) ezt a négy dolgot
+// #ifdef. A program többi része (script/Compiler.hpp, a vezérlő) csak ezeket
 // használja:
 //
 //     find_compiler(err)                    a fordító környezete (üres: nincs)
 //     compile_command(env, sources, ...)    a fordító parancssora
 //     Process                               külső folyamat: indítás, várás, leállítás
 //     Module                                DLL / .so: betöltés, szimbólum, elengedés
+//     open_path(p, err)                     fájl a hozzárendelt programmal / mappa
 //
 // Az útvonalak std::filesystem::path-ok: Windowson a széles (UTF-16) API-t hívjuk,
 // így az ékezetes mappanevek (pl. "5. félév") is működnek.
@@ -33,6 +34,7 @@
 #    undef APIENTRY
 #  endif
 #  include <windows.h>
+#  include <shellapi.h>
 #  include <cstdio>
 #  undef near        // a windows.h régi makrói: elrontanák a near/far nevű függvényeket
 #  undef far
@@ -178,6 +180,23 @@ namespace Script::Platform {
         HMODULE h_ = nullptr;
     };
 
+    // Egy fájl megnyitása a hozzárendelt programmal (a .cpp-hez beállított
+    // szerkesztővel), vagy egy mappa a fájlkezelőben. Ha a .cpp-hez nincs program
+    // rendelve, a Jegyzettömb nyitja meg.
+    inline bool open_path(fs::path const& p, std::string& err) {
+        auto const r = reinterpret_cast<INT_PTR>(
+            ShellExecuteW(nullptr, L"open", p.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+        if (r > 32) return true;
+        if (r == SE_ERR_NOASSOC) {
+            std::wstring const arg = L"\"" + p.wstring() + L"\"";
+            if (reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", L"notepad.exe", arg.c_str(),
+                                                        nullptr, SW_SHOWNORMAL)) > 32)
+                return true;
+        }
+        err = "nem nyithato meg: " + p.string();
+        return false;
+    }
+
 #else  // ----------------------------------------------------------- csonk (Linux)
 
     inline fs::path find_compiler(std::string& err) {
@@ -202,6 +221,7 @@ namespace Script::Platform {
         bool  loaded() const { return false; }
         void* symbol(std::string const&) const { return nullptr; }
     };
+    inline bool open_path(fs::path const&, std::string& err) { err = "nincs megvalositva"; return false; }
 
 #endif
 

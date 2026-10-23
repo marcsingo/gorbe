@@ -1,6 +1,8 @@
 #ifndef GORBE_UI_PROPSPANEL_HPP
 #define GORBE_UI_PROPSPANEL_HPP
 
+#include <cctype>
+#include <cstdio>
 #include <list>
 #include <string>
 #include <utility>
@@ -12,6 +14,7 @@
 #include "../raytrace/Palette.hpp"
 #include "../scene/Presets.hpp"
 #include "../scene/Validate.hpp"
+#include "../script/Compiler.hpp"
 #include "Layout.hpp"
 #include "ParamsPanel.hpp"
 #include "Requests.hpp"
@@ -110,7 +113,66 @@ namespace Ui {
 
     // 2. ablak (JOBB oldalon, TELJES magasságban): a kijelölt alakzat adatai —
     // képlet, szín/anyag, tartomány, transzformáció, warp-lánc, lokális paraméterek.
+    // Az alakzat nevéből egy osztálynév-javaslat: csak betű, szám, _ (az ékezetes betű
+    // kimarad), nagy kezdőbetűvel — "gomb 1" -> "Gomb_1".
+    inline std::string suggest_class_name(char const* shape_name) {
+        std::string r;
+        for (char const* p = shape_name; *p; ++p) {
+            unsigned char const c = static_cast<unsigned char>(*p);
+            if (c >= 0x80) continue;
+            r += std::isalnum(c) ? static_cast<char>(c) : '_';
+        }
+        if (r.empty() || std::isdigit(static_cast<unsigned char>(r[0]))) r = "Alakzat" + r;
+        r[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(r[0])));
+        return r;
+    }
+
+    // --- Az alakzat C++ kódja (script/) -------------------------------------
+    // A fájlt a nézet nem írja: a létrehozást és a megnyitást a vezérlő végzi.
+    // A leválasztás csak a nevet törli (a fájl marad), és a következő Indításkor hat.
+    inline void script_section(Shape& s, std::string const& project_path, UiState& ui, Requests& rq) {
+        if (!ImGui::CollapsingHeader("Kod (C++)", ImGuiTreeNodeFlags_DefaultOpen)) return;
+        ImGui::PushTextWrapPos(0.0f);
+        if (project_path.empty()) {
+            ImGui::TextDisabled("A kod a projekt mappajaba kerul, ezert elobb mentsd a "
+                                "projektet (Fajl -> Mentes).");
+        } else if (s.script[0]) {
+            ImGui::Text("kod/%s", s.script);
+            if (ImGui::Button("Megnyitas")) rq.script_open = &s;
+            ImGui::SameLine();
+            if (ImGui::Button("Mappa")) rq.open_project_dir = true;
+            ImGui::SameLine();
+            if (ImGui::Button("Levalasztas")) s.script[0] = 0;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("A fajl megmarad, csak ez az alakzat nem futtatja\n"
+                                  "(a kovetkezo Inditastol).");
+            ImGui::TextDisabled("Az Indit gomb forditja le es inditja el. A feluleten "
+                                "beallitott parameterek es a pozicio a kezdoertekek.");
+        } else {
+            if (ui.script_for != &s) {
+                std::snprintf(ui.script_buf, sizeof(ui.script_buf), "%s", suggest_class_name(s.name).c_str());
+                ui.script_for = &s;
+            }
+            ImGui::SetNextItemWidth(200.0f);
+            ImGui::InputText("osztaly", ui.script_buf, sizeof(ui.script_buf));
+            bool const valid = Script::valid_class_name(ui.script_buf);
+            ImGui::BeginDisabled(!valid);
+            if (ImGui::Button("Kod letrehozasa")) {
+                rq.script_create = &s;
+                rq.script_class = ui.script_buf;
+            }
+            ImGui::EndDisabled();
+            if (!valid)
+                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f),
+                                   "Az osztalynev betu, szam es _ lehet, nem kezdodhet szammal.");
+            ImGui::TextDisabled("kod/<osztaly>.cpp keszul, es megnyilik a szerkesztoben. Ha mar "
+                                "van ilyen fajl, azt rendeli hozza (tobb alakzat is futtathatja).");
+        }
+        ImGui::PopTextWrapPos();
+    }
+
     inline void props_panel(Scene& sc, std::list<Param> const& program_params,
+                            std::string const& project_path,
                             Problems const& pr, UiState& ui, Requests& rq,
                             Geometry const& g) {
         fixed_panel("Tulajdonsagok", {g.rx, g.O.y + PAD}, {ui.layout.right_w, g.col_h});
@@ -255,6 +317,8 @@ namespace Ui {
             ImGui::TextDisabled("%s", moves.c_str());
             ImGui::PopTextWrapPos();
         }
+
+        if (!sc.editor) script_section(s, project_path, ui, rq);
 
         if (ImGui::CollapsingHeader("Lokalis parameterek", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::TextDisabled("Csak ez az alakzat latja oket.");

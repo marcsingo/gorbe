@@ -180,10 +180,12 @@ add_dependencies(gorbe shaders)
 # szokasos CI-n nincs mivel futniuk. A 7. pont tesztjei ezert GL-mentesek.
 #   test_gl_disks : az instancinges korong-rajzolas ugyanazt a kepet adja, mint a
 #                   korabbi CPU-s (pixelenkenti osszevetes)
+#   test_gl_script: az alakzatkod a valodi vezerlon at (Inditas -> forditas ->
+#                   update, Torol, mentes, hibas kod)
 option(GORBE_BUILD_GL_TESTS "GL-kontextust igenylo tesztek forditasa" OFF)
 if(GORBE_BUILD_GL_TESTS)
     enable_testing()
-    foreach(t test_gl_disks)
+    foreach(t test_gl_disks test_gl_script)
         add_executable(${t} tests/gl/${t}.cpp
                 libraries/glad/src/glad.c
                 model/Window.cpp
@@ -194,7 +196,9 @@ if(GORBE_BUILD_GL_TESTS)
                 utils/init.cpp)
         target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         target_link_libraries(${t} glfw OpenGL::GL imgui)
-        target_compile_definitions(${t} PRIVATE "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\"")
+        target_compile_definitions(${t} PRIVATE "SHADER_DIR=\"$<TARGET_FILE_DIR:gorbe>\""
+                "BINARY_DIR=\"$<TARGET_FILE_DIR:gorbe>\""
+                "GORBE_SCRIPT_CRT=\"$<IF:$<CONFIG:Debug>,/MDd,/MD>\"")
         add_dependencies(${t} shaders)
         add_test(NAME ${t} COMMAND ${t})
     endforeach()

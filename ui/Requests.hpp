@@ -34,6 +34,13 @@ namespace Ui {
         Param*            erase_param = nullptr;   // ... melyik paramétert
         Shape*            edit_shape  = nullptr;   // variációs szerkesztő fül nyitása
 
+        // Az alakzat C++ kódja (script/): a fájl létrehozása/hozzárendelése és
+        // megnyitása a külső szerkesztőben, illetve a projekt mappájának megnyitása.
+        Shape*      script_create = nullptr;
+        std::string script_class;          // ... ezzel az osztály- (= fájl-) névvel
+        Shape*      script_open   = nullptr;
+        bool        open_project_dir = false;
+
         bool   new_scene   = false;
         Scene* want_scene  = nullptr;   // a fülsávon kiválasztott fül
         Scene* close_scene = nullptr;
@@ -68,6 +75,11 @@ namespace Ui {
         enum class FileDialog { None, Open, SaveAs };
         FileDialog file_dialog = FileDialog::None;
         char       path_buf[512] = "";
+
+        // Az új kódfájl neve a Tulajdonságok panelen; kijelöléskor az alakzat
+        // nevéből javasolva (`script_for`: melyik alakzathoz töltöttük ki).
+        char         script_buf[64] = "";
+        Shape const* script_for = nullptr;
     };
 
 }
