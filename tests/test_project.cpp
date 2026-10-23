@@ -36,6 +36,9 @@ int main() {
     set(sc.domain, "x^2 + y^2 + z^2 < 64");
     sc.d_ui = 1.5f; sc.curv_ui = 0.25f;
     sc.view.eye = {1, 2, 3}; sc.view.target = {0, 0, 1}; sc.view.fov = 30.0f;
+    sc.scene_camera.look_at({5, -4, 3}, {0, 1, 0});
+    sc.scene_camera.rot[2] = 0.3f;                     // dőlés
+    sc.scene_camera.fov = 70.0f;
     param(sc.params, "s1", 2.0f, -5.0f, 5.0f);
     auto& f = sc.funcs.emplace_back();
     set(f.name, "g"); set(f.params, "u, k = 1"); set(f.body, "u^2 + k");
@@ -83,6 +86,15 @@ int main() {
        s.d_ui == 1.5f && s.curv_ui == 0.25f);
     ok("jelenet: kamera", s.view.eye == glm::vec3(1, 2, 3) && s.view.target == glm::vec3(0, 0, 1) &&
        s.view.fov == 30.0f);
+    {
+        CameraDoc const& c = s.scene_camera, &e = sc.scene_camera;
+        bool same = c.fov == 70.0f;
+        for (int i = 0; i < 3; ++i) same &= c.pos[i] == e.pos[i] && std::abs(c.rot[i] - e.rot[i]) < 1e-5f;
+        ok("jelenet kamerája (pozicio, yaw/pitch/roll, latoszog)", same);
+        std::vector<std::string> w2;
+        auto old = ProjectFile::from_text(R"({"format": "gorbe-projekt", "version": 2, "scenes": [{"name": "r"}]})", w2);
+        ok("regi (2-es) fajl: az alapertelmezett kamera", old.scenes.front().scene_camera == CameraDoc{});
+    }
     ok("jelenet: parameter tartomannyal", s.params.front().value == 2.0f && s.params.front().min == -5.0f);
     ok("jelenet: sajat fuggveny", s.funcs.size() == 1 && std::string(s.funcs.front().params) == "u, k = 1");
     ok("ket objektum, sorrendben", s.shapes.size() == 2 && std::string(s.shapes.back().name) == "unio1");

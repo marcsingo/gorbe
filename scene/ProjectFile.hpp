@@ -38,7 +38,8 @@ namespace ProjectFile {
     // 2: az objektum "script" mezője (a C++ kódfájl neve). Az 1-es fájl változatlanul
     // betölthető (a hiányzó mező üres); a régi program viszont a 2-est elutasítja,
     // hogy a kód hozzárendelése ne vesszen el némán.
-    inline constexpr int         VERSION = 2;
+    // 3: a jelenet saját kamerája ("scene_camera"); a régebbi fájlban az alapértelmezett.
+    inline constexpr int         VERSION = 3;
     inline constexpr char const* EXTENSION = ".gorbe.json";
 
     struct Project {
@@ -101,6 +102,9 @@ namespace ProjectFile {
                 funcs.push_back({{"name", f.name}, {"params", f.params}, {"body", f.body}});
             json objects = json::array();
             for (auto const& s : sc.shapes) objects.push_back(object(s));
+            constexpr float DEG = 57.29577951308232f;
+            CameraDoc const& c = sc.scene_camera;
+            float const rot_deg[3] = {c.rot[0] * DEG, c.rot[1] * DEG, c.rot[2] * DEG};
             return {
                 {"name", sc.name},
                 {"domain", sc.domain},
@@ -108,6 +112,9 @@ namespace ProjectFile {
                 {"curvature", sc.curv_ui},
                 {"camera", {{"eye", vec3(sc.view.eye)}, {"target", vec3(sc.view.target)},
                             {"fov", sc.view.fov}}},
+                // a jelenet kamerája (futás közben ebből látunk): yaw, pitch, roll fokban
+                {"scene_camera", {{"pos", vec3(c.pos)}, {"yaw_pitch_roll_deg", vec3(rot_deg)},
+                                  {"fov", c.fov}}},
                 {"params", params(sc.params)},
                 {"functions", funcs},
                 {"objects", objects},
@@ -249,6 +256,15 @@ namespace ProjectFile {
                     sc.view.eye = {e[0], e[1], e[2]};
                     sc.view.target = {t[0], t[1], t[2]};
                     get(*c, "fov", sc.view.fov, w);
+                }
+                if (auto c = j.find("scene_camera"); c != j.end() && c->is_object()) {
+                    constexpr float RAD = 0.017453292519943295f;
+                    CameraDoc& cam = sc.scene_camera;
+                    vec3(*c, "pos", cam.pos, w + " kameraja");
+                    float deg[3] = {cam.rot[0] / RAD, cam.rot[1] / RAD, cam.rot[2] / RAD};
+                    vec3(*c, "yaw_pitch_roll_deg", deg, w + " kameraja");
+                    for (int i = 0; i < 3; ++i) cam.rot[i] = deg[i] * RAD;
+                    get(*c, "fov", cam.fov, w + " kameraja");
                 }
                 params(j, "params", sc.params, w);
                 if (auto fs = j.find("functions"); fs != j.end() && fs->is_array())

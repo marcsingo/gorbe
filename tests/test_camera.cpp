@@ -9,6 +9,7 @@
 #include <string>
 
 #include "model/CameraBasis.hpp"
+#include "scene/CameraDoc.hpp"
 
 static int failures = 0;
 static float norm(glm::vec3 v) { return std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
@@ -138,6 +139,34 @@ int main() {
         near("felfele nem megy 89 fok fole", pitch, 89.0f);
         for (int i = 0; i < 400; ++i) apply_mouse_delta(0.0f, 50.0f, 0.1f, yaw, pitch);
         near("lefele nem megy -89 fok ala", pitch, -89.0f);
+    }
+
+    std::printf("\n=== A jelenet kameraja (scene/CameraDoc.hpp) ===\n");
+    {
+        CameraDoc c;
+        CameraDoc::Basis b = c.basis();
+        ok("alapbol az origora nez, a szerkeszto kamera kezdohelyerol",
+           norm(b.front - glm::normalize(-c.position())) < 1e-5f &&
+           norm(c.position() - glm::vec3(-14, -14, 16)) < 1e-6f);
+
+        // Dőlés nélkül ugyanaz a bázis, mint a szerkesztő kameráé (ugyanaz a konvenció).
+        c.rot[0] = 0.7f; c.rot[1] = -0.4f; c.rot[2] = 0.0f;
+        b = c.basis();
+        auto const e = CameraBasis::from_angles(0.7f * 57.2957795f, -0.4f * 57.2957795f);
+        ok("roll nelkul = CameraBasis", norm(b.front - e.front) < 1e-5f && norm(b.right - e.right) < 1e-5f &&
+           norm(b.up - e.up) < 1e-5f);
+
+        // 90°-os dőlés: a jobb oldal felfelé áll, a front nem változik; a bázis ortonormált.
+        c.rot[2] = 1.5707963f;
+        CameraDoc::Basis const r = c.basis();
+        ok("roll 90 fok: right -> a regi up, a front marad",
+           norm(r.right - e.up) < 1e-5f && norm(r.front - e.front) < 1e-5f);
+        ok("a bazis ortonormalt", std::abs(glm::dot(r.right, r.up)) < 1e-5f &&
+           std::abs(glm::dot(r.front, r.up)) < 1e-5f && std::abs(norm(r.up) - 1.0f) < 1e-5f);
+
+        c.look_at({1, 2, 3}, {1, 2, 100});                 // egyenesen felfelé: a pitch vágva
+        ok("look_at felfele: a pitch 89 fokra vagva (nincs NaN)",
+           std::abs(c.rot[1] - CameraDoc::PITCH_LIMIT) < 1e-6f && std::isfinite(c.basis().right.x));
     }
 
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);

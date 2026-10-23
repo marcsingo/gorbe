@@ -11,6 +11,7 @@
 #include "../matek/Kif.hpp"
 #include "../particle_sampling/Transform.hpp"
 #include "../particle_sampling/Variational.hpp"
+#include "CameraDoc.hpp"
 #include "Scope.hpp"
 
 // ---------------------------------------------------------------------------
@@ -146,6 +147,10 @@ struct SceneDoc {
     std::list<UserFunc> funcs;
 
     ViewDoc view;   // csak mentéskor/betöltéskor frissül (a futó kamera a Scene-ben van)
+
+    // A jelenet SAJÁT kamerája: futás közben ebből látunk (lásd CameraDoc.hpp). A fenti
+    // `view` a szerkesztő kamera állása, ez viszont a jelenet része.
+    CameraDoc scene_camera;
 
     float d_ui    = 2.0f;   // globális méretskála (a saját d nélküli alakzatoknak)
     float curv_ui = 1.0f;   // görbület-adaptív taszítás (0 = egyenletes)

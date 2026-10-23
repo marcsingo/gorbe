@@ -38,7 +38,8 @@ namespace gorbe {
 
 // 2: Host::log (a konzolra írás, ShapeScript::print)
 // 3: más alakzatok (ShapeRef), F kiértékelése, ütközés; a Host függvényei célpontot kapnak
-inline constexpr int API_VERSION = 3;
+// 4: bemenet (billentyűzet, egér) és a jelenet kamerája (CameraRef)
+inline constexpr int API_VERSION = 4;
 
 // --- vektor -----------------------------------------------------------------------
 struct vec3 { float x = 0, y = 0, z = 0; };
@@ -56,6 +57,35 @@ inline vec3& operator*=(vec3& a, float s) { return a = a * s; }
 inline float dot(vec3 a, vec3 b)         { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline float length(vec3 a)              { return std::sqrt(dot(a, a)); }
 inline vec3  normalize(vec3 a)           { float const l = length(a); return l > 0 ? a / l : vec3{}; }
+
+struct vec2 { float x = 0, y = 0; };
+
+// Egy sugár: kezdőpont és egységnyi irány (pl. a kamerából az egér alatti pont felé).
+struct Ray { vec3 origin, dir; };
+
+// --- bemenet ------------------------------------------------------------------------
+// Billentyűkódok: a betűk és a számok a NAGYBETŰS ASCII kódjukkal ('W', 'A', '1'; a
+// kisbetűt is elfogadjuk), a többi az alábbi néven. (A számok a GLFW kódjai.)
+inline constexpr int KEY_SPACE = 32, KEY_ESCAPE = 256, KEY_ENTER = 257, KEY_TAB = 258,
+                     KEY_BACKSPACE = 259, KEY_RIGHT = 262, KEY_LEFT = 263, KEY_DOWN = 264,
+                     KEY_UP = 265, KEY_LEFT_SHIFT = 340, KEY_LEFT_CONTROL = 341,
+                     KEY_LEFT_ALT = 342, KEY_RIGHT_SHIFT = 344, KEY_RIGHT_CONTROL = 345;
+inline constexpr int MOUSE_LEFT = 0, MOUSE_RIGHT = 1, MOUSE_MIDDLE = 2;
+
+// A bemenet egy ciklusra (a program tölti; a ShapeScript függvényei olvassák).
+// Bitek billentyűnként és egérgombonként: 1 = lenyomva, 2 = ebben a ciklusban nyomták
+// le, 4 = ebben a ciklusban engedték fel.
+struct InputState {
+    static constexpr int KEYS = 512, BUTTONS = 8;
+    unsigned char keys[KEYS] = {};
+    unsigned char buttons[BUTTONS] = {};
+    float mouse_x = 0, mouse_y = 0;       // képpont a 3D nézetben (bal felső sarok = 0, 0)
+    float mouse_dx = 0, mouse_dy = 0;     // elmozdulás az előző ciklus óta
+    float scroll = 0;                     // görgetés ebben a ciklusban
+    float view_w = 1, view_h = 1;         // a 3D nézet mérete képpontban
+    float ray_origin[3] = {}, ray_dir[3] = {0, 0, -1};   // a kamerából az egér alá
+    bool  active = false;                 // a jelenet kapja-e a bemenetet (fut + jelenet kamera)
+};
 
 // Két alakzat ütközése (ShapeRef::collide). `normal`: amerre az ELSŐ alakzatot tolni
 // kell, hogy kiszabaduljon; `depth`: a legmélyebb behatolás (becsült távolság);
@@ -96,6 +126,61 @@ struct Host {
     bool   (*eval)(void* ctx, void* target, float const p[3], float out[4], bool* in_domain);
     // Ütközés: out = {pont(3), normális(3), mélység}; a visszatérés a pontok száma.
     int    (*collide)(void* ctx, void* a, void* b, float out[7]);
+    InputState const* (*input)(void* ctx);                          // a mostani ciklus bemenete
+    float* (*camera)(void* ctx, int which);                          // 0 pos, 1 yaw/pitch/roll, 2 fov
+};
+
+// --- a jelenet kamerája ------------------------------------------------------------
+// Futás közben ebből látunk. Ugyanúgy írható, mint egy alakzat pozíciója: a GUI-n
+// beállított a kezdőérték, a futás végén visszaáll.
+//   position()  a kamera helye
+//   rotation()  x = yaw (azimut, 0 = +x felé), y = pitch (emelkedés, negatív = lefelé
+//               néz, ±89°), z = roll (dőlés) — RADIÁNBAN
+//   fov()       a függőleges látószög FOKBAN (5..120)
+class CameraRef {
+public:
+    CameraRef() = default;
+    explicit CameraRef(Host const* h) : host_(h) {}
+
+    vec3&  position() { return vec(0); }
+    vec3&  rotation() { return vec(1); }
+    float& fov()      { float* p = host_ ? host_->camera(host_->ctx, 2) : nullptr; return p ? *p : dummy_[0]; }
+
+    // A nézőirány és a kép jobbra/felfelé iránya a világban (a dőléssel együtt).
+    vec3 forward() { vec3 const r = rotation(); return dir(r.x, r.y); }
+    vec3 right() {
+        vec3 const r = rotation(), f = dir(r.x, r.y);
+        vec3 const rr = normalize(vec3{f.y, -f.x, 0}), u = cross(rr, f);   // f x (0,0,1), majd felfelé
+        return rr * std::cos(r.z) + u * std::sin(r.z);
+    }
+    vec3 up() {
+        vec3 const r = rotation(), f = dir(r.x, r.y);
+        vec3 const rr = normalize(vec3{f.y, -f.x, 0}), u = cross(rr, f);
+        return u * std::cos(r.z) - rr * std::sin(r.z);
+    }
+
+    // A `target` felé fordul (a helye és a dőlése marad).
+    void look_at(vec3 target) {
+        vec3 const d = normalize(target - position());
+        if (length(d) == 0) return;
+        rotation().x = std::atan2(d.y, d.x);
+        rotation().y = std::asin(d.z < -1 ? -1 : d.z > 1 ? 1 : d.z);
+    }
+
+private:
+    Host const* host_ = nullptr;
+    float dummy_[3] = {0, 0, 0};
+
+    vec3& vec(int which) {
+        float* p = host_ ? host_->camera(host_->ctx, which) : nullptr;
+        return *reinterpret_cast<vec3*>(p ? p : dummy_);
+    }
+    static vec3 cross(vec3 a, vec3 b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
+    static vec3 dir(float yaw, float pitch) {
+        float const lim = 1.5533430f;      // ±89°, mint a programban
+        pitch = pitch < -lim ? -lim : pitch > lim ? lim : pitch;
+        return {std::cos(yaw) * std::cos(pitch), std::sin(yaw) * std::cos(pitch), std::sin(pitch)};
+    }
 };
 
 // --- egy alakzat (a saját vagy egy másik) -----------------------------------------
@@ -197,7 +282,7 @@ public:
     // `t` a program ideje (mint a képletekben), `dt` az előző ciklus óta eltelt idő.
     virtual void update(float t, float dt) { (void)t; (void)dt; }
 
-    void bind(Host const* h) { host_ = h; self_ = ShapeRef(h, nullptr, true); }
+    void bind(Host const* h) { host_ = h; self_ = ShapeRef(h, nullptr, true); camera_ = CameraRef(h); }
 
 protected:
     // A saját alakzat (ugyanaz, mint a lenti rövidítések).
@@ -235,6 +320,35 @@ protected:
     // Ütközés a saját alakzat és egy másik között (lásd ShapeRef::collide).
     Hit collide(ShapeRef const& other) { return self_.collide(other); }
 
+    // --- a jelenet kamerája (lásd CameraRef) ---------------------------------------
+    CameraRef& camera() { return camera_; }
+
+    // --- bemenet ---------------------------------------------------------------------
+    // Csak FUTÁS közben és a jelenet kamerájának nézetében kapja a kód (a szerkesztő
+    // kamera nézetében a billentyűk a kamerát mozgatják); máskor minden hamis / nulla.
+    // Csak akkor, ha az egér a 3D nézet fölött van, és nem egy mezőbe gépelsz.
+    //   key_down('W')            lenyomva van (folyamatos mozgáshoz)
+    //   key_pressed(KEY_SPACE)   ebben a ciklusban nyomták le (egyszeri akcióhoz)
+    //   key_released(...)        ebben a ciklusban engedték fel
+    bool key_down(int k)     { return key_bits(k) & 1; }
+    bool key_pressed(int k)  { return key_bits(k) & 2; }
+    bool key_released(int k) { return key_bits(k) & 4; }
+    bool mouse_down(int b)     { return button_bits(b) & 1; }   // MOUSE_LEFT / RIGHT / MIDDLE
+    bool mouse_pressed(int b)  { return button_bits(b) & 2; }
+    bool mouse_released(int b) { return button_bits(b) & 4; }
+    vec2  mouse_position() { InputState const& s = input(); return {s.mouse_x, s.mouse_y}; }
+    vec2  mouse_delta()    { InputState const& s = input(); return {s.mouse_dx, s.mouse_dy}; }
+    float scroll()         { return input().scroll; }
+    vec2  view_size()      { InputState const& s = input(); return {s.view_w, s.view_h}; }
+    bool  input_active()   { return input().active; }
+    // Sugár a kamerából az egér alatti pont felé (kattintással kiválasztáshoz):
+    //     Ray r = mouse_ray();  vec3 p = r.origin + r.dir * t;
+    Ray mouse_ray() {
+        InputState const& s = input();
+        return {{s.ray_origin[0], s.ray_origin[1], s.ray_origin[2]},
+                {s.ray_dir[0], s.ray_dir[1], s.ray_dir[2]}};
+    }
+
     // A warpok a GUI-n felvettek UTÁN hatnak; a jelentésük ugyanaz (visszafelé
     // leképezés, lásd a program súgóját).
     bool add_warp(char const* fx, char const* fy, char const* fz) {
@@ -264,7 +378,19 @@ protected:
 private:
     Host const* host_ = nullptr;
     ShapeRef self_;
+    CameraRef camera_;
     float dummy_ = 0.0f;       // hiányzó paraméternél ide írunk (a program már jelezte)
+
+    InputState const& input() {
+        static InputState const none{};
+        InputState const* s = host_->input(host_->ctx);
+        return s ? *s : none;
+    }
+    int key_bits(int k) {
+        if (k >= 'a' && k <= 'z') k -= 'a' - 'A';
+        return k >= 0 && k < InputState::KEYS ? input().keys[k] : 0;
+    }
+    int button_bits(int b) { return b >= 0 && b < InputState::BUTTONS ? input().buttons[b] : 0; }
 };
 
 } // namespace gorbe

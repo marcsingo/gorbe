@@ -61,6 +61,23 @@ namespace Script {
         // A jelenet adja (app/Scene.hpp); nélküle az F és az ütközés nem érhető el.
         std::function<ParticleSystem*(Shape const*)> system_of;
 
+        // --- bemenet --------------------------------------------------------------
+        // A kód (key_down, mouse_ray, ...) ezt olvassa. A vezérlő tölti az ablak
+        // eseményeiből, csak futás közben és a jelenet kamerájának nézetében (lásd
+        // app/Controller.hpp); az update()-ek UTÁN az élek (lenyomás/felengedés ebben a
+        // ciklusban) és az elmozdulások törlődnek (end_input_frame).
+        gorbe::InputState input;
+
+        void key_event(int key, bool press) { edge(key >= 0 && key < gorbe::InputState::KEYS
+                                                   ? &input.keys[key] : nullptr, press); }
+        void button_event(int b, bool press) { edge(b >= 0 && b < gorbe::InputState::BUTTONS
+                                                    ? &input.buttons[b] : nullptr, press); }
+        void end_input_frame() {
+            for (auto& k : input.keys) k &= 1;
+            for (auto& b : input.buttons) b &= 1;
+            input.mouse_dx = input.mouse_dy = input.scroll = 0.0f;
+        }
+
         Runtime() = default;
         Runtime(Runtime const&) = delete;
         Runtime& operator=(Runtime const&) = delete;
@@ -89,7 +106,7 @@ namespace Script {
             it.host = {gorbe::API_VERSION, &it, &h_param, &h_add_param, &h_transform,
                        &h_add_warp, &h_set_formula, &h_error, &h_log,
                        &h_find_shape, &h_shape_count, &h_shape_at, &h_shape_name,
-                       &h_eval, &h_collide};
+                       &h_eval, &h_collide, &h_input, &h_camera};
             try {
                 it.obj = f.create();
             } catch (...) {
@@ -484,6 +501,25 @@ namespace Script {
             out[3] = n.x;       out[4] = n.y;       out[5] = n.z;
             out[6] = depth;
             return count;
+        }
+
+        static gorbe::InputState const* h_input(void* ctx) { return &item(ctx).owner->input; }
+
+        // A jelenet kamerája: mint egy alakzat transzformációja (a futás végén visszaáll).
+        static float* h_camera(void* ctx, int which) {
+            Item& it = item(ctx);
+            CameraDoc& c = it.scene->scene_camera;
+            float* v = which == 0 ? c.pos : which == 1 ? c.rot : &c.fov;
+            for (int i = 0; i < (which == 2 ? 1 : 3); ++i) it.owner->touch(v + i);
+            return v;
+        }
+
+        // Lenyomás: lenyomva + "most nyomták" (ha eddig nem volt lenyomva — az OS
+        // billentyű-ismétlése nem ad új élt); felengedés: "most engedték".
+        static void edge(unsigned char* k, bool press) {
+            if (!k) return;
+            if (press) { if (!(*k & 1)) *k |= 1 | 2; }
+            else if (*k & 1) *k = static_cast<unsigned char>((*k & ~1) | 4);
         }
 
         void restore() {

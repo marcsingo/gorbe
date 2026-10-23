@@ -138,6 +138,36 @@ struct Ugro : gorbe::ShapeScript {
 };
 GORBE_SHAPE(Ugro)
 
+// Bemenet és kamera: amit lát, azt feljegyzi; W-re lép, és a kamerát mozgatja.
+static struct {
+    bool w_down = false, sp_pressed = false, sp_released = false, lmb = false, active = false;
+    gorbe::vec2 mouse;
+    float scroll = 0;
+    gorbe::Ray ray;
+    gorbe::vec3 fwd, right, up;
+} iranyito;
+struct Iranyito : gorbe::ShapeScript {
+    void update(float, float) override {
+        iranyito.w_down = key_down('w');                    // kisbetűvel is
+        iranyito.sp_pressed = key_pressed(gorbe::KEY_SPACE);
+        iranyito.sp_released = key_released(gorbe::KEY_SPACE);
+        iranyito.lmb = mouse_down(gorbe::MOUSE_LEFT);
+        iranyito.mouse = mouse_position();
+        iranyito.scroll = scroll();
+        iranyito.ray = mouse_ray();
+        iranyito.active = input_active();
+        if (key_down('W')) position().x += 1.0f;
+        camera().position() = {3, -4, 5};
+        camera().look_at({0, 0, 1});
+        camera().rotation().z = 0.3f;                       // dőlés
+        camera().fov() = 60.0f;
+        iranyito.fwd = camera().forward();
+        iranyito.right = camera().right();
+        iranyito.up = camera().up();
+    }
+};
+GORBE_SHAPE(Iranyito)
+
 #define FACTORY(C) Script::Factory{&gorbe_api_version_##C, &gorbe_create_##C, &gorbe_destroy_##C}
 
 static int old_version() { return gorbe::API_VERSION + 1; }
@@ -395,7 +425,58 @@ int main() {
         Build::drop_trees(sc);
     }
 
-    std::printf("=== 7. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
+    std::printf("=== 7. Bemenet es a jelenet kameraja ===\n");
+    {
+        SceneDoc sc;
+        Shape& s = shape(sc, "j", "x", "Iranyito");
+        Script::Runtime rt;
+        rt.attach(s, sc, program, FACTORY(Iranyito));
+        rt.start_all();
+        Build::build(sc, program);
+
+        rt.update_all(0, 0.016f);
+        ok("bemenet nelkul minden hamis", !iranyito.w_down && !iranyito.active && !iranyito.lmb);
+
+        rt.input.active = true;
+        rt.input.mouse_x = 120; rt.input.mouse_y = 80; rt.input.scroll = 1;
+        rt.input.ray_dir[0] = 1; rt.input.ray_dir[2] = 0;
+        rt.key_event('W', true);
+        rt.key_event(gorbe::KEY_SPACE, true);
+        rt.button_event(gorbe::MOUSE_LEFT, true);
+        rt.update_all(0, 0.016f);
+        rt.end_input_frame();
+        ok("lenyomas: down es pressed, kisbetuvel is", iranyito.w_down && iranyito.sp_pressed && iranyito.active);
+        ok("eger: gomb, hely, gorgo, sugar", iranyito.lmb && iranyito.mouse.x == 120 && iranyito.mouse.y == 80 &&
+           iranyito.scroll == 1 && iranyito.ray.dir.x == 1);
+        near("W-re lepett", s.xform.pos[0], 1.0f);
+
+        rt.key_event(gorbe::KEY_SPACE, true);               // az OS ismétlése: nem új él
+        rt.update_all(0, 0.016f);
+        rt.end_input_frame();
+        ok("nyomva tartva: pressed csak egyszer, a gorgo nullazodik",
+           !iranyito.sp_pressed && iranyito.w_down && iranyito.scroll == 0);
+        rt.key_event(gorbe::KEY_SPACE, false);
+        rt.update_all(0, 0.016f);
+        rt.end_input_frame();
+        ok("felengedes: released, es mar nincs lenyomva", iranyito.sp_released);
+        rt.update_all(0, 0.016f);
+        ok("... a kovetkezo ciklusban mar nem released", !iranyito.sp_released);
+
+        // A kód kamerája = a program kamerája (ugyanaz a bázis, a dőléssel együtt).
+        CameraDoc::Basis const b = sc.scene_camera.basis();
+        auto same = [](gorbe::vec3 a, glm::vec3 c) { return glm::length(glm::vec3(a.x, a.y, a.z) - c) < 1e-5f; };
+        ok("a kamera a kodbol mozdult", sc.scene_camera.pos[2] == 5.0f && sc.scene_camera.fov == 60.0f);
+        ok("forward / right / up = a program bazisa", same(iranyito.fwd, b.front) &&
+           same(iranyito.right, b.right) && same(iranyito.up, b.up));
+        ok("look_at: a celpont fele nez", glm::length(glm::normalize(glm::vec3(0, 0, 1) - sc.scene_camera.position()) -
+           b.front) < 1e-5f);
+
+        Build::drop_trees(sc);
+        rt.clear();
+        ok("clear: a kamera a kezdoertekre all vissza", sc.scene_camera == CameraDoc{});
+    }
+
+    std::printf("=== 8. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
     {
         std::string err;
         if (Script::Platform::find_compiler(err).empty()) {
