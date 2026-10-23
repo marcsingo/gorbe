@@ -476,6 +476,26 @@ int main() {
         SceneTime::value = 0.0f;
     }
 
+    std::printf("\n=== 17. to_world / to_local: ugyanaz a lekepezes, mint a kepletbe epitett ===\n");
+    {
+        // Forgatott, nem egyenletesen méretezett, eltolt alakzat (minden tengely más).
+        TransformParams t;
+        t.pos[0] = 1.5f; t.pos[1] = -2.0f; t.pos[2] = 0.7f;
+        t.rot[0] = 0.4f; t.rot[1] = -1.1f; t.rot[2] = 2.3f;
+        t.scale[0] = 2.0f; t.scale[1] = 0.5f; t.scale[2] = 1.3f;
+        Kif const F = x*x + y*y*3.0_k + z - 1.0_k;           // nem szimmetrikus
+        Kif const Fw = apply_transform(F, t);
+        float worst_round = 0.0f, worst_F = 0.0f;
+        for (glm::vec3 p : {glm::vec3{0.3f, -0.8f, 1.1f}, glm::vec3{-2.0f, 0.5f, 0.2f},
+                            glm::vec3{1.0f, 1.0f, -1.0f}}) {
+            worst_round = std::max(worst_round, norm(to_local(t, to_world(t, p)) - p));
+            // A lokális p világbeli képében a transzformált F ugyanaz, mint lokálisan F.
+            worst_F = std::max(worst_F, std::abs(Fw.at(to_world(t, p)) - F.at(p)));
+        }
+        ok("to_local(to_world(p)) = p", worst_round < 1e-5f, std::to_string(worst_round));
+        ok("F_vilag(to_world(p)) = F_lokalis(p)", worst_F < 1e-4f, std::to_string(worst_F));
+    }
+
     std::printf("\n%s (%d hiba)\n", failures ? ">>> SIKERTELEN" : ">>> MINDEN TESZT OK", failures);
     return failures != 0;
 }

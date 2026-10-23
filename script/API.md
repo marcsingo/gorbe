@@ -137,6 +137,12 @@ Ugyanezek az értékek láthatók a felület **Transzformáció** részén. Az a
 warpokon megy át, és a kész, deformált alakzatot helyezi el a pozíció, a forgatás és
 a méret.
 
+Amit a kód itt átír, azzal az alakzat **részecskéi is vele mennek**, ugyanazzal a
+merev leképezéssel. Egy nagy ugrás után sem kell megvárni, amíg a részecskék
+átrepülnek az új helyre. Ilyen ugrás például a `position().x = 6 * cos(t)` első
+ciklusa, amikor az alakzat még a kezdőhelyén áll. A paraméterek (pl. `r`) változását
+viszont a részecskék a szimulációval követik, tehát egy nagy ugrás ott lassabb.
+
 ### Más alakzatok
 
 ```cpp

@@ -108,8 +108,30 @@ namespace Script {
             }
         }
 
+        // Az update()-ek, utána a részecskék vitele: amelyik alakzat pozícióját,
+        // forgatását vagy méretét a kód átírta, annak a részecskéi ugyanazzal a merev
+        // leképezéssel mennek vele (régi világ -> lokális -> új világ). Enélkül egy nagy
+        // mozdulat (pl. az első update() a kezdőhelytől messzire teszi) után a
+        // részecskék a régi helyükről csak lassan repülnének át — addig nincs fisszió, és
+        // a mintavétel (az ütközés, a variációs szerkesztő) használhatatlan.
+        // Csak a KÓD változtatására: a kontrollpont-megoldó a saját útján (q̇) viszi őket.
         void update_all(float t, float dt) {
+            if (items_.empty()) return;
+            SceneDoc& sc = *items_.front()->scene;
+            before_.clear();
+            for (auto const& s : sc.shapes) before_.push_back(s.xform);
+
             for (auto& it : items_) call(*it, [&] { it->obj->update(t, dt); });
+
+            std::size_t i = 0;
+            for (auto& s : sc.shapes) {
+                TransformParams const& old = before_[i++];
+                if (!s.warped || s.xform == old) continue;   // nem változott, vagy nem is hat
+                if (old.scale[0] == 0.0f || old.scale[1] == 0.0f || old.scale[2] == 0.0f) continue;
+                ParticleSystem* ps = system_of ? system_of(&s) : nullptr;
+                if (!ps) continue;
+                for (Particle& p : ps->particles()) p.p = to_world(s.xform, to_local(old, p.p));
+            }
         }
 
         // A futás vége: a kezdőértékek vissza, a példányok törlése, és a kód
@@ -158,6 +180,7 @@ namespace Script {
         std::vector<Shape*> moved_;     // más alakzatok, amiknek a transzformációja beépül
         std::vector<Shape*> warned_;    // akikről már szóltunk, hogy nem mozgathatók
         Surface::Workspace  ws_;        // a kiértékeléshez (csak a fő szálról hívjuk)
+        std::vector<TransformParams> before_;   // az update() előtti transzformációk
 
         static std::string label(Shape const& s) {
             return std::string(s.name[0] ? s.name : "(nevtelen)") + " [" + s.script + "]";

@@ -128,6 +128,16 @@ struct Kereso : gorbe::ShapeScript {
 };
 GORBE_SHAPE(Kereso)
 
+// Egy lépésben messzire viszi az alakzatot (mint egy cos(t)-s mozgás első update()-je).
+static int ugro_mode = 0;
+struct Ugro : gorbe::ShapeScript {
+    void update(float, float) override {
+        if (ugro_mode == 1) position().x = 6.0f;
+        if (ugro_mode == 2) { rotation().z = 0.7f; scale() = {2.0f, 1.5f, 1.0f}; }
+    }
+};
+GORBE_SHAPE(Ugro)
+
 #define FACTORY(C) Script::Factory{&gorbe_api_version_##C, &gorbe_create_##C, &gorbe_destroy_##C}
 
 static int old_version() { return gorbe::API_VERSION + 1; }
@@ -336,7 +346,56 @@ int main() {
         ok("clear: a jelolese torlodik", !b.script_moved);
     }
 
-    std::printf("=== 6. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
+    std::printf("=== 6. A kod nagyot mozdit: a reszecskek vele mennek ===\n");
+    {
+        SceneDoc sc;
+        Shape& s = shape(sc, "e", "x^2/4 + y^2 + z^2 - 1", "Ugro");   // nem szimmetrikus
+        ParticleSystem ps({}, 3);
+        Script::Runtime rt;
+        rt.system_of = [&](Shape const* q) -> ParticleSystem* { return q == &s ? &ps : nullptr; };
+        rt.attach(s, sc, program, FACTORY(Ugro));
+        rt.start_all();
+        Build::build(sc, program);
+        ps.d = 0.8f;
+        ps.surface().set_tree(s.tree);
+        ps.restart();
+        for (int i = 0; i < 250; ++i) ps.step(0.03f);
+
+        // A részecskék hányad része van a felületen (geometriai távolság |F|/|∇F| < tol).
+        auto on_surface = [&](float tol) {
+            std::size_t k = 0;
+            for (Particle const& p : ps.particles()) {
+                float const F = ps.surface().F.at(p.p);
+                k += std::abs(F) < tol * glm::length(ps.surface().grad(p.p));
+            }
+            return static_cast<float>(k) / static_cast<float>(std::max<std::size_t>(ps.particles().size(), 1));
+        };
+        std::size_t const n = ps.particles().size();
+        float const r0 = on_surface(0.05f);
+        ok("elotte: a reszecskek a feluleten", n > 20 && r0 > 0.9f,
+           std::to_string(n) + " db, " + std::to_string(r0));
+
+        ugro_mode = 1;
+        rt.update_all(0, 0.016f);                       // x: 0 -> 6, egy lépésben
+        ok("eltolas utan azonnal a feluleten (szimulacios lepes nelkul)", on_surface(0.05f) == r0,
+           std::to_string(on_surface(0.05f)));
+        ugro_mode = 2;
+        rt.update_all(0, 0.016f);                       // forgatás + nem egyenletes méret
+        // A nem egyenletes méretezés a távolságokat is nyújtja (legfeljebb 2x), ezért a tűrés is.
+        ok("forgatas + meretezes utan is", on_surface(0.1f) >= r0, std::to_string(on_surface(0.1f)));
+        ok("a reszecskek szama nem valtozott", ps.particles().size() == n);
+        ugro_mode = 0;
+        std::vector<glm::vec3> before;
+        for (Particle const& p : ps.particles()) before.push_back(p.p);
+        rt.update_all(0, 0.016f);                       // nincs változás: nem nyúl hozzájuk
+        bool same = true;
+        for (std::size_t i = 0; i < before.size(); ++i) same &= ps.particles()[i].p == before[i];
+        ok("valtozatlan transzformacional nem mozognak", same);
+
+        Build::drop_trees(sc);
+    }
+
+    std::printf("=== 7. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
     {
         std::string err;
         if (Script::Platform::find_compiler(err).empty()) {

@@ -37,7 +37,36 @@ struct TransformParams {
     void reset() {
         for (int i = 0; i < 3; ++i) { pos[i] = 0.0f; rot[i] = 0.0f; scale[i] = 1.0f; }
     }
+
+    bool operator==(TransformParams const&) const = default;
 };
+
+// Ugyanez a leképezés számokkal, egy pontra (a kifejezés helyett): lokális -> világ,
+// p_világ = T + Rz·Ry·Rx·(S·p). A részecskék ezzel mennek az alakzattal, ha a kód
+// egyszerre nagyot mozdít rajta (script/Runtime.hpp).
+inline glm::vec3 to_world(TransformParams const& t, glm::vec3 p) {
+    p *= glm::vec3(t.scale[0], t.scale[1], t.scale[2]);
+    float c = std::cos(t.rot[0]), s = std::sin(t.rot[0]);
+    p = {p.x, p.y * c - p.z * s, p.y * s + p.z * c};                 // Rx
+    c = std::cos(t.rot[1]); s = std::sin(t.rot[1]);
+    p = {p.x * c + p.z * s, p.y, -p.x * s + p.z * c};                // Ry
+    c = std::cos(t.rot[2]); s = std::sin(t.rot[2]);
+    p = {p.x * c - p.y * s, p.x * s + p.y * c, p.z};                 // Rz
+    return p + glm::vec3(t.pos[0], t.pos[1], t.pos[2]);
+}
+
+// ... és visszafelé: világ -> lokális, S⁻¹·Rᵀ·(p − T) — ugyanaz, mint a lenti
+// make_inverse_warp, lépésről lépésre.
+inline glm::vec3 to_local(TransformParams const& t, glm::vec3 p) {
+    p -= glm::vec3(t.pos[0], t.pos[1], t.pos[2]);
+    float c = std::cos(t.rot[2]), s = std::sin(t.rot[2]);
+    p = {p.x * c + p.y * s, -p.x * s + p.y * c, p.z};                // Rz(−rz)
+    c = std::cos(t.rot[1]); s = std::sin(t.rot[1]);
+    p = {p.x * c - p.z * s, p.y, p.x * s + p.z * c};                 // Ry(−ry)
+    c = std::cos(t.rot[0]); s = std::sin(t.rot[0]);
+    p = {p.x, p.y * c + p.z * s, -p.y * s + p.z * c};                // Rx(−rx)
+    return p / glm::vec3(t.scale[0], t.scale[1], t.scale[2]);
+}
 
 // A világ -> lokális leképezés három koordináta-kifejezése.
 struct InverseWarp {
