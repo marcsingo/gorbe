@@ -63,6 +63,7 @@ namespace Ui {
         // teljes magasságú panel.
         float left_f1 = 0.30f;
         float left_f2 = 0.42f;
+        float console_h = 170.0f;  // a középső oszlop alján a konzol magassága
     };
 
     struct UiState {
@@ -80,6 +81,8 @@ namespace Ui {
         // nevéből javasolva (`script_for`: melyik alakzathoz töltöttük ki).
         char         script_buf[64] = "";
         Shape const* script_for = nullptr;
+
+        bool console_autoscroll = true;   // a konzol az új sorokhoz görget
     };
 
 }

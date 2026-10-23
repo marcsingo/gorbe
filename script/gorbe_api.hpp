@@ -14,6 +14,7 @@
 //         void update(float t, float dt) override {  // minden ciklusban
 //             *r = 2.0f + 0.5f * std::sin(t);
 //             rotation().z += 0.5f * dt;
+//             print("r = %.2f", *r);               // a konzolra
 //         }
 //     };
 //     GORBE_SHAPE(Gomb1)
@@ -21,6 +22,8 @@
 #define GORBE_API_HPP
 
 #include <cmath>
+#include <cstdarg>
+#include <cstdio>
 
 #if defined(_WIN32)
 #  define GORBE_EXPORT extern "C" __declspec(dllexport)
@@ -30,7 +33,8 @@
 
 namespace gorbe {
 
-inline constexpr int API_VERSION = 1;
+// 2: Host::log (a konzolra írás, ShapeScript::print)
+inline constexpr int API_VERSION = 2;
 
 struct vec3 { float x = 0, y = 0, z = 0; };
 static_assert(sizeof(vec3) == 3 * sizeof(float), "vec3 = float[3]");
@@ -51,6 +55,7 @@ struct Host {
     bool   (*add_warp)(void* ctx, char const* fx, char const* fy, char const* fz); // csak start()
     bool   (*set_formula)(void* ctx, char const* formula);           // csak start()
     void   (*error)(void* ctx, char const* msg);
+    void   (*log)(void* ctx, char const* msg);                       // a konzolra
 };
 
 // --- amiből a felhasználó származtat --------------------------------------------
@@ -94,7 +99,24 @@ protected:
     }
     bool formula(char const* f) { return host_->set_formula(host_->ctx, f); }
 
+    // Hiba: az Alakzatok panelre és a konzolra, pirossal (ugyanaz az üzenet egyszer).
     void error(char const* msg) { host_->error(host_->ctx, msg); }
+
+    // Egy sor a konzolra (a jelenet alatt), printf-formátummal:
+    //     print("r = %.2f, t = %.1f", r, t);
+    // Egymás után ugyanaz a sor nem ismétlődik, csak a számlálója nő. (Nem `log` a
+    // neve, mert az elfedné a <cmath> log() függvényét az osztályon belül.)
+#if defined(__GNUC__)
+    __attribute__((format(printf, 2, 3)))
+#endif
+    void print(char const* fmt, ...) {
+        char buf[1024];
+        va_list args;
+        va_start(args, fmt);
+        std::vsnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+        host_->log(host_->ctx, buf);
+    }
 
 private:
     Host const* host_ = nullptr;

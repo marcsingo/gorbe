@@ -76,7 +76,7 @@ ctest --test-dir build --output-on-failure
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a **kontrollpontok megoldója** (egy gömb két ponton át: a húzott ponton és a helyben maradón is átmegy, r és a középpont pontosan a várt értékre áll, a részecskék követik); a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
 | `test_variational` | a variációs felületek: képletes alakzat (gömb, tórusz) részecskéiből átalakítva visszaadja az alakot, a kifejezésfa = a közvetlen kiértékelés, a kényszerben véges a gradiens és a görbület, húzás után újraépítés nélkül követ, új felületi pont nem változtat a felületen, a részecskék mintavételezik; a natív csomópont: elhelyezett (eltolt, forgatott, méretezett) alakzaton a gradiens és a Hesse-mátrix = a numerikus, a program kicsi (188 utasítás), új kényszer után újraépítés nélkül is az új függvényt számolja |
-| `test_script` | az alakzatokhoz írt C++ kód (`script/`): a `start()` saját paramétere, warpja és képlete beépül, az `update()` értékírása (paraméter, pozíció) **újraépítés nélkül** hat, a GUI-n beállított érték a **kezdőérték** (a futás végén visszaáll, mentéskor az kerül a fájlba), szerkezeti hívás az `update()`-ben hibát ad, kivételnél csak az a kód áll le, más API-verziójú kódot elutasít; **valódi fordítás** (ha van Visual Studio): `kod/*.cpp` → `build/<jelenet>/<jelenet>.dll` ékezetes mappában is, a betöltött kód mozgatja az alakzatot, a hibás kódnál a hiba `kod\Hibas.cpp(3): error C2065: ...` alakban, hiányzó fájl és mentetlen projekt érthető hibát ad |
+| `test_script` | az alakzatokhoz írt C++ kód (`script/`): a `start()` saját paramétere, warpja és képlete beépül, az `update()` értékírása (paraméter, pozíció) **újraépítés nélkül** hat, a GUI-n beállított érték a **kezdőérték** (a futás végén visszaáll, mentéskor az kerül a fájlba), szerkezeti hívás az `update()`-ben hibát ad, kivételnél csak az a kód áll le, más API-verziójú kódot elutasít; a **konzol**: a `print` formázva, az alakzat nevével kerül bele, az `error` egyszer, az egyforma sorok összevonódnak, 2000 sor fölött a legrégebbiek kiesnek; **valódi fordítás** (ha van Visual Studio): `kod/*.cpp` → `build/<jelenet>/<jelenet>.dll` ékezetes mappában is, a betöltött kód mozgatja az alakzatot, a hibás kódnál a hiba `kod\Hibas.cpp(3): error C2065: ...` alakban, hiányzó fájl és mentetlen projekt érthető hibát ad |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -91,7 +91,8 @@ GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapb�
 - `test_gl_script`: az alakzatkód a valódi vezérlőn át, ahogy a gombok használják.
   Mentés, kódfájl, Indítás → „Build sikeres”, az `update()` a szimuláció órájával fut,
   futás közbeni mentésnél a kezdőérték kerül a fájlba, a Töröl visszaállít, a hibás
-  kód „Build sikertelen”-t ad a hibasorral, javítás után a DLL felülírható.
+  kód „Build sikertelen”-t ad a hibasorral, javítás után a DLL felülírható; a build
+  eredménye és a hibasor a konzolra is kerül.
 
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
@@ -863,6 +864,10 @@ A szabályok:
   program a `vswhere.exe`-vel keresi meg, ehhez a „Desktop development with C++”
   csomag kell. Minden Indítás újrafordít; ez néhány másodperc, és közben a
   folyamatjelző látszik, ami meg is szakítható.
+- **Konzol:** a 3D nézet alatt, középen. A kód a `print("r = %.2f", r)` hívással ír
+  ide; egymás után ugyanaz a sor nem ismétlődik, csak a számlálója nő. Ide kerül az
+  Indítás és a build eredménye, a fordító figyelmeztetései és hibái, valamint a futás
+  hibái is. Törölhető, vágólapra másolható, és a nézettel közös határa húzható.
 - Ha a kód kivételt dob, csak az a kód áll le, a jelenet fut tovább, és a hiba
   narancssárgán megjelenik. Egy rossz pointer vagy egy végtelen ciklus ellen nincs
   védelem: ilyenkor a program is összeomlik vagy lefagy.
@@ -1012,6 +1017,7 @@ minden kimenetre.
 | `scene/Presets.hpp`, `scene/Names.hpp` | alakzat- és warp-sablonok felvétele; szabad nevek, foglalt nevek |
 | `scene/ProjectFile.hpp` | a projektfájl (JSON) írása és olvasása, GL nélkül |
 | `ui/MenuBar.hpp` | a Fájl menü és az útvonal-ablak |
+| `ui/ConsolePanel.hpp`, `utils/Log.hpp` | a konzol (a 3D nézet alatt) és a sorai |
 | `scene/Scope.hpp` | a három szintű hatókör-feloldás (elfedéssel) |
 | `scene/Time.hpp` | a képletekben használható `t` idő |
 | `app/` | **CONTROLLER**: `Controller` (a fülek gazdája, a kérések végrehajtása), `Scene` (kamera + mintavételezők), `Photo` |

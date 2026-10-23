@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "../scene/Document.hpp"
+#include "../scene/Time.hpp"
+#include "../utils/Log.hpp"
 #include "gorbe_api.hpp"
 
 // ---------------------------------------------------------------------------
@@ -74,7 +76,7 @@ namespace Script {
             it.destroy = f.destroy;
             it.who = who;
             it.host = {gorbe::API_VERSION, &it, &h_param, &h_add_param, &h_transform,
-                       &h_add_warp, &h_set_formula, &h_error};
+                       &h_add_warp, &h_set_formula, &h_error, &h_log};
             try {
                 it.obj = f.create();
             } catch (...) {
@@ -142,9 +144,12 @@ namespace Script {
             return std::string(s.name[0] ? s.name : "(nevtelen)") + " [" + s.script + "]";
         }
 
+        // Egy hiba a panelre és a konzolra — mindkettőre csak egyszer, akkor is, ha a
+        // kód minden ciklusban ugyanazt a hibát váltja ki.
         void report(std::string msg) {
-            if (std::find(errors.begin(), errors.end(), msg) == errors.end())
-                errors.push_back(std::move(msg));
+            if (std::find(errors.begin(), errors.end(), msg) != errors.end()) return;
+            Log::add(Log::Level::Error, "", msg, SceneTime::value);
+            errors.push_back(std::move(msg));
         }
 
         template <class Fn>
@@ -257,6 +262,12 @@ namespace Script {
         static void h_error(void* ctx, char const* msg) {
             Item& it = item(ctx);
             it.owner->report(it.who + ": " + (msg ? msg : ""));
+        }
+
+        static void h_log(void* ctx, char const* msg) {
+            Item& it = item(ctx);
+            Log::add(Log::Level::Info, it.shape->name[0] ? it.shape->name : "(nevtelen)",
+                     msg ? msg : "", SceneTime::value);
         }
 
         void restore() {

@@ -82,6 +82,16 @@ struct Kivetel : gorbe::ShapeScript {
 };
 GORBE_SHAPE(Kivetel)
 
+// A konzolra ír: minden ciklusban ugyanazt (összevonódik) és egy hibát.
+struct Naplo : gorbe::ShapeScript {
+    void start() override { print("indul, %d. probalkozas, r = %.2f", 1, 2.5); }
+    void update(float, float) override {
+        print("ciklus");
+        error("valami baj");
+    }
+};
+GORBE_SHAPE(Naplo)
+
 #define FACTORY(C) Script::Factory{&gorbe_api_version_##C, &gorbe_create_##C, &gorbe_destroy_##C}
 
 static int old_version() { return gorbe::API_VERSION + 1; }
@@ -176,7 +186,37 @@ int main() {
         ok("hianyzo gyartofuggveny: elutasitja", !rt.attach(c, sc, program, {}));
     }
 
-    std::printf("=== 4. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
+    std::printf("=== 4. Konzol (utils/Log.hpp): print, error, osszevonas ===\n");
+    {
+        Log::clear();
+        SceneDoc sc;
+        Shape& s = shape(sc, "naplos", "x", "Naplo");
+        Script::Runtime rt;
+        rt.attach(s, sc, program, FACTORY(Naplo));
+        SceneTime::value = 1.5f;
+        rt.start_all();
+        ok("print: a konzolra, formazva, az alakzat nevevel",
+           Log::lines.size() == 1 && Log::lines[0].text == "indul, 1. probalkozas, r = 2.50" &&
+           Log::lines[0].source == "naplos" && Log::lines[0].level == Log::Level::Info &&
+           Log::lines[0].t == 1.5f, Log::lines.empty() ? "" : Log::lines[0].text);
+        for (int i = 0; i < 5; ++i) rt.update_all(0, 0);
+        // Sorrend: indul, ciklus, hiba, ciklus(x4) — a hiba egyszer, a ciklus a hiba
+        // után már egyben gyűlik (egymás utáni egyforma sorok).
+        std::size_t errs = 0;
+        for (auto const& l : Log::lines) errs += l.level == Log::Level::Error;
+        ok("error: a konzolra is, pirossal, egyszer", errs == 1);
+        ok("az egymas utani egyforma sorok osszevonodnak",
+           Log::lines.size() == 4 && Log::lines.back().text == "ciklus" && Log::lines.back().repeat == 4,
+           std::to_string(Log::lines.size()) + " sor");
+
+        Log::clear();
+        for (std::size_t i = 0; i < Log::MAX_LINES + 10; ++i)
+            Log::add(Log::Level::Info, "", std::to_string(i), 0.0f);
+        ok("a legregebbi sorok kiesnek", Log::lines.size() == Log::MAX_LINES && Log::lines.front().text == "10");
+        Log::clear();
+    }
+
+    std::printf("=== 5. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
     {
         std::string err;
         if (Script::Platform::find_compiler(err).empty()) {
@@ -229,8 +269,8 @@ GORBE_SHAPE(Hibas)
             Shape& s = shape(sc, "g", "x^2 + y^2 + z^2 - r^2", "Proba.cpp");
             shape(sc, "v", "x", "Vaz.cpp");
             Script::Compilation c = compile(sc, dir);
-            ok("a jo kod es a vaz egyutt lefordul", c.ok && c.warnings == 0,
-               c.errors.empty() ? std::to_string(c.warnings) + " figyelmeztetes" : c.errors[0]);
+            ok("a jo kod es a vaz egyutt lefordul", c.ok && c.warnings.empty(),
+               c.errors.empty() ? (c.warnings.empty() ? "" : c.warnings[0]) : c.errors[0]);
             ok("a DLL a build/<jelenet>/ mappaban", fs::is_regular_file(dir / "build" / "Jelenet_1" / "Jelenet_1.dll"));
             ok("a gorbe_api.hpp a projekt mappajaba kerult", fs::is_regular_file(dir / "gorbe_api.hpp"));
             {

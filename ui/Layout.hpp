@@ -14,12 +14,15 @@ namespace Ui {
 
     constexpr float PAD  = 6.0f;    // panelek közti rés (ez egyben az elválasztó is)
     constexpr float MINW = 220.0f;
+    constexpr float CONSOLE_MIN = 60.0f;   // a konzol legkisebb magassága
 
     // Az adott frame panel-téglalapjai, a főablak méretéből.
     struct Geometry {
         ImVec2 O;                   // a munkaterület bal felső sarka
         float  col_h;               // egy sáv teljes magassága
         float  cx, cw;              // a középső (3D) ablak bal széle és szélessége
+        float  view_h;              // a 3D nézet magassága (alatta a konzol)
+        float  con_y;               // a konzol felső széle
         float  rx;                  // a jobb sáv bal széle
         float  left_avail;          // a bal sáv három panelje együtt
         float  h1, h2, h3;          // Alakzatok / Nezet es sugo / Parameterek
@@ -39,6 +42,11 @@ namespace Ui {
         g.cx = g.O.x + PAD + layout.left_w + PAD;
         g.cw = S.x - layout.left_w - layout.right_w - 4.0f * PAD;
         g.rx = g.O.x + S.x - PAD - layout.right_w;
+
+        // A középső oszlop: felül a 3D nézet, alatta (egy rés után) a konzol.
+        layout.console_h = std::clamp(layout.console_h, CONSOLE_MIN, std::max(CONSOLE_MIN, g.col_h - 200.0f));
+        g.view_h = std::max(g.col_h - layout.console_h - PAD, 16.0f);
+        g.con_y  = g.O.y + PAD + g.view_h + PAD;
 
         // A bal sávban három panel és köztük két rés van.
         g.left_avail = std::max(g.col_h - 2.0f * PAD, 3.0f);
@@ -105,6 +113,10 @@ namespace Ui {
                  {layout.left_w, PAD}, false, &p2, 90.0f, g.left_avail - 180.0f, +1.0f);
         layout.left_f1 = p1 / g.left_avail;
         layout.left_f2 = p2 / g.left_avail;
+
+        // A 3D nézet és a konzol határa (felfelé húzva nő a konzol).
+        splitter("##split_console", {g.cx, g.con_y - PAD}, {g.cw, PAD}, false,
+                 &layout.console_h, CONSOLE_MIN, std::max(CONSOLE_MIN, g.col_h - 200.0f), -1.0f);
     }
 
 }

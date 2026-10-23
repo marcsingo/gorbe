@@ -147,14 +147,39 @@ bool formula(char const* f);
 Mindkettő igazat ad, ha elfogadta. A felépítés hibáit (pl. elírt képlet) az Indítás
 jelzi, ugyanúgy, mint a felületről beírt képletnél.
 
-### Hibaüzenet
+### Konzol és hibaüzenet
 
 ```cpp
+void print(char const* fmt, ...);
 void error(char const* msg);
 ```
 
-Saját üzenet az **Alakzatok** panelre, narancssárgán, az alakzat nevével. Ugyanaz az
-üzenet csak egyszer jelenik meg, akkor is, ha minden ciklusban hívod.
+- **`print`**: egy sor a **Konzolra** (középen alul, a 3D nézet alatt), printf-formátummal.
+  Elé kerül az idő (`t`) és az alakzat neve:
+
+  ```cpp
+  print("r = %.2f, z = %.2f", param("r"), position().z);
+  // a konzolon:  [   12.34] gomb1: r = 1.50, z = 0.73
+  ```
+
+  Ha **egymás után ugyanaz a sor** jön, nem ismétlődik, csak a számlálója nő:
+  `... gomb1: itt vagyok (x240)`. Így az `update()`-ből is nyugodtan logolhatsz.
+  A konzol legfeljebb 2000 sort tart meg, a régebbiek kiesnek.
+  A formátum a `printf`-é: `%d` egész, `%.2f` tört (a `float` is jó), `%s` szöveg.
+
+  > Azért nem `log` a neve, mert az osztályon belül elfedné a `<cmath>` `log()`
+  > függvényét, pedig az a képletekhez gyakran kell.
+
+- **`error`**: saját hibaüzenet, az **Alakzatok** panelre narancssárgán, a konzolra
+  pirosan. Ugyanaz az üzenet csak egyszer jelenik meg, akkor is, ha minden ciklusban
+  hívod.
+
+A konzolra kerül még az Indítás és a fordítás eredménye („Build sikeres” /
+„Build sikertelen”), a fordító figyelmeztetései (sárgán) és hibasorai (pirosan),
+valamint a futás hibái. A **Törlés** gomb kiüríti, a **Másolás** a vágólapra teszi a
+teljes tartalmát. Az **automatikus görgetés** követi az új sorokat; ha feljebb
+görgetsz, megáll, hogy a régebbi sorokat el tudd olvasni. A konzol és a 3D nézet
+határa húzható.
 
 ## Szabályok
 
@@ -331,12 +356,37 @@ GORBE_SHAPE(Torusz)
 Ha a felületen már van `R` vagy `rr` nevű lokális paraméter, az `add_param` azt
 használja, a felületen beállított értékkel.
 
-### 8. Saját hibaüzenet
+### 8. Logolás a konzolra
 
 ```cpp
 #include "../gorbe_api.hpp"
 
-// Saját hibaüzenet: a panelen narancssárgán jelenik meg (egy üzenet egyszer).
+// Indításkor kiírja a kezdőállapotot, futás közben másodpercenként egyszer az állást.
+struct Naplozo : gorbe::ShapeScript {
+    float kovetkezo = 0.0f;                     // mikor írjunk legközelebb
+
+    void start() override {
+        gorbe::vec3 const p = position();
+        print("indul: pozicio = (%.2f, %.2f, %.2f)", p.x, p.y, p.z);
+    }
+
+    void update(float t, float dt) override {
+        position().z += 0.5f * dt;
+        if (t >= kovetkezo) {
+            print("t = %.1f s, z = %.2f", t, position().z);
+            kovetkezo = t + 1.0f;
+        }
+    }
+};
+GORBE_SHAPE(Naplozo)
+```
+
+### 9. Saját hibaüzenet
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// Saját hibaüzenet: a panelen narancssárgán, a konzolon pirosan (egy üzenet egyszer).
 struct Ellenor : gorbe::ShapeScript {
     void update(float, float) override {
         if (param("r") <= 0.0f) error("az r legyen pozitiv");
@@ -348,7 +398,8 @@ GORBE_SHAPE(Ellenor)
 ## Hibák és megoldásuk
 
 A fordítás hibái az **Alakzatok** panelen jelennek meg, **pirosan** (legfeljebb 10
-sor, a teljes napló helyével). A futás hibái **narancssárgán** látszanak.
+sor, a teljes napló helyével). A futás hibái **narancssárgán** látszanak. Mindkettő
+a **Konzolra** is bekerül, a fordítóhibák mind, nem csak az első 10.
 
 | üzenet | ok | megoldás |
 |---|---|---|

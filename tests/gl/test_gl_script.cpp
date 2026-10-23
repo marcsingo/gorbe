@@ -85,6 +85,8 @@ GORBE_SHAPE(Mozgo)
         ok("Build sikeres", sc.build_ok && sc.build_status == "Build sikeres", sc.build_status +
            (sc.build_errors.empty() ? "" : ": " + sc.build_errors[0]));
         ok("a kod fut, a start() parametere megvan", !sc.runtime.empty() && s.script_params.size() == 1);
+        ok("a konzolon: Build sikeres, a jelenet nevevel", !Log::lines.empty() &&
+           Log::lines.back().text == "Build sikeres" && Log::lines.back().source == sc.name);
 
         frames(3);
         ok("az update() a szimulacio orajaval fut", s.xform.pos[0] == 3.0f && r.value == 1.5f,
@@ -123,6 +125,9 @@ GORBE_SHAPE(Mozgo)
         ok("a hiba fajllal es sorral", !sc.build_errors.empty() &&
            sc.build_errors[0].find("kod\\Mozgo.cpp(3)") == 0, sc.build_errors.empty() ? "" : sc.build_errors[0]);
         ok("a jelenet nem indult, a kod nem fut", sc.runtime.empty());
+        ok("a konzolon a hibasor, pirossal", !Log::lines.empty() &&
+           Log::lines.back().level == Log::Level::Error &&
+           Log::lines.back().text.find("kod\\Mozgo.cpp(3)") == 0);
 
         std::printf("=== 5. Javitas utan ujra sikeres (a DLL felulirhato) ===\n");
         write(src, R"(#include "../gorbe_api.hpp"

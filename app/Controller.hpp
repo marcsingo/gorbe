@@ -599,6 +599,7 @@ private:
             sc.build_errors.clear();
             sc.build_log.clear();
             if (!Script::has_scripts(sc)) return;
+            Log::add(Log::Level::Info, sc.name, "Inditas: a kod forditasa...", SceneTime::value);
             if (!Script::begin(*c, sc, project_dir(), api_header())) script_failed(sc, *c, ok);
         });
         j.add("Kod forditasa", [this, &sc, ok, c, jp = &j] {
@@ -608,8 +609,11 @@ private:
             if (!c->ok) { script_failed(sc, *c, ok); return; }
             sc.build_ok = true;
             sc.build_status = "Build sikeres";
-            if (c->warnings) sc.build_status += " (" + std::to_string(c->warnings) + " figyelmeztetes)";
+            if (!c->warnings.empty())
+                sc.build_status += " (" + std::to_string(c->warnings.size()) + " figyelmeztetes)";
             sc.build_log = c->log.string();
+            Log::add(Log::Level::Info, sc.name, sc.build_status, SceneTime::value);
+            for (auto const& w : c->warnings) Log::add(Log::Level::Warning, sc.name, w, SceneTime::value);
             Script::load(*c, sc.module, sc.runtime, sc, program_params);
             sc.runtime.start_all();
         });
@@ -653,6 +657,8 @@ private:
         sc.build_errors = c.errors;
         sc.build_log = c.log.empty() ? "" : c.log.string();
         *ok = false;
+        Log::add(Log::Level::Error, sc.name, sc.build_status, SceneTime::value);
+        for (auto const& e : c.errors) Log::add(Log::Level::Error, sc.name, e, SceneTime::value);
     }
 
     // A felhasználó megszakította a munkát: a hátralévő lépések kimaradnak, a

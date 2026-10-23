@@ -18,7 +18,7 @@ namespace Ui {
     inline void viewport_panel(App& app, std::list<Scene>& scenes, UiState& ui,
                                Requests& rq, Geometry const& g) {
         ImGui::SetNextWindowPos({g.cx, g.O.y + PAD});
-        ImGui::SetNextWindowSize({g.cw, g.col_h});
+        ImGui::SetNextWindowSize({g.cw, g.view_h});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin("##nezet", nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |

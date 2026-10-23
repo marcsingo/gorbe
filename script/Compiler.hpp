@@ -42,7 +42,7 @@ namespace Script {
     struct Compilation {
         bool ok = false;
         std::vector<std::string> errors;     // a fordító hibasorai (vagy az előkészítésé)
-        int warnings = 0;
+        std::vector<std::string> warnings;   // a fordító figyelmeztető sorai
         fs::path dll, log;
         std::vector<fs::path> sources;
         std::unique_ptr<Platform::Process> proc;
@@ -144,7 +144,7 @@ namespace Script {
         auto has = [](std::string const& ln, char const* what) { return ln.find(what) != std::string::npos; };
         for (auto const& ln : lines) {
             if (has(ln, ": error ") || has(ln, ": fatal error ") || has(ln, " error D")) c.errors.push_back(ln);
-            else if (has(ln, ": warning ")) ++c.warnings;
+            else if (has(ln, ": warning ")) c.warnings.push_back(ln);
         }
         std::error_code ec;
         c.ok = code == 0 && c.errors.empty() && fs::is_regular_file(c.dll, ec);

@@ -3,6 +3,7 @@
 #include "app/Controller.hpp"
 #include "scene/Time.hpp"
 #include "scene/Validate.hpp"
+#include "ui/ConsolePanel.hpp"
 #include "ui/HelpPanel.hpp"
 #include "ui/Layout.hpp"
 #include "ui/MenuBar.hpp"
@@ -49,6 +50,7 @@ int main() {
         Ui::help_panel(sc.camera, app.get_axes(), ui.layout, g);
         Ui::params_panel(sc, ctl.program_params, pr, rq, ui.layout, g);
         Ui::viewport_panel(app, ctl.scenes, ui, rq, g);
+        Ui::console_panel(ui, g);
         Ui::splitters(ui.layout, g);
         Ui::progress_popup(ctl.job(), rq);
 
