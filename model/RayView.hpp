@@ -30,11 +30,14 @@
 // ---------------------------------------------------------------------------
 class RayView {
 public:
-    // A menetelés beállításai (a CPU-s sugárkövetőéi, raytrace::Settings).
+    // A menetelés beállításai. A CPU-s sugárkövetőé (raytrace::Settings) max_step = 2 és
+    // t_max = 200 — itt nagyobb lépés és a kamera látótávolsága (100): mérve
+    // (tests/gl/bench_raytrace.cpp) 2.5-4.5x gyorsabb, a pixelek legfeljebb 0.1%-a más.
+    // A sugarak nagy része semmit nem talál el, és azok a teljes hosszon menetelnek.
     struct Settings {
-        float t_min = 0.02f, t_max = 200.0f;
+        float t_min = 0.02f, t_max = 100.0f;
         int   max_steps = 300;
-        float min_step = 1e-3f, max_step = 2.0f, step_safety = 0.75f;
+        float min_step = 1e-3f, max_step = 8.0f, step_safety = 0.75f;
     };
     Settings settings;
 
@@ -108,6 +111,14 @@ private:
         prog_ = 0;
         error.clear();
         if (code_.shapes == 0) return;
+        // ponytail: a variációs felület (több száz RBF-tag lépésenként) gyorsítás nélkül
+        // túl drága: mérve 320x180-on ~180-300 ms, 960x540-en a Windows 2 s-os GPU-
+        // időkorlátja fölött van (a rendszer újraindítja a GPU-t). Addig a részecskék
+        // látszanak; a GPU-s változathoz gyorsító struktúra vagy kisebb felbontás kell.
+        if (code_.source.find("gp_rbf_") != std::string::npos) {
+            error = "variacios alakzat: sugarkovetessel meg tul draga (a reszecskek latszanak)";
+            return;
+        }
         if (!vao_) glGenVertexArrays(1, &vao_);
         prog_ = build(vertex_source(), fragment_source(code_));
         ++compiles;

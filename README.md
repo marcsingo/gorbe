@@ -932,6 +932,35 @@ magától ellenőrzi a deriváltját:
 
 Kétargumentumúnál `.f2` és `.dv` is kell (`u`, `v` a két argumentum).
 
+## GPU-s sugárkövetés (futás közben)
+
+Futás közben a 3D nézet alapból **sugárkövetett**: a `model/RayView.hpp` shadere pixelenként
+menetel a sugár mentén, **tisztán az implicit egyenletekből, befoglaló térfogat nélkül**. Az
+alakzatok GLSL-kódja a kifejezésfa kiírójából jön (`Matek::Analizis::glsl_text`,
+`scene/Glsl.hpp`). Minden paraméter, a transzformáció és a `t` egy `uniform` eleme, ezért
+élőben hat; a shader csak a szerkezet változásakor fordul újra.
+
+Mérve ezen a gépen (AMD Radeon beépített GPU, `tests/gl/bench_raytrace.cpp`, a GPU saját
+időmérőjével, medián):
+
+| jelenet | 960×540 | 1280×720 | 1920×1080 |
+|---|---|---|---|
+| 1 gömb | 1,4 ms | 2,3 ms | 4,9 ms |
+| 1 tórusz | 2,5 ms | 4,0 ms | 8,6 ms |
+| 1 csavart ellipszoid (warp) | 13,4 ms | 23,7 ms | 52,4 ms |
+| CSG: sima unió, 2 gömb | 2,3 ms | 3,8 ms | 8,2 ms |
+| 3 egyszerű alakzat | 7,7 ms | 12,8 ms | 27,4 ms |
+| 8 alakzat (vegyes) | 43,8 ms | 76,6 ms | 168,9 ms |
+
+- A költség fő része azokon a sugarakon megy el, amelyek **semmit nem találnak el**: azok a
+  teljes látótávolságon menetelnek, minden alakzatra. Ezért nő a költség az alakzatok
+  számával egyenesen.
+- A menetelés beállítása a CPU-s sugárkövetőénél nagyobb lépés (8) és rövidebb sugár (100, a
+  kamera látótávolsága): ez 2,5–4,5× gyorsabb, és a pixelek legfeljebb 0,1%-a tér el.
+- A **variációs alakzatot** egyelőre nem sugárköveti (a részecskék látszanak, a konzol szól):
+  gyorsítás nélkül 320×180-on is ~180 ms, 960×540-en pedig a Windows 2 s-os GPU-időkorlátja
+  fölött volna.
+
 ## Hogyan gyors ez (teljesítmény)
 
 A szimuláció részecskénként és lépésenként 10 mennyiséget kér a felülettől: `F`, a

@@ -185,6 +185,15 @@ int main() {
 
     Evaluator ev(code, pts);
     ok("a generalt GLSL lefordul es linkel", ev.compiled);
+    {
+        // A variációs felületet a sugárkövető (egyelőre) nem rajzolja: gyorsítás nélkül
+        // a GPU-időkorlát fölött volna. Hibát ad, és nem rajzol (a részecskék látszanak).
+        RayView guard;
+        DocCamera cam(sc.scene_camera);
+        guard.draw(sc, cam);
+        ok("variacios alakzattal a sugarkoveto biztonsagosan elutasit",
+           guard.error.find("variacios") != std::string::npos, guard.error);
+    }
 
     // Összevetés a CPU-val (relatív tűrés; ahol a CPU sem véges, az kimarad).
     auto compare = [&](char const* when) {

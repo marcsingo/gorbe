@@ -31,8 +31,8 @@ int main() {
     // a szerkesztő kamerából, a tengelyekkel és a jelenet kamerájának gúlájával.
     //
     // Futás közben alapból SUGÁRKÖVETÉSSEL (GPU, model/RayView.hpp): az alakzatok tisztán
-    // az egyenletükből. Ha a generált shader nem fordul le, a részecskék látszanak, és a
-    // hiba a konzolra kerül.
+    // az egyenletükből. Ha nem megy (a generált shader nem fordul, vagy egy variációs
+    // alakzat még túl drága), a részecskék látszanak, és az ok a konzolra kerül.
     CameraGizmo gizmo;
     RayView rays;
     std::string last_ray_error;
@@ -49,8 +49,7 @@ int main() {
             if (rays.error != last_ray_error) {
                 last_ray_error = rays.error;
                 if (!rays.error.empty())
-                    Log::add(Log::Level::Error, sc.name, "sugarkovetes: a shader nem fordul: " + rays.error,
-                             SceneTime::value);
+                    Log::add(Log::Level::Warning, sc.name, "sugarkovetes: " + rays.error, SceneTime::value);
             }
             if (rays.error.empty()) return;
         }

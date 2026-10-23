@@ -195,7 +195,7 @@ add_dependencies(gorbe shaders)
 option(GORBE_BUILD_GL_TESTS "GL-kontextust igenylo tesztek forditasa" OFF)
 if(GORBE_BUILD_GL_TESTS)
     enable_testing()
-    foreach(t test_gl_disks test_gl_script test_gl_glsl)
+    foreach(t test_gl_disks test_gl_script test_gl_glsl bench_raytrace)
         add_executable(${t} tests/gl/${t}.cpp
                 libraries/glad/src/glad.c
                 model/Window.cpp
@@ -210,6 +210,8 @@ if(GORBE_BUILD_GL_TESTS)
                 "BINARY_DIR=\"$<TARGET_FILE_DIR:gorbe>\""
                 "GORBE_SCRIPT_CRT=\"$<IF:$<CONFIG:Debug>,/MDd,/MD>\"")
         add_dependencies(${t} shaders)
-        add_test(NAME ${t} COMMAND ${t})
+        if(t MATCHES "^test_")             # a bench_* csak mérés, nem teszt
+            add_test(NAME ${t} COMMAND ${t})
+        endif()
     endforeach()
 endif()

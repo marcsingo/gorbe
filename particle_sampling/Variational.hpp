@@ -263,6 +263,9 @@ struct RbfNode : Matek::Analizis::Kifejezes {
         }
         std::size_t const k = v->centers.size();
         auto num = [&](float f) { Konstans(f).print(os, namer); };
+        // Megoldatlan rendszer (pl. minden pont egy síkban): nincsenek súlyok — a CPU-s
+        // kiértékelés (eval_all) ilyenkor 0-t ad, a kiírás is (nem indexelünk túl).
+        if (v->w.size() != k + 4) return num(0.0f);
         if (Matek::Analizis::print_style == Matek::Analizis::PrintStyle::Glsl) return print_glsl(os, namer);
         num(v->w[k]);
         for (int m = 0; m < 3; ++m) { os << " + "; num(v->w[k + 1 + m]); os << '*'; a[m]->print(os, namer); }
