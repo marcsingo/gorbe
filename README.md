@@ -76,7 +76,7 @@ ctest --test-dir build --output-on-failure
 | `test_particles` | a részecske-szimuláció **GL nélkül**: a részecskék a gömbre kerülnek és egyenletesen szétterülnek, a tartományban maradnak, a részecske-plafon tart, a kontrollpont húzható; a **kontrollpontok megoldója** (egy gömb két ponton át: a húzott ponton és a helyben maradón is átmegy, r és a középpont pontosan a várt értékre áll, a részecskék követik); a párhuzamos léptetés (minden feladat egyszer fut, a kivétel a hívóhoz jut, beágyazott és egyidejű hívás sem akad el, egyszerre léptetett objektumok is helyesen mintavételeznek, egy objektumon belül a párhuzamos lépés = a soros) |
 | `test_project` | a projektfájl: mentés → betöltés minden mezőt visszaad (a második mentés betűre azonos), a betöltött projekt ugyanúgy felépül; hibás, idegen, újabb verziójú fájl érthető hibát ad; ismeretlen szín, rossz típus, túl hosszú szöveg, Unicode |
 | `test_variational` | a variációs felületek: képletes alakzat (gömb, tórusz) részecskéiből átalakítva visszaadja az alakot, a kifejezésfa = a közvetlen kiértékelés, a kényszerben véges a gradiens és a görbület, húzás után újraépítés nélkül követ, új felületi pont nem változtat a felületen, a részecskék mintavételezik; a natív csomópont: elhelyezett (eltolt, forgatott, méretezett) alakzaton a gradiens és a Hesse-mátrix = a numerikus, a program kicsi (188 utasítás), új kényszer után újraépítés nélkül is az új függvényt számolja |
-| `test_script` | az alakzatokhoz írt C++ kód (`script/`): a `start()` saját paramétere, warpja és képlete beépül, az `update()` értékírása (paraméter, pozíció) **újraépítés nélkül** hat, a GUI-n beállított érték a **kezdőérték** (a futás végén visszaáll, mentéskor az kerül a fájlba), szerkezeti hívás az `update()`-ben hibát ad, kivételnél csak az a kód áll le, más API-verziójú kódot elutasít; a **konzol**: a `print` formázva, az alakzat nevével kerül bele, az `error` egyszer, az egyforma sorok összevonódnak, 2000 sor fölött a legrégebbiek kiesnek; **valódi fordítás** (ha van Visual Studio): `kod/*.cpp` → `build/<jelenet>/<jelenet>.dll` ékezetes mappában is, a betöltött kód mozgatja az alakzatot, a hibás kódnál a hiba `kod\Hibas.cpp(3): error C2065: ...` alakban, hiányzó fájl és mentetlen projekt érthető hibát ad |
+| `test_script` | az alakzatokhoz írt C++ kód (`script/`): a `start()` saját paramétere, warpja és képlete beépül, az `update()` értékírása (paraméter, pozíció) **újraépítés nélkül** hat, a GUI-n beállított érték a **kezdőérték** (a futás végén visszaáll, mentéskor az kerül a fájlba), szerkezeti hívás az `update()`-ben hibát ad, kivételnél csak az a kód áll le, más API-verziójú kódot elutasít; a **konzol**: a `print` formázva, az alakzat nevével kerül bele, az `error` egyszer, az egyforma sorok összevonódnak, 2000 sor fölött a legrégebbiek kiesnek; **más alakzatok és ütközés**: név és sorszám szerinti lekérdezés, egy másik alakzat F-je, gradiense, `contains`, `distance` pontosan, a paramétere írható és a futás végén visszaáll, két átfedő gömbnél az ütközés mélysége a valódi átfedés (0.5), a normális kifelé mutat, eltolva épp érintkeznek, távol nincs ütközés, a `start()`-ban a lekérdezés hibát ad, az `update()`-ben először kért alakzat mozgatásáról figyelmeztetés jön; **valódi fordítás** (ha van Visual Studio): `kod/*.cpp` → `build/<jelenet>/<jelenet>.dll` ékezetes mappában is, a betöltött kód mozgatja az alakzatot, a hibás kódnál a hiba `kod\Hibas.cpp(3): error C2065: ...` alakban, hiányzó fájl és mentetlen projekt érthető hibát ad |
 | `test_ui` | a 3D nézet koordináta-átváltása, a három szintű hatókör-feloldás/elfedés, a `t` idő (élő követés + `∂F/∂t`), és a részecske-korongok hézag-csúszkája (a rés tényleg `σ·hezag`, a szélek levágva) |
 | `test_camera` | a kamera Z-up bázisa és az **egérkezelés előjelei**: jobbra húzva jobbra, felfelé húzva felfelé fordul a nézet |
 | `test_transform` | eltolás/forgatás/méret és összetételük, **warpok és warp-láncok** (sorrend-függés), a gradiens szimbolikus vs. numerikus egyezése, az élő paraméterek |
@@ -92,7 +92,8 @@ GL-kontextust igénylő tesztek (valódi, rejtett ablakot nyitnak, ezért alapb�
   Mentés, kódfájl, Indítás → „Build sikeres”, az `update()` a szimuláció órájával fut,
   futás közbeni mentésnél a kezdőérték kerül a fájlba, a Töröl visszaállít, a hibás
   kód „Build sikertelen”-t ad a hibasorral, javítás után a DLL felülírható; a build
-  eredménye és a hibasor a konzolra is kerül.
+  eredménye és a hibasor a konzolra is kerül; egy gömb a `collide`-dal kitolja magát
+  egy átfedő gömbből, túllövés nélkül (a valódi szimulációval, ezért ~10 s).
 
 Az irányítás részletei lentebb: [Irányítás](#irányítás).
 
@@ -808,8 +809,10 @@ felépített képletek — betöltéskor a program minden jelenetet magától fe
 ## Alakzatok kódja (C++)
 
 Egy alakzathoz C++ osztály írható, két függvénnyel: a `start()` egyszer fut az
-Indításkor, az `update(t, dt)` minden ciklusban. A részletes leírás, példákkal:
-[`script/API.md`](script/API.md). Az osztály a `gorbe::ShapeScript`-ből
+Indításkor, az `update(t, dt)` minden ciklusban. A kód a jelenet többi alakzatát is
+eléri (`shape("Fal")`), kiértékelheti bármelyik implicit függvényét (`value`,
+`contains`, `distance`), és ütközést vizsgálhat (`collide`). A részletes leírás,
+példákkal: [`script/API.md`](script/API.md). Az osztály a `gorbe::ShapeScript`-ből
 származik, és ezen át éri el az alakzatot: paraméterek, pozíció, forgatás, méret,
 warpok, képlet.
 

@@ -140,6 +140,43 @@ GORBE_SHAPE(Mozgo)
         ok("meg egyszer (a betoltott DLL helyere)", sc.build_ok, sc.build_errors.empty() ? "" : sc.build_errors[0]);
         frames(3);
         ok("az uj kod fut", s.xform.pos[1] == 1.0f);
+
+        std::printf("=== 6. Utkozes a programban: a gomb kitolja magat a falbol ===\n");
+        // A "gomb" (r = 2) az origóban, a "fal" (r = 1) x = 2.5-ben: 0.5 mélyen átfednek.
+        // A kód minden ciklusban kitolja a gömböt a normális mentén.
+        Shape& fal = new_shape(sc.shapes, "fal");
+        std::snprintf(fal.name, sizeof(fal.name), "fal");
+        std::snprintf(fal.formula, sizeof(fal.formula), "x^2 + y^2 + z^2 - 1");
+        fal.xform.pos[0] = 2.5f;
+        sc.d_ui = 0.8f;
+        write(src, R"(#include "../gorbe_api.hpp"
+struct Mozgo : gorbe::ShapeScript {
+    gorbe::ShapeRef fal;
+    void start() override { fal = shape("fal"); }
+    void update(float, float) override {
+        if (gorbe::Hit h = collide(fal)) {
+            position() += h.normal * h.depth;
+            print("utkozes, melyseg %.3f", h.depth);
+        }
+    }
+};
+GORBE_SHAPE(Mozgo)
+)");
+        start(ctl);
+        ok("Build sikeres", sc.build_ok, sc.build_errors.empty() ? "" : sc.build_errors[0]);
+        // A szimuláció VALÓS időben halad (a rejtett ablak frame-jei gyorsak), és a
+        // fisszió néhány másodperc alatt teríti be a gömböket: addig futunk, amíg a
+        // gömb kiszabadul (legfeljebb 40 s).
+        double const t0 = glfwGetTime();
+        while (glfwGetTime() - t0 < 40.0 && s.xform.pos[0] > -0.45f) frames(10);
+        frames(30);                       // kiszabadult: utána már nem mozdul tovább
+        bool logged = false;
+        for (auto const& l : Log::lines) logged |= l.text.rfind("utkozes, melyseg", 0) == 0;
+        ok("utkozott, es a konzolra irt", logged);
+        ok("kitolta magat -x iranyba, epp az atfedesnyit (0.5)", s.xform.pos[0] < -0.45f && s.xform.pos[0] > -0.7f,
+           std::to_string(s.xform.pos[0]));
+        ok("futas kozben nincs hiba", sc.runtime.errors.empty(),
+           sc.runtime.errors.empty() ? "" : sc.runtime.errors[0]);
         ctl.shutdown();
     }
     fs::remove_all(dir, ec);

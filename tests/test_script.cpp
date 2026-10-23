@@ -92,6 +92,42 @@ struct Naplo : gorbe::ShapeScript {
 };
 GORBE_SHAPE(Naplo)
 
+// Egy másik alakzatot kérdez le (B), kiértékeli az F-jét, ütközést vizsgál, és írja.
+static struct {
+    std::string name, nev1;
+    int count = 0;
+    float start_value = 0, v_center = 0, v_origin = 0, dist_surface = 1;
+    bool in_center = false, in_origin = true;
+    gorbe::vec3 grad;
+    gorbe::Hit hit;
+} kereso;
+static bool kereso_grow = false;
+struct Kereso : gorbe::ShapeScript {
+    gorbe::ShapeRef b;
+    void start() override {
+        b = shape("B");                                // a start()-ban: mozgatható is lesz
+        shape("Nincs");                                // hiba: nincs ilyen
+        kereso.start_value = b.value({0, 0, 0});       // a start()-ban még nincs F
+    }
+    void update(float, float) override {
+        kereso.name = b.name();
+        kereso.count = shape_count();
+        kereso.nev1 = shape(1).name();
+        kereso.v_center = b.value({1.5f, 0, 0});
+        kereso.v_origin = b.value({0, 0, 0});
+        kereso.grad = b.gradient({2.5f, 0, 0});
+        kereso.in_center = b.contains({1.5f, 0, 0});
+        kereso.in_origin = b.contains({0, 0, 0});
+        kereso.dist_surface = b.distance({2.5f, 0, 0});
+        kereso.hit = collide(b);
+        if (kereso_grow) {
+            b.param("rb") = 2.0f;
+            shape("C").position().y = 1.0f;            // C-t csak most kéri le: nem mozdulhat
+        }
+    }
+};
+GORBE_SHAPE(Kereso)
+
 #define FACTORY(C) Script::Factory{&gorbe_api_version_##C, &gorbe_create_##C, &gorbe_destroy_##C}
 
 static int old_version() { return gorbe::API_VERSION + 1; }
@@ -216,7 +252,91 @@ int main() {
         Log::clear();
     }
 
-    std::printf("=== 5. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
+    std::printf("=== 5. Mas alakzatok: lekerdezes, F, utkozes ===\n");
+    {
+        // A az origóban, B az x = 1.5-ben, mindkettő 1 sugarú: 0.5 mélyen átfednek.
+        SceneDoc sc;
+        Shape& a = shape(sc, "A", "x^2 + y^2 + z^2 - 1", "Kereso");
+        Shape& b = shape(sc, "B", "x^2 + y^2 + z^2 - rb^2", "");
+        param(b.locals, "rb", 1.0f);
+        Shape& c = shape(sc, "C", "z", "");          // távol, csak az update()-ben kérik le
+        b.xform.pos[0] = 1.5f;
+        ParticleSystem pa({}, 1), pb({}, 2);
+        Script::Runtime rt;
+        rt.system_of = [&](Shape const* s) -> ParticleSystem* { return s == &a ? &pa : s == &b ? &pb : nullptr; };
+        rt.attach(a, sc, program, FACTORY(Kereso));
+        rt.start_all();
+        ok("a start()-ban kert mas alakzat mozgathato lesz", b.script_moved);
+        ok("a start()-ban az F meg nem erheto el (NaN, hiba)",
+           std::isnan(kereso.start_value) && has(rt, "csak az update()-ben"));
+        ok("nem letezo alakzat: hiba", has(rt, "nincs 'Nincs' nevu alakzat"));
+        std::string e = Build::build(sc, program);
+        ok("felepul", e.empty(), e);
+        ok("B transzformacioja beepult", b.warped);
+        // Sűrű mintavétel (kis d), amíg a fisszió beteríti a gömböket.
+        for (auto [ps, s] : {std::pair{&pa, &a}, {&pb, &b}}) {
+            ps->d = 0.6f;
+            ps->surface().set_tree(s->tree);
+            ps->restart();
+            for (int i = 0; i < 250; ++i) ps->step(0.03f);
+        }
+
+        rt.update_all(0, 0.016f);
+        ok("nev, darabszam, sorszam szerint", kereso.name == "B" && kereso.count == 3 && kereso.nev1 == "B");
+        near("B F-je a kozepen: -1", kereso.v_center, -1.0f);
+        near("B F-je az origoban: 1.25", kereso.v_origin, 1.25f);
+        near("B gradiense a feluleten: (2,0,0)", kereso.grad.x, 2.0f);
+        ok("contains: a kozep benne, az origo nem", kereso.in_center && !kereso.in_origin);
+        near("distance a feluleten: 0", kereso.dist_surface, 0.0f);
+        ok("utkozes: van", kereso.hit.hit && kereso.hit.count > 0, std::to_string(kereso.hit.count) + " pont");
+        ok("a normalis A-t B-tol el (-x) tolja", kereso.hit.normal.x < -0.95f,
+           std::to_string(kereso.hit.normal.x));
+        // A valódi átfedés 0.5 (A: [-1, 1], B: [0.5, 2.5]); a legmélyebb részecske a
+        // tengely közelében van, tehát a mélység ehhez közeli (a mintavétel sűrűségéig).
+        near("a melyseg a valodi atfedes (0.5)", kereso.hit.depth, 0.5f, 0.06f);
+        ok("az utkozes pontja az atfedesben", kereso.hit.point.x > 0.4f && kereso.hit.point.x < 1.1f,
+           std::to_string(kereso.hit.point.x));
+
+        // A-t normal*depth-szel eltolva a legmélyebb pontban épp érintkeznek: ha a pont
+        // A részecskéje, az eltolt pont B felületére kerül; ha B-é, az A eltolt
+        // felülete megy át rajta (F_A(pont - eltolás) = 0).
+        gorbe::vec3 const v = kereso.hit.normal * kereso.hit.depth, q = kereso.hit.point;
+        float const on_b = Kif(b.tree).at({q.x + v.x, q.y + v.y, q.z + v.z});
+        float const on_a = Kif(a.tree).at({q.x - v.x, q.y - v.y, q.z - v.z});
+        ok("A-t normal*melyseg-gel eltolva epp erintkeznek",
+           std::min(std::abs(on_a), std::abs(on_b)) < 1e-3f,
+           std::to_string(on_a) + " / " + std::to_string(on_b));
+
+        kereso_grow = true;
+        Log::clear();
+        rt.update_all(0, 0.016f);
+        near("a masik alakzat parametere irhato", b.locals.front().value, 2.0f);
+        bool warned = false;
+        for (auto const& l : Log::lines)
+            warned |= l.level == Log::Level::Warning && l.text.find("'C'") != std::string::npos;
+        ok("az update()-ben eloszor kert alakzat mozgatasa: figyelmeztetes", warned && !c.script_moved);
+        rt.update_all(0, 0.016f);
+        std::size_t n_warn = 0;
+        for (auto const& l : Log::lines) n_warn += l.level == Log::Level::Warning;
+        ok("... csak egyszer", n_warn == 1);
+        kereso_grow = false;
+
+        // B messzire: a részecskék követik, és nincs ütközés.
+        b.locals.front().value = 1.0f;
+        b.xform.pos[0] = 4.0f;
+        for (int i = 0; i < 100; ++i) pb.step(0.03f);
+        rt.update_all(0, 0.016f);
+        ok("messze: nincs utkozes", !kereso.hit.hit && kereso.hit.count == 0,
+           std::to_string(kereso.hit.count) + " pont");
+
+        Build::drop_trees(sc);
+        rt.clear();
+        near("clear: a masik alakzat parametere is visszaall", b.locals.front().value, 1.0f);
+        near("clear: a kod altal irt masik pozicio is (C.y)", c.xform.pos[1], 0.0f);
+        ok("clear: a jelolese torlodik", !b.script_moved);
+    }
+
+    std::printf("=== 6. Valodi forditas: kod/*.cpp -> DLL -> peldanyok ===\n");
     {
         std::string err;
         if (Script::Platform::find_compiler(err).empty()) {

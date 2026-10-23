@@ -51,7 +51,19 @@ struct Scene : SceneDoc {
     std::vector<std::string> build_errors;   // a fordító hibasorai
     std::string build_log;                   // a teljes napló helye
 
-    Scene() { camera.look_at(App::DEFAULT_EYE, glm::vec3(0.0f)); }
+    Scene() {
+        camera.look_at(App::DEFAULT_EYE, glm::vec3(0.0f));
+        // A kód (gorbe::ShapeRef) ezen át éri el egy alakzat futó felületét és
+        // részecskéit: a lista i-edik alakzata a pool i-edik objektuma.
+        runtime.system_of = [this](Shape const* s) -> ParticleSystem* {
+            std::size_t i = 0;
+            for (auto const& sh : shapes) {
+                if (&sh == s) return i < pool.size() ? &pool[i]->model() : nullptr;
+                ++i;
+            }
+            return nullptr;
+        };
+    }
 
     // Aktív fül: fut a szimuláció és megkapja a bevitelt.
     void set_active(bool a) {

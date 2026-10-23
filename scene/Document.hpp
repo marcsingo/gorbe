@@ -91,6 +91,9 @@ struct Shape {
     std::list<Param>  script_params;
     std::vector<Warp> script_warps;
     std::string       script_formula;   // ha nem üres, a `formula` HELYETT
+    // Egy MÁSIK alakzat kódja mozgatja (a start()-ban kérte a transzformációját): a
+    // transzformáció egységnél is beépül, különben az írás nem látszana.
+    bool              script_moved = false;
 
     // --- az utolsó Indításkor felépített állapot (scene/Build.hpp) ----------
     // A `dom_tree` a globális ÉS a saját (transzformált) feltétel ÉS-kapcsolata —

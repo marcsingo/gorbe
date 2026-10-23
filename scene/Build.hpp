@@ -190,7 +190,7 @@ namespace Build {
             }
         // Kontrollpontoknál és kódnál a transzformáció akkor is beépül, ha egység:
         // a megoldó, illetve az update() ezt mozgatja.
-        return apply_transform(f, s.xform, !s.controls.empty() || s.script[0]);
+        return apply_transform(f, s.xform, !s.controls.empty() || s.script[0] || s.script_moved);
     }
 
     // A kontrollpontok megoldójának paraméterei (q): az alakzat SZÁMMAL megadott
@@ -242,7 +242,7 @@ namespace Build {
                     // A transzformált alakot tesszük vissza s.tree-be, hogy a rá
                     // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
                     // (két elhelyezett gömb uniója a helyükön legyen).
-                    s.warped = !s.xform.is_identity() || !s.controls.empty() || s.script[0];
+                    s.warped = !s.xform.is_identity() || !s.controls.empty() || s.script[0] || s.script_moved;
                     s.tree = place(Kif(s.tree), s, sc, program).get();
 
                     // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.

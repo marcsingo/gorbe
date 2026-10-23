@@ -118,17 +118,117 @@ gorbe::vec3& scale();             // méret tengelyenként (1 = eredeti)
 void position(gorbe::vec3 p);     // rövidítés: position() = p
 ```
 
-A `gorbe::vec3` egy egyszerű `{x, y, z}` struktúra. Elemenként és egészben is írható:
+A `gorbe::vec3` egy egyszerű `{x, y, z}` struktúra. Elemenként és egészben is írható,
+és a szokásos műveletek működnek rajta:
 
 ```cpp
 position().z = 3.0f;
 position({1.0f, 2.0f, 0.0f});
 scale() = {2.0f, 2.0f, 2.0f};
+
+gorbe::vec3 const d = masik.position() - position();   // + - (két vektor), * / (számmal)
+position() += d * 0.5f;                                 // += -= *=
+float const tav = gorbe::length(d);                     // hossz
+gorbe::vec3 const irany = gorbe::normalize(d);          // egységvektor (0 hosszra 0)
+float const cos_szog = gorbe::dot(irany, {0, 0, 1});    // skaláris szorzat
 ```
 
 Ugyanezek az értékek láthatók a felület **Transzformáció** részén. Az alakzat előbb a
 warpokon megy át, és a kész, deformált alakzatot helyezi el a pozíció, a forgatás és
 a méret.
+
+### Más alakzatok
+
+```cpp
+gorbe::ShapeRef shape(char const* name);   // a jelenet egy alakzata, név szerint
+int             shape_count();             // hány alakzat van a jelenetben
+gorbe::ShapeRef shape(int i);              // az i-edik (0-tól; a saját is köztük van)
+gorbe::ShapeRef& self();                   // a saját alakzat
+```
+
+A `gorbe::ShapeRef` egy alakzatra mutat. Kis érték, tagváltozóba tehető. Ugyanaz
+érhető el rajta, mint a saját alakzaton, **írni is lehet**:
+
+```cpp
+gorbe::ShapeRef b = shape("Gomb2");
+b.name();                  // "Gomb2"
+b.param("r") = 2.0f;       // a Gomb2 paramétere (az ő hatókörében keres)
+b.position().x += 1.0f;    // a Gomb2 mozgatása
+b.rotation(); b.scale();
+```
+
+- **A `start()`-ban kérd le**, és tedd el egy tagváltozóba. Így a másik alakzat
+  pozíciója, forgatása és mérete írható is lesz, és a keresés sem fut minden
+  ciklusban. Ha az `update()`-ben kérsz le először egy alakzatot, és annak
+  egységnyi a transzformációja, akkor az írás nem látszik. Erről a konzol szól.
+- Ha nincs ilyen nevű alakzat, hiba jelenik meg, és a `ShapeRef` **érvénytelen**:
+  `if (b)` hamis, a hívásai nem csinálnak semmit (a paraméter és a pozíció 0-t, a
+  `value` NaN-t ad, a `collide` nem jelez ütközést).
+- Amit egy másik alakzaton írsz, az is visszaáll a kezdőértékére a futás végén.
+- Ha két kód ugyanazt az értéket írja, az utolsó nyer. Az `update()`-ek a lista
+  sorrendjében futnak.
+
+### Az implicit függvény: pont-lekérdezések
+
+Minden alakzat egy `F(x, y, z) = 0` felület: **`F < 0` belül**, `F = 0` a felületen,
+`F > 0` kívül. Ezt bármelyik alakzaton (a sajátodon is: `self()`) lekérdezheted, a
+világ egy pontjában, a pillanatnyi pozícióval, warpokkal és paraméterekkel:
+
+```cpp
+float       value(vec3 p);      // F(p)
+gorbe::vec3 gradient(vec3 p);   // ∇F(p): a felület normálisa (kifelé), ha p a felületen van
+bool        contains(vec3 p);   // F(p) < 0, és a tartomány-feltételen belül
+float       distance(vec3 p);   // F / |∇F|: előjeles távolság-becslés (negatív = belül)
+```
+
+- A **`distance` becslés**, amely a felület közelében pontos. Távolabb az alakzat
+  képletén múlik: az `sqrt(x^2 + y^2 + z^2) - r` gömbnél mindenhol pontos, az
+  `x^2 + y^2 + z^2 - r^2` gömbnél csak a felület közelében.
+- **Nyitott felületnél** (pl. sík: `z`) a „belül” az `F < 0` félteret jelenti.
+- A `start()`-ban ezek (és a `collide`) még nem érhetők el, mert a képletek ott
+  épülnek fel. Ilyenkor a `value` NaN-t ad, és hiba jelenik meg.
+
+### Ütközés
+
+```cpp
+gorbe::Hit collide(gorbe::ShapeRef masik);         // a saját alakzat és a másik
+gorbe::Hit a.collide(gorbe::ShapeRef b);           // bármely két alakzat
+```
+
+```cpp
+struct Hit {
+    bool  hit;      // ütköznek-e (a Hit feltételként is használható: if (h) ...)
+    int   count;    // hány mintapont van a másikban
+    vec3  point;    // a legmélyebb pont
+    vec3  normal;   // amerre a SAJÁT (első) alakzatot tolni kell, hogy kiszabaduljon
+    float depth;    // mennyit
+};
+```
+
+A legegyszerűbb ütközéskezelés: tolja ki magát, épp annyit, hogy érintkezzenek.
+
+```cpp
+if (gorbe::Hit h = collide(fal))
+    position() += h.normal * h.depth;
+```
+
+**Hogyan működik?** Az implicit egyenlet tulajdonságát használja. Az alakzatok
+részecskéi a saját felületükön ülnek, ezért egy részecske akkor van a másik
+alakzatban, ha a másik `F`-je ott negatív. A vizsgálat **mindkét irányban** lefut:
+A részecskéi B-ben, és B részecskéi A-ban. Így akkor is ütközést jelez, ha az egyik
+alakzat teljesen a másikon belül van. A legmélyebb pontot a program Newton-lépésekkel
+a másik felületére vetíti, ebből adódik a `depth` és a `normal`.
+
+- A pontossága a **mintavétel sűrűségén** múlik (a `d` beállításon). Kisebb `d` több
+  részecskét és pontosabb ütközést ad. Ami kisebb két részecske távolságánál, azt
+  átfedésként sem veszi észre.
+- **Az Indítás után** a részecskék néhány másodperc alatt terítik be a felületet. Addig
+  az ütközés hiányos lehet.
+- Gyors mozgásnál egy vékony alakzaton „át lehet ugrani” egy ciklus alatt.
+- Költsége ciklusonként a két alakzat részecskeszámával arányos. Néhány alakzatpárra
+  gond nélkül hívható minden ciklusban.
+- Önmagával sosem ütközik, ezért az összes alakzaton végig lehet menni (lásd a 12.
+  példát).
 
 ### Szerkezet (csak a `start()`-ban)
 
@@ -395,6 +495,101 @@ struct Ellenor : gorbe::ShapeScript {
 GORBE_SHAPE(Ellenor)
 ```
 
+### 10. Egy másik alakzat követése
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// Követi a "Cel" nevű alakzatot: minden ciklusban egy kicsit közelebb lép hozzá.
+struct Koveto : gorbe::ShapeScript {
+    gorbe::ShapeRef cel;
+
+    void start() override {
+        cel = shape("Cel");                 // elég egyszer lekérni
+    }
+
+    void update(float, float dt) override {
+        if (!cel) return;                    // nincs ilyen alakzat (a hiba már kiíródott)
+        gorbe::vec3 const hova = cel.position() + gorbe::vec3{0, 0, 3};   // 3 egységgel fölötte
+        position() += (hova - position()) * (2.0f * dt);                   // simán közelít
+    }
+};
+GORBE_SHAPE(Koveto)
+```
+
+### 11. Ütközés: megáll a falnál
+
+A gömb a fal felé halad. Ha beleér, épp annyit lép vissza, hogy érintkezzenek.
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// Ütközéskor kitolja magát a "Fal"-ból, és a konzolra írja.
+struct Kitero : gorbe::ShapeScript {
+    gorbe::ShapeRef fal;
+
+    void start() override { fal = shape("Fal"); }
+
+    void update(float t, float dt) override {
+        position().x += 1.0f * dt;                          // a fal felé halad
+        if (gorbe::Hit h = collide(fal)) {
+            position() += h.normal * h.depth;               // épp annyit vissza, hogy érintsen
+            print("utkozes t = %.1f, melyseg %.3f", t, h.depth);
+        }
+    }
+};
+GORBE_SHAPE(Kitero)
+```
+
+### 12. Ütközés a jelenet összes alakzatával
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// A jelenet minden alakzatával ütközést vizsgál, és kiírja, kivel ütközik.
+// (Önmagával sosem ütközik, ezért nem kell kihagyni.)
+struct Mindenki : gorbe::ShapeScript {
+    void update(float, float) override {
+        for (int i = 0; i < shape_count(); ++i) {
+            gorbe::ShapeRef masik = shape(i);
+            if (gorbe::Hit h = collide(masik))
+                print("utkozes: %s (%d pont, melyseg %.2f)", masik.name(), h.count, h.depth);
+        }
+    }
+};
+GORBE_SHAPE(Mindenki)
+```
+
+### 13. Pont-lekérdezés: belép-e egy zónába
+
+A "Zona" alakzatnak legyen `r` lokális paramétere (pl. a képlete
+`x^2 + y^2 + z^2 - r^2`, r = 2).
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// Pont-lekérdezés: a saját középpontja benne van-e a "Zona" alakzatban, és milyen messze
+// van a felületétől. Ha belép, a "Zona" sugarát (r paraméter) megnöveli.
+struct Erzekelo : gorbe::ShapeScript {
+    gorbe::ShapeRef zona;
+    bool bent = false;
+
+    void start() override { zona = shape("Zona"); }
+
+    void update(float t, float) override {
+        position().x = 4.0f * std::sin(0.5f * t);           // ide-oda jár
+        bool const most = zona.contains(position());
+        if (most != bent) {
+            print(most ? "belepett a zonaba" : "kilepett a zonabol");
+            zona.param("r") = most ? 2.5f : 2.0f;
+            bent = most;
+        }
+        if (!most) print("tavolsag a zonatol: %.1f", zona.distance(position()));
+    }
+};
+GORBE_SHAPE(Erzekelo)
+```
+
 ## Hibák és megoldásuk
 
 A fordítás hibái az **Alakzatok** panelen jelennek meg, **pirosan** (legfeljebb 10
@@ -411,6 +606,9 @@ a **Konzolra** is bekerül, a fordítóhibák mind, nem csak az első 10.
 | `a(z) 'r' parameter kepletes, nem irhato` | az `r`-nek képlete van | töröld a képletét, vagy írj egy másik paramétert |
 | `add_warp csak a start()-ban hivhato` | szerkezeti hívás az `update()`-ből | tedd át a `start()`-ba |
 | `kivetel: ... (a kod leallt)` | a kód kivételt dobott | javítsd, aztán Indít |
+| `nincs 'Fal' nevu alakzat a jelenetben` | a `shape("Fal")` nem talált ilyen nevű alakzatot (a kis- és nagybetű számít) | nevezd át az alakzatot, vagy javítsd a nevet a kódban |
+| `value/gradient/contains/distance csak az update()-ben hivhato` (vagy `collide ...`) | a `start()`-ban még nincsenek felépítve a képletek | tedd át az `update()`-be |
+| (konzol, sárga) `a(z) 'Fal' pozicioja/forgatasa/merete csak akkor mozgatja, ...` | a másik alakzatot az `update()`-ben kérted le először, így a mozgatása nem látszik | kérd le a `start()`-ban |
 | `nem talalhato a Visual Studio C++ fordito` | nincs telepítve a fordító | Visual Studio Installer → „Desktop development with C++” |
 
 ## Korlátok
@@ -423,5 +621,5 @@ a **Konzolra** is bekerül, a fordítóhibák mind, nem csak az első 10.
 - **A `static` változók közösek.** Egy jelenet minden kódja egy DLL-be fordul, így
   egy `static` változón az összes alakzat osztozik, amely ugyanazt a fájlt futtatja.
   Alakzatonkénti állapothoz tagváltozót használj.
-- Másik alakzat adatai még nem érhetők el a kódból.
+- Csak a **saját jelenet** alakzatai érhetők el, a többi fülé nem.
 - A kód a szerkesztő fülön (variációs szerkesztő) nem fut, csak a jelenetben.
