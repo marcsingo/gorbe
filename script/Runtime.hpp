@@ -13,7 +13,9 @@
 #include <vector>
 
 #include "../particle_sampling/ParticleSystem.hpp"
+#include "../scene/Build.hpp"
 #include "../scene/Document.hpp"
+#include "../scene/Names.hpp"
 #include "../scene/Time.hpp"
 #include "../utils/Log.hpp"
 #include "gorbe_api.hpp"
@@ -43,6 +45,12 @@
 // Shape*, átlátszatlanul; nullptr = a kód saját alakzata). Az F kiértékelése és az
 // ütközés az alakzat FUTÓ mintavételezőjén megy (system_of): a lefordított felület-
 // programmal, illetve a felületen ülő részecskékkel.
+//
+// Másolat (gorbe::ShapeRef::clone): az alakzat a lista VÉGÉRE másolódik
+// (Shape::script_clone), a kódja saját példányt kap (clone_start/clone_update). A
+// felépítése (Build::build_shape, a `spawn` kampó, a részecskék átmásolása) a
+// ciklus végére halasztódik, hogy a clone() után írt értékek (pl. a hely) már
+// beépüljenek. A clear() törli a másolatokat.
 // ---------------------------------------------------------------------------
 namespace Script {
 
@@ -60,6 +68,15 @@ namespace Script {
         // Az alakzat futó mintavételezője (a felülete és a részecskéi), vagy nullptr.
         // A jelenet adja (app/Scene.hpp); nélküle az F és az ütközés nem érhető el.
         std::function<ParticleSystem*(Shape const*)> system_of;
+
+        // Egy felépített másolat mintavételezőjének elindítása (a jelenet adja: új
+        // objektum a poolba, a fa átadása, indítás). Utána a részecskéit az eredetiéből
+        // másoljuk (system_of). Nélküle a másolatnak csak fája van.
+        std::function<void(Shape&)> spawn;
+
+        // Ennyi másolat élhet egy futásban (mindegyiknek saját mintavételezője van;
+        // így egy ciklusonként másoló kód sem fagyasztja le a programot).
+        static constexpr int MAX_CLONES = 100;
 
         // --- bemenet --------------------------------------------------------------
         // A kód (key_down, mouse_ray, ...) ezt olvassa. A vezérlő tölti az ablak
@@ -88,44 +105,22 @@ namespace Script {
         // Egy példány az alakzathoz. Hamis (és hiba), ha a kód más API-verzióval
         // fordult, vagy hiányzik a gyártófüggvénye.
         bool attach(Shape& s, SceneDoc& sc, std::list<Param>& program, Factory f) {
-            std::string const who = label(s);
-            if (!f.version || !f.create || !f.destroy) {
-                report(who + ": a kodban nincs GORBE_SHAPE a fajl nevevel egyezo osztalyra");
-                return false;
-            }
-            if (int const v = f.version(); v != gorbe::API_VERSION) {
-                report(who + ": a kod a gorbe_api " + std::to_string(v) + ". verziojaval fordult, "
-                       "a program a " + std::to_string(gorbe::API_VERSION) + ".-at ismeri");
-                return false;
-            }
-            auto& it = *items_.emplace_back(std::make_unique<Item>());
-            it.owner = this;
-            it.shape = &s; it.scene = &sc; it.program = &program;
-            it.destroy = f.destroy;
-            it.who = who;
-            it.host = {gorbe::API_VERSION, &it, &h_param, &h_add_param, &h_transform,
-                       &h_add_warp, &h_set_formula, &h_error, &h_log,
-                       &h_find_shape, &h_shape_count, &h_shape_at, &h_shape_name,
-                       &h_eval, &h_collide, &h_input, &h_camera};
-            try {
-                it.obj = f.create();
-            } catch (...) {
-                report(who + ": a konstruktor kivetelt dobott");
-            }
-            if (!it.obj) { items_.pop_back(); return false; }
-            it.obj->bind(&it.host);
-            return true;
+            return add_item(s, sc, program, f, false) != nullptr;
         }
 
         void start_all() {
-            for (auto& it : items_) {
-                it->phase = Phase::Start;
-                call(*it, [&] { it->obj->start(); });
-                it->phase = Phase::Update;
+            // Index szerint: a start()-ban hívott clone() bővíti a listát (a másolat
+            // példányán a clone_start() már lefutott, a start() nem kell).
+            for (std::size_t k = 0, n = items_.size(); k < n; ++k) {
+                Item& it = *items_[k];
+                it.phase = Phase::Start;
+                call(it, [&] { it.obj->start(); });
+                it.phase = Phase::Update;
             }
         }
 
-        // Az update()-ek, utána a részecskék vitele: amelyik alakzat pozícióját,
+        // Az update()-ek (másolatban a clone_update()-ek), utána a részecskék vitele:
+        // amelyik alakzat pozícióját,
         // forgatását vagy méretét a kód átírta, annak a részecskéi ugyanazzal a merev
         // leképezéssel mennek vele (régi világ -> lokális -> új világ). Enélkül egy nagy
         // mozdulat (pl. az első update() a kezdőhelytől messzire teszi) után a
@@ -134,14 +129,20 @@ namespace Script {
         // Csak a KÓD változtatására: a kontrollpont-megoldó a saját útján (q̇) viszi őket.
         void update_all(float t, float dt) {
             if (items_.empty()) return;
-            SceneDoc& sc = *items_.front()->scene;
+            spawn_pending();                 // a start()-ban kért másolatok
+            SceneDoc& sc = *scene_;
             before_.clear();
             for (auto const& s : sc.shapes) before_.push_back(s.xform);
 
-            for (auto& it : items_) call(*it, [&] { it->obj->update(t, dt); });
+            // Index szerint: a clone() a ciklus közben bővíti a listát.
+            for (std::size_t k = 0; k < items_.size(); ++k) {
+                Item& it = *items_[k];
+                call(it, [&] { if (it.clone) it.obj->clone_update(t, dt); else it.obj->update(t, dt); });
+            }
 
             std::size_t i = 0;
             for (auto& s : sc.shapes) {
+                if (i == before_.size()) break;              // a most kért másolatok
                 TransformParams const& old = before_[i++];
                 if (!s.warped || s.xform == old) continue;   // nem változott, vagy nem is hat
                 if (old.scale[0] == 0.0f || old.scale[1] == 0.0f || old.scale[2] == 0.0f) continue;
@@ -149,11 +150,14 @@ namespace Script {
                 if (!ps) continue;
                 for (Particle& p : ps->particles()) p.p = to_world(s.xform, to_local(old, p.p));
             }
+            spawn_pending();
         }
 
-        // A futás vége: a kezdőértékek vissza, a példányok törlése, és a kód
-        // kiegészítései (script_params/warps/formula) ki az alakzatokból.
-        // FONTOS: a hívó előtte drop()-oljon — a fák a script_params CÍMÉT tárolják.
+        // A futás vége: a kezdőértékek vissza, a példányok törlése, a kód
+        // kiegészítései (script_params/warps/formula) ki az alakzatokból, és a
+        // másolatok törlése.
+        // FONTOS: a hívó előtte drop()-oljon — a fák a script_params CÍMÉT tárolják —,
+        // utána pedig igazítsa a másolatokra mutató dolgait (pool, kijelölés).
         void clear() {
             restore();
             for (auto& it : items_) {
@@ -164,9 +168,15 @@ namespace Script {
             }
             items_.clear();
             touched_.clear();
+            flags_.clear();
             for (Shape* s : moved_) s->script_moved = false;
             moved_.clear();
             warned_.clear();
+            pending_.clear();
+            if (scene_) scene_->shapes.remove_if([](Shape const& s) { return s.script_clone; });
+            scene_ = nullptr;
+            program_ = nullptr;
+            clones_ = 0;
         }
 
         // A kezdőértékek <-> a pillanatnyiak cseréje. Mentésnél a mentés köré:
@@ -174,6 +184,7 @@ namespace Script {
         // így a fájlba a GUI-n beállított érték kerül, a futás pedig onnan folytatódik.
         void swap_initial() {
             for (auto& [p, v] : touched_) std::swap(*p, v);
+            for (auto& [p, v] : flags_) std::swap(*p, v);
         }
 
     private:
@@ -186,6 +197,8 @@ namespace Script {
             std::list<Param>*   program = nullptr;
             gorbe::ShapeScript* obj     = nullptr;
             void (*destroy)(gorbe::ShapeScript*) = nullptr;
+            Factory             factory;            // a másolatok példányához
+            bool                clone   = false;    // clone_start/clone_update fut benne
             gorbe::Host         host{};
             Phase               phase   = Phase::Start;
             std::string         who;
@@ -194,10 +207,83 @@ namespace Script {
         // unique_ptr: a Host a példány CÍMÉT kapja ctx-ként, tehát nem mozdulhat.
         std::vector<std::unique_ptr<Item>> items_;
         std::vector<std::pair<float*, float>> touched_;   // cím -> kezdőérték
+        std::vector<std::pair<bool*, bool>>   flags_;     // ugyanez a láthatóságra
         std::vector<Shape*> moved_;     // más alakzatok, amiknek a transzformációja beépül
         std::vector<Shape*> warned_;    // akikről már szóltunk, hogy nem mozgathatók
         Surface::Workspace  ws_;        // a kiértékeléshez (csak a fő szálról hívjuk)
         std::vector<TransformParams> before_;   // az update() előtti transzformációk
+
+        // Egy kért, még fel nem épített másolat: honnan, és az eredeti akkori helye
+        // (a részecskék ebből a helyből kerülnek át a másolat végleges helyére).
+        struct Pending {
+            Shape*          clone;
+            Shape const*    src;
+            TransformParams src_xform;
+        };
+        std::vector<Pending> pending_;
+        SceneDoc*           scene_   = nullptr;   // az attach()-ból
+        std::list<Param>*   program_ = nullptr;
+        int                 clones_  = 0;
+
+        // Egy példány az alakzathoz. nullptr (és hiba), ha a kód más API-verzióval
+        // fordult, vagy hiányzik a gyártófüggvénye.
+        Item* add_item(Shape& s, SceneDoc& sc, std::list<Param>& program, Factory f, bool clone) {
+            std::string const who = label(s);
+            if (!f.version || !f.create || !f.destroy) {
+                report(who + ": a kodban nincs GORBE_SHAPE a fajl nevevel egyezo osztalyra");
+                return nullptr;
+            }
+            if (int const v = f.version(); v != gorbe::API_VERSION) {
+                report(who + ": a kod a gorbe_api " + std::to_string(v) + ". verziojaval fordult, "
+                       "a program a " + std::to_string(gorbe::API_VERSION) + ".-at ismeri");
+                return nullptr;
+            }
+            scene_ = &sc;
+            program_ = &program;
+            auto& it = *items_.emplace_back(std::make_unique<Item>());
+            it.owner = this;
+            it.shape = &s; it.scene = &sc; it.program = &program;
+            it.destroy = f.destroy;
+            it.factory = f;
+            it.clone = clone;
+            it.who = who;
+            it.host = {gorbe::API_VERSION, &it, &h_param, &h_add_param, &h_transform,
+                       &h_add_warp, &h_set_formula, &h_error, &h_log,
+                       &h_find_shape, &h_shape_count, &h_shape_at, &h_shape_name,
+                       &h_eval, &h_collide, &h_input, &h_camera, &h_clone, &h_visible, clone};
+            try {
+                it.obj = f.create();
+            } catch (...) {
+                report(who + ": a konstruktor kivetelt dobott");
+            }
+            if (!it.obj) { items_.pop_back(); return nullptr; }
+            it.obj->bind(&it.host);
+            return &it;
+        }
+
+        // A kért másolatok felépítése: a fa (a clone() óta írt értékekkel), a
+        // mintavételező (spawn), és a részecskék az eredetiből, a másolat helyére vive.
+        void spawn_pending() {
+            std::vector<Pending> const todo = std::move(pending_);
+            pending_.clear();
+            for (Pending const& p : todo) {
+                Shape& c = *p.clone;
+                try {
+                    Build::build_shape(*scene_, *program_, c);
+                } catch (std::exception const& e) {
+                    report(std::string(c.name) + ": a masolat nem epult fel: " + e.what());
+                    continue;
+                }
+                if (spawn) spawn(c);
+                ParticleSystem* pc = system_of ? system_of(&c) : nullptr;
+                ParticleSystem* ps = system_of ? system_of(p.src) : nullptr;
+                float const* k = p.src_xform.scale;
+                if (!pc || !ps || ps->particles().empty() || k[0] == 0.0f || k[1] == 0.0f || k[2] == 0.0f)
+                    continue;
+                pc->particles() = ps->particles();
+                for (Particle& q : pc->particles()) q.p = to_world(c.xform, to_local(p.src_xform, q.p));
+            }
+        }
 
         static std::string label(Shape const& s) {
             return std::string(s.name[0] ? s.name : "(nevtelen)") + " [" + s.script + "]";
@@ -441,7 +527,7 @@ namespace Script {
             Item& it = item(ctx);
             Shape& sa = target(it, a);
             Shape& sb = target(it, b);
-            if (&sa == &sb) return 0;
+            if (&sa == &sb || !sa.visible || !sb.visible) return 0;   // a rejtett nem ütközik
             ParticleSystem* pa = running(it, sa, "collide");
             ParticleSystem* pb = pa ? running(it, sb, "collide") : nullptr;
             if (!pa || !pb) return 0;
@@ -514,6 +600,48 @@ namespace Script {
             return v;
         }
 
+        static bool* h_visible(void* ctx, void* t) {
+            Item& it = item(ctx);
+            Shape& s = target(it, t);
+            auto& fl = it.owner->flags_;
+            if (std::none_of(fl.begin(), fl.end(), [&](auto const& f) { return f.first == &s.visible; }))
+                fl.emplace_back(&s.visible, s.visible);
+            return &s.visible;
+        }
+
+        // Másolat a lista végére. A fa és a mintavételező a ciklus végén készül
+        // (spawn_pending); a kódja itt kap példányt, és a clone_start() is itt fut, hogy
+        // a szerkezeti hívásai (add_warp, ...) még beépüljenek.
+        static void* h_clone(void* ctx, void* t) {
+            Item& it = item(ctx);
+            Runtime& rt = *it.owner;
+            Shape& src = target(it, t);
+            if (rt.clones_ >= MAX_CLONES) {
+                rt.report(it.who + ": clone: legfeljebb " + std::to_string(MAX_CLONES) + " masolat lehet");
+                return nullptr;
+            }
+            ++rt.clones_;
+            Shape& c = it.scene->shapes.emplace_back(src);
+            c.tree.reset();
+            c.dom_tree.reset();
+            c.script_clone = true;
+            c.script_moved = true;           // a helye mindig beépül: a kód mozgatja
+            next_name(it.scene->shapes, (std::string(src.name) + "_").c_str(), c.name, sizeof(c.name));
+            rt.pending_.push_back({&c, &src, src.xform});
+
+            // Az eredeti kódja (ha van), ugyanabból a DLL-ből.
+            for (std::size_t k = 0; k < rt.items_.size(); ++k) {
+                if (rt.items_[k]->shape != &src) continue;
+                if (Item* ci = rt.add_item(c, *it.scene, *it.program, rt.items_[k]->factory, true)) {
+                    ci->phase = Phase::Start;
+                    rt.call(*ci, [&] { ci->obj->clone_start(); });
+                    ci->phase = Phase::Update;
+                }
+                break;
+            }
+            return &c;
+        }
+
         // Lenyomás: lenyomva + "most nyomták" (ha eddig nem volt lenyomva — az OS
         // billentyű-ismétlése nem ad új élt); felengedés: "most engedték".
         static void edge(unsigned char* k, bool press) {
@@ -524,6 +652,7 @@ namespace Script {
 
         void restore() {
             for (auto const& [p, v] : touched_) *p = v;
+            for (auto const& [p, v] : flags_) *p = v;
         }
     };
 

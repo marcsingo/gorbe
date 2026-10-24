@@ -39,7 +39,8 @@ namespace gorbe {
 // 2: Host::log (a konzolra írás, ShapeScript::print)
 // 3: más alakzatok (ShapeRef), F kiértékelése, ütközés; a Host függvényei célpontot kapnak
 // 4: bemenet (billentyűzet, egér) és a jelenet kamerája (CameraRef)
-inline constexpr int API_VERSION = 4;
+// 5: másolat (clone, clone_start, clone_update) és láthatóság (visible)
+inline constexpr int API_VERSION = 5;
 
 // --- vektor -----------------------------------------------------------------------
 struct vec3 { float x = 0, y = 0, z = 0; };
@@ -128,6 +129,9 @@ struct Host {
     int    (*collide)(void* ctx, void* a, void* b, float out[7]);
     InputState const* (*input)(void* ctx);                          // a mostani ciklus bemenete
     float* (*camera)(void* ctx, int which);                          // 0 pos, 1 yaw/pitch/roll, 2 fov
+    void*  (*clone)(void* ctx, void* target);                        // az új alakzat; nullptr: hiba
+    bool*  (*visible)(void* ctx, void* target);
+    bool   is_clone;                                                 // ez a példány egy másolaté
 };
 
 // --- a jelenet kamerája ------------------------------------------------------------
@@ -206,6 +210,21 @@ public:
     vec3& rotation() { return vec(1); }      // radián
     vec3& scale()    { return vec(2); }
 
+    // Látható-e. A rejtett alakzat nem látszik (a fényképen sem), és nem ütközik:
+    // a collide() rá és vele hamisat ad. A futás végén ez is visszaáll.
+    bool& visible() {
+        bool* p = *this ? host_->visible(host_->ctx, t()) : nullptr;
+        return p ? *p : dummy_vis_;
+    }
+
+    // Másolat erről az alakzatról, erre a futásra (nem mentődik, a futás végén
+    // törlődik). Ugyanaz a képlet, paraméter-értékek, warpok és transzformáció, mint
+    // az eredetinek MOST; a részecskéi is onnan indulnak. Ha az alakzatnak van kódja,
+    // a másolat saját példányt kap belőle, amiben a start()/update() HELYETT a
+    // clone_start()/clone_update() fut. A visszakapott ShapeRef-fel rögtön írható
+    // (pl. a helye): a másolat a ciklus végén épül fel, már az új értékekkel.
+    ShapeRef clone() { return {host_, *this ? host_->clone(host_->ctx, t()) : nullptr, false}; }
+
     // Az implicit függvény a világ egy pontjában. A start()-ban még nem érhető el
     // (a képletek ott épülnek fel): ilyenkor NaN, illetve nullvektor.
     float value(vec3 p) const {
@@ -254,6 +273,7 @@ private:
     void* target_ = nullptr;
     bool  self_ = false;
     float dummy_[3] = {0, 0, 0};    // hiba esetén ide írunk, hogy a kód ne omoljon össze
+    bool  dummy_vis_ = true;
 
     void* t() const { return self_ ? nullptr : target_; }
     float& deref(float* p) { return p ? *p : dummy_[0]; }
@@ -281,6 +301,13 @@ public:
     // állíts (paraméter, pozíció, forgatás, méret): ez újraépítés nélkül, élőben hat.
     // `t` a program ideje (mint a képletekben), `dt` az előző ciklus óta eltelt idő.
     virtual void update(float t, float dt) { (void)t; (void)dt; }
+
+    // A MÁSOLAT példányán (clone()) a start()/update() helyett ezek futnak. A
+    // clone_start() egyszer, a clone() hívásakor (még a felépítés előtt, tehát itt
+    // is szabad add_warp, formula, add_param); a clone_update() minden ciklusban.
+    // A tagváltozók az alapértéküken indulnak, nem az eredeti példányéból másolódnak.
+    virtual void clone_start() {}
+    virtual void clone_update(float t, float dt) { (void)t; (void)dt; }
 
     void bind(Host const* h) { host_ = h; self_ = ShapeRef(h, nullptr, true); camera_ = CameraRef(h); }
 
@@ -316,6 +343,12 @@ protected:
     vec3& rotation() { return self_.rotation(); }    // radián
     vec3& scale()    { return self_.scale(); }
     void  position(vec3 p) { position() = p; }
+    bool& visible()  { return self_.visible(); }
+
+    // Másolat a saját alakzatról (lásd ShapeRef::clone); más alakzatról: shape("B").clone().
+    ShapeRef clone() { return self_.clone(); }
+    // Ez a példány egy másolaté-e (a clone_start/clone_update fut benne).
+    bool is_clone() const { return host_ && host_->is_clone; }
 
     // Ütközés a saját alakzat és egy másik között (lásd ShapeRef::collide).
     Hit collide(ShapeRef const& other) { return self_.collide(other); }

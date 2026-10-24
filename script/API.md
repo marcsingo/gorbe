@@ -235,6 +235,54 @@ a másik felületére vetíti, ebből adódik a `depth` és a `normal`.
   gond nélkül hívható minden ciklusban.
 - Önmagával sosem ütközik, ezért az összes alakzaton végig lehet menni (lásd a 12.
   példát).
+- **Rejtett alakzat nem ütközik** (lásd lent): ha bármelyik fél rejtett, a `collide`
+  hamisat ad.
+
+### Láthatóság
+
+```cpp
+bool& visible();            // a saját alakzat
+bool& b.visible();          // bármely alakzat (ShapeRef)
+```
+
+Ugyanaz, mint az Alakzatok panel láthatóság-pipája. A **rejtett** alakzat nem
+látszik (a fényképen sem), és **nem ütközik**. Az `F` lekérdezései (`value`,
+`contains`, ...) rajta is működnek, és a részecskéi tovább mintavételeznek, így
+megmutatva rögtön a helyén van. A futás végén a láthatóság is visszaáll.
+
+```cpp
+visible() = false;                     // eltűnik
+fal.visible() = !fal.visible();        // ki-be
+```
+
+### Másolat (clone)
+
+```cpp
+gorbe::ShapeRef clone();               // másolat a saját alakzatról
+gorbe::ShapeRef b.clone();             // másolat egy másik alakzatról
+bool is_clone();                       // ez a példány egy másolaté-e
+
+virtual void clone_start();                      // a másolatban, egyszer
+virtual void clone_update(float t, float dt);    // a másolatban, minden ciklusban
+```
+
+A `clone()` az alakzatról **erre a futásra** készít másolatot. A másolat nem
+mentődik, és a futás végén (Leállít, Indít) törlődik. Az Alakzatok panelen a lista
+végén jelenik meg, `<név>_1`, `<név>_2`, ... néven.
+
+- A másolat az eredeti **pillanatnyi** állapotát kapja: képlet, paraméter-értékek,
+  warpok, pozíció, forgatás, méret, láthatóság. Utána a kettő független.
+- A visszakapott `ShapeRef`-fel **rögtön írható**, pl. a helye. A másolat a ciklus
+  végén épül fel, már az új értékekkel. A részecskéi az eredetiéből jönnek, az új
+  helyre víve, ezért nem kell megvárni, amíg beterítik a felületet.
+- **Ha az alakzatnak van kódja**, a másolat saját példányt kap ugyanabból az
+  osztályból. Ebben a `start()` és az `update()` **helyett** a `clone_start()` és a
+  `clone_update()` fut. A `clone_start()` a `clone()` hívásakor fut le, a felépítés
+  előtt, ezért ott is szabad `add_warp`, `formula` és `add_param`. A tagváltozók az
+  alapértékükön indulnak, nem az eredeti példányéból másolódnak.
+- Egy futásban legfeljebb **100 másolat** lehet (mindegyiknek saját mintavételezője
+  van). Afölött a `clone()` hibát ír, és érvénytelen `ShapeRef`-et ad.
+- Másolatot törölni nem lehet, de elrejteni igen: `m.visible() = false`.
 
 ### Futás, a jelenet kamerája és a bemenet
 
@@ -746,6 +794,31 @@ struct Keringo : gorbe::ShapeScript {
 GORBE_SHAPE(Keringo)
 ```
 
+### 17. Lövedékek: szóközre egy másolat indul előre, és a falnál eltűnik
+
+```cpp
+#include "../gorbe_api.hpp"
+
+// Az eredeti áll; Szóközre egy másolata indul +x irányba. A másolat a clone_update-ben
+// repül, és amikor a falba ér, elrejtőzik (a rejtett alakzat már nem ütközik).
+struct Lovedek : gorbe::ShapeScript {
+    gorbe::ShapeRef fal;
+
+    void start() override { fal = shape("Fal"); }
+    void update(float, float) override {
+        if (key_pressed(gorbe::KEY_SPACE)) clone().position().y += 0.5f;   // kicsit odébb
+    }
+
+    void clone_start() override { fal = shape("Fal"); }
+    void clone_update(float, float dt) override {
+        if (!visible()) return;
+        position().x += 4.0f * dt;
+        if (collide(fal)) visible() = false;
+    }
+};
+GORBE_SHAPE(Lovedek)
+```
+
 ## Hibák és megoldásuk
 
 A fordítás hibái az **Alakzatok** panelen jelennek meg, **pirosan** (legfeljebb 10
@@ -766,6 +839,7 @@ a **Konzolra** is bekerül, a fordítóhibák mind, nem csak az első 10.
 | `value/gradient/contains/distance csak az update()-ben hivhato` (vagy `collide ...`) | a `start()`-ban még nincsenek felépítve a képletek | tedd át az `update()`-be |
 | a `key_down` mindig hamis | a jelenet nem fut, a szerkesztő kamerából nézünk (a nézet bal felső gombja), vagy az egér nincs a 3D nézet fölött, vagy egy mezőbe gépelsz | Indít, „Jelenet kamera” nézet, az egér a nézet fölött |
 | (konzol, sárga) `a(z) 'Fal' pozicioja/forgatasa/merete csak akkor mozgatja, ...` | a másik alakzatot az `update()`-ben kérted le először, így a mozgatása nem látszik | kérd le a `start()`-ban |
+| `clone: legfeljebb 100 masolat lehet` | túl sok másolat egy futásban (pl. minden ciklusban másol) | feltételhez kösd a `clone()`-t (pl. `key_pressed`), a feleslegeset rejtsd el |
 | `nem talalhato a Visual Studio C++ fordito` | nincs telepítve a fordító | Visual Studio Installer → „Desktop development with C++” |
 
 ## Korlátok

@@ -168,11 +168,45 @@ struct Iranyito : gorbe::ShapeScript {
 };
 GORBE_SHAPE(Iranyito)
 
+// Másolat és láthatóság: egy másolat a start()-ban (-5-re), egy az első update()-ben
+// (+5-re); a másolatokban a clone_start/clone_update fut. A Fal-at elrejti, majd megmutatja.
+static struct {
+    int starts = 0, updates = 0, clone_starts = 0, clone_updates = 0;
+    bool clone_knows = false, hit_hidden = true, hit_shown = false;
+} masolo;
+struct Masolo : gorbe::ShapeScript {
+    gorbe::ShapeRef fal;
+    int n = 0;
+    void start() override {
+        ++masolo.starts;
+        fal = shape("Fal");
+        clone().position().x = -5.0f;
+    }
+    void update(float, float) override {
+        ++masolo.updates;
+        ++n;
+        if (n == 1) clone().position().x = 5.0f;
+        if (n == 2) { fal.visible() = false; masolo.hit_hidden = bool(collide(fal)); }
+        if (n == 3) { fal.visible() = true;  masolo.hit_shown = bool(collide(fal)); }
+        if (n == 4) fal.visible() = false;
+    }
+    void clone_start() override { ++masolo.clone_starts; masolo.clone_knows = is_clone(); }
+    void clone_update(float, float) override { ++masolo.clone_updates; }
+};
+GORBE_SHAPE(Masolo)
+
+// Minden ciklusban másol: a MAX_CLONES-nál megáll.
+struct Szapora : gorbe::ShapeScript {
+    void update(float, float) override { clone(); }
+};
+GORBE_SHAPE(Szapora)
+
 #define FACTORY(C) Script::Factory{&gorbe_api_version_##C, &gorbe_create_##C, &gorbe_destroy_##C}
 
 static int old_version() { return gorbe::API_VERSION + 1; }
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);    // összeomlásnál se vesszen el a kimenet
     std::list<Param> program;
 
     std::printf("=== 1. start(): sajat parameter es warp, update(): eloben ===\n");
@@ -566,6 +600,90 @@ GORBE_SHAPE(Hibas)
                c.errors[0].find("mentsd") != std::string::npos);
             fs::remove_all(dir, ec);
         }
+    }
+
+    std::printf("=== 9. Masolat (clone) es lathatosag ===\n");
+    {
+        // A az origóban, Fal az x = 1.5-ben, mindkettő 1 sugarú: átfednek.
+        SceneDoc sc;
+        Shape& a = shape(sc, "A", "x^2 + y^2 + z^2 - 1", "Masolo");
+        Shape& f = shape(sc, "Fal", "x^2 + y^2 + z^2 - 1", "");
+        f.xform.pos[0] = 1.5f;
+        std::list<ParticleSystem> systems;          // mint a jelenet poolja
+        std::vector<std::pair<Shape const*, ParticleSystem*>> owner;
+        auto make = [&](Shape const& s, unsigned seed) {
+            ParticleSystem& ps = systems.emplace_back(SimParams{}, seed);
+            ps.d = 0.6f;
+            owner.emplace_back(&s, &ps);
+            return &ps;
+        };
+        Script::Runtime rt;
+        rt.system_of = [&](Shape const* s) -> ParticleSystem* {
+            for (auto [k, ps] : owner) if (k == s) return ps;
+            return nullptr;
+        };
+        rt.spawn = [&](Shape& s) {                  // mint a Scene: új objektum, fa, indul
+            ParticleSystem* ps = make(s, 7);
+            ps->surface().set_tree(s.tree);
+            ps->restart();
+        };
+        rt.attach(a, sc, program, FACTORY(Masolo));
+        rt.start_all();
+        ok("a start()-ban kert masolat a lista vegen, a kovetkezo nevvel",
+           sc.shapes.size() == 3 && std::string(sc.shapes.back().name) == "A_1" && sc.shapes.back().script_clone);
+        ok("a masolatban a clone_start fut, es tudja, hogy masolat",
+           masolo.starts == 1 && masolo.clone_starts == 1 && masolo.clone_knows);
+        std::string e = Build::build(sc, program);
+        ok("felepul", e.empty(), e);
+        for (Shape* s : {&a, &f}) {
+            ParticleSystem* ps = make(*s, s == &a ? 1 : 2);
+            ps->surface().set_tree(s->tree);
+            ps->restart();
+            for (int i = 0; i < 250; ++i) ps->step(0.03f);
+        }
+
+        rt.update_all(0, 0.016f);
+        Shape& c1 = *std::next(sc.shapes.begin(), 2);
+        Shape& c2 = sc.shapes.back();
+        ok("az update()-ben kert masolat is letrejott", sc.shapes.size() == 4 && std::string(c2.name) == "A_2");
+        ok("az eredetiben update, a masolatokban clone_update fut",
+           masolo.updates == 1 && masolo.clone_starts == 2 && masolo.clone_updates == 2,
+           std::to_string(masolo.updates) + " / " + std::to_string(masolo.clone_updates));
+        near("a masolat a clone() utan irt helyen epult fel: F(6,0,0) = 0", at(c2, 6, 0, 0), 0.0f);
+        near("... az elso is: F(-4,0,0) = 0", at(c1, -4, 0, 0), 0.0f);
+        // A részecskék az eredetiből jöttek, a másolat helyére víve: rögtön a felületén.
+        ParticleSystem* p2 = rt.system_of(&c2);
+        float worst = p2 && !p2->particles().empty() ? 0.0f : 1e9f;
+        if (p2) for (Particle const& p : p2->particles()) worst = std::max(worst, std::abs(at(c2, p.p.x, p.p.y, p.p.z)));
+        ok("a masolat reszecskei rogton a feluleten", worst < 0.05f,
+           std::to_string(p2 ? p2->particles().size() : 0) + " db, max |F| = " + std::to_string(worst));
+
+        rt.update_all(0, 0.016f);
+        ok("rejtett: nem latszik, es nem utkozik", !f.visible && !masolo.hit_hidden);
+        rt.update_all(0, 0.016f);
+        ok("ujra lathato: utkozik", f.visible && masolo.hit_shown);
+        rt.update_all(0, 0.016f);
+        ok("a kod ujra elrejtette", !f.visible);
+
+        Build::drop_trees(sc);
+        rt.clear();
+        ok("clear: a masolatok torlodnek", sc.shapes.size() == 2);
+        ok("clear: a lathatosag visszaall", f.visible);
+    }
+    {
+        SceneDoc sc;
+        Shape& s = shape(sc, "S", "x^2 + y^2 + z^2 - 1", "Szapora");
+        Script::Runtime rt;
+        rt.attach(s, sc, program, FACTORY(Szapora));
+        rt.start_all();
+        Build::build(sc, program);
+        for (int i = 0; i < Script::Runtime::MAX_CLONES + 20; ++i) rt.update_all(0, 0.016f);
+        ok("legfeljebb MAX_CLONES masolat, utana hiba",
+           sc.shapes.size() == 1 + Script::Runtime::MAX_CLONES && has(rt, "legfeljebb"),
+           std::to_string(sc.shapes.size()));
+        Build::drop_trees(sc);
+        rt.clear();
+        ok("clear: mind torlodik", sc.shapes.size() == 1);
     }
 
     std::printf(failures ? "\n%d HIBA\n" : "\nminden rendben\n", failures);
