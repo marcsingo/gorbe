@@ -101,7 +101,8 @@ namespace ProjectFile {
             for (auto const& f : sc.funcs)
                 funcs.push_back({{"name", f.name}, {"params", f.params}, {"body", f.body}});
             json objects = json::array();
-            for (auto const& s : sc.shapes) objects.push_back(object(s));
+            for (auto const& s : sc.shapes)
+                if (!s.script_clone) objects.push_back(object(s));   // a kód másolata nem mentődik
             constexpr float DEG = 57.29577951308232f;
             CameraDoc const& c = sc.scene_camera;
             float const rot_deg[3] = {c.rot[0] * DEG, c.rot[1] * DEG, c.rot[2] * DEG};

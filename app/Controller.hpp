@@ -627,13 +627,7 @@ private:
                 if (!*ok) return;
                 Shape& s = shape_at(sc, static_cast<int>(i));
                 auto& p = *sc.pool[i];
-                auto& surf = p.model().surface();
-                surf.set_tree(s.tree);
-                if (s.dom_tree) surf.set_domain(s.dom_tree);
-                else            surf.clear_domain();
-                p.model().bind_controls(&s.controls, Build::control_params(s));
-                // Saját kezdő részecskék (az alakzat helye körül) + futó állapot.
-                p.model().spawn_center = {s.xform.pos[0], s.xform.pos[1], s.xform.pos[2]};
+                Scene::bind_surface(s, p);
                 std::size_t const sig = Build::shape_sig(s);
                 bool const restart = mode == BuildMode::Play ||
                     (mode == BuildMode::Preview && (sig != s.sampled_sig || p.model().particles().empty()));

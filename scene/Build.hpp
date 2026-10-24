@@ -255,6 +255,45 @@ namespace Build {
         for (auto& s : sc.shapes) { s.tree.reset(); s.dom_tree.reset(); }
     }
 
+    // Egy alakzat fája (s.tree, s.dom_tree): a nála KORÁBBI alakzatok kész fáját látja.
+    // Hibánál kivételt dob. A build() hívja sorban; a kód másolata (Runtime) egymagában.
+    inline void build_shape(SceneDoc& sc, std::list<Param> const& program, Shape& s) {
+        auto global = [&](std::string const& nm) { return resolve_global(sc, program, nm); };
+        auto fr = funcs(sc, program);
+        auto own = [&](std::string const& nm) { return resolve(sc, program, s, nm); };
+        char const* const formula = s.script_formula.empty() ? s.formula
+                                                             : s.script_formula.c_str();
+        s.tree = s.vari ? Variational::tree(s.vari).get() : make_kif(formula, own, fr).get();
+
+        // Tér-transzformáció: az alakzat saját képletén ÉS a saját
+        // tartományán is alkalmazzuk (a "véges hosszú henger" végei
+        // együtt mozogjanak a hengerrel), a GLOBÁLIS tartományon viszont
+        // NEM — az a világ munkatere, nem az alakzaté.
+        //
+        // A transzformált alakot tesszük vissza s.tree-be, hogy a rá
+        // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
+        // (két elhelyezett gömb uniója a helyükön legyen).
+        s.warped = !s.xform.is_identity() || !s.controls.empty() || s.script[0] || s.script_moved;
+        s.tree = place(Kif(s.tree), s, sc, program).get();
+
+        // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.
+        Kif dom;
+        bool has_dom = false;
+        if (s.domain[0]) {
+            // A tartomány UGYANAZT a warp-láncot és transzformációt kapja,
+            // mint a képlet — így a levágott rész együtt mozog/deformálódik
+            // az alakzattal.
+            dom = place(make_kif(s.domain, own, fr), s, sc, program);
+            has_dom = true;
+        }
+        if (sc.domain[0]) {
+            Kif g = make_kif(sc.domain, global, fr);
+            dom = has_dom ? kif_and(g, dom) : g;   // ÉS = min
+            has_dom = true;
+        }
+        s.dom_tree = has_dom ? dom.get() : nullptr;
+    }
+
     // Az összes alakzat beparseolása (a lista sorrendjében, hogy a későbbiek
     // hivatkozhassanak a korábbiak már kész fájára). Üres szöveg = siker; hibánál
     // az üzenet jön vissza, és MINDEN fa eldobódik (félkész jelenet nem marad).
@@ -275,38 +314,7 @@ namespace Build {
 
             for (auto& s : sc.shapes) {
                 try {
-                    auto own = [&](std::string const& nm) { return resolve(sc, program, s, nm); };
-                    char const* const formula = s.script_formula.empty() ? s.formula
-                                                                         : s.script_formula.c_str();
-                    s.tree = s.vari ? Variational::tree(s.vari).get() : make_kif(formula, own, fr).get();
-
-                    // Tér-transzformáció: az alakzat saját képletén ÉS a saját
-                    // tartományán is alkalmazzuk (a "véges hosszú henger" végei
-                    // együtt mozogjanak a hengerrel), a GLOBÁLIS tartományon viszont
-                    // NEM — az a világ munkatere, nem az alakzaté.
-                    //
-                    // A transzformált alakot tesszük vissza s.tree-be, hogy a rá
-                    // HIVATKOZÓ későbbi alakzatok is a már elhelyezett formát lássák
-                    // (két elhelyezett gömb uniója a helyükön legyen).
-                    s.warped = !s.xform.is_identity() || !s.controls.empty() || s.script[0] || s.script_moved;
-                    s.tree = place(Kif(s.tree), s, sc, program).get();
-
-                    // Tartomány = GLOBÁLIS és a (transzformált) SAJÁT feltétel ÉS-kapcsolata.
-                    Kif dom;
-                    bool has_dom = false;
-                    if (s.domain[0]) {
-                        // A tartomány UGYANAZT a warp-láncot és transzformációt kapja,
-                        // mint a képlet — így a levágott rész együtt mozog/deformálódik
-                        // az alakzattal.
-                        dom = place(make_kif(s.domain, own, fr), s, sc, program);
-                        has_dom = true;
-                    }
-                    if (sc.domain[0]) {
-                        Kif g = make_kif(sc.domain, global, fr);
-                        dom = has_dom ? kif_and(g, dom) : g;   // ÉS = min
-                        has_dom = true;
-                    }
-                    s.dom_tree = has_dom ? dom.get() : nullptr;
+                    build_shape(sc, program, s);
                 } catch (std::exception const& e) {
                     throw std::runtime_error(std::string(s.name[0] ? s.name : "(nevtelen)")
                                              + ": " + e.what());

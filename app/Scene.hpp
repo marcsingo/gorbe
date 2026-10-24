@@ -89,6 +89,26 @@ struct Scene : SceneDoc {
             }
             return nullptr;
         };
+        // A kód másolata (gorbe::ShapeRef::clone): saját objektum a lista végén, és indul.
+        runtime.spawn = [this](Shape& s) {
+            sync_pool();
+            std::size_t i = 0;
+            for (auto const& sh : shapes) { if (&sh == &s) break; ++i; }
+            bind_surface(s, *pool[i]);
+            pool[i]->start();
+            s.sampled_sig = Build::shape_sig(s);
+        };
+    }
+
+    // A felépített fa (és a kontrollpontok) átadása az alakzat mintavételezőjének.
+    static void bind_surface(Shape& s, SpaceObject& p) {
+        auto& surf = p.model().surface();
+        surf.set_tree(s.tree);
+        if (s.dom_tree) surf.set_domain(s.dom_tree);
+        else            surf.clear_domain();
+        p.model().bind_controls(&s.controls, Build::control_params(s));
+        // Saját kezdő részecskék (az alakzat helye körül).
+        p.model().spawn_center = {s.xform.pos[0], s.xform.pos[1], s.xform.pos[2]};
     }
 
     // Aktív fül: fut a szimuláció és megkapja a bevitelt.
@@ -156,7 +176,9 @@ struct Scene : SceneDoc {
             p->model().surface().clear_domain();
         }
         Build::drop_trees(*this);
-        runtime.clear();
+        if (selected && selected->script_clone) selected = nullptr;
+        runtime.clear();           // ... a kód másolatai is törlődnek
+        sync_pool();
         playing = false;           // a futás véget ért: újra a szerkesztő kamera
         preview_sig = 0;           // ... és szerkesztésben az előnézet magától visszajön
         error.clear();
