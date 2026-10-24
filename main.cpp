@@ -22,7 +22,7 @@
 //   VIEW       ui/     — a panelek; az értékeket élőben írják, minden mást KÉRNEK
 //   CONTROLLER app/    — a jelenetek gazdája; a kéréseket a frame végén hajtja végre
 int main() {
-    App app{1200, 800, "Particle sampling"};
+    App app{1200, 800, "OpenGL Hello World"};
     Controller ctl;
     Ui::UiState ui;
 
